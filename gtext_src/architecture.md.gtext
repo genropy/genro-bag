@@ -1,0 +1,35 @@
+<!-- gtext:{"outputs":[{"path":"../docs/architecture.md","timestamp":"2025-11-03T09:02:23.038482"}]} -->
+# genro-bag - Architecture
+
+**Status**: 🔴 DA REVISIONARE
+**Version**: 0.1.0
+**Last Updated**: 2025-11-03
+
+## Overview
+
+[High-level architecture description]
+
+## Components
+
+### Component 1
+
+Description...
+
+### Component 2
+
+Description...
+
+## Dependencies
+
+- Dependency 1
+- Dependency 2
+
+## Design Decisions
+
+### Decision 1
+
+Rationale...
+
+---
+
+*This document is part of the genro-bag technical documentation*
