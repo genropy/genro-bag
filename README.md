@@ -1,60 +1,140 @@
 # genro-bag
 
-[![Python versions](https://img.shields.io/badge/python-3.9%2B-blue.svg)](https://www.python.org/downloads/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![PyPI version](https://badge.fury.io/py/genro-bag.svg)](https://badge.fury.io/py/genro-bag)
+[![Tests](https://github.com/genropy/genro-bag/actions/workflows/tests.yml/badge.svg)](https://github.com/genropy/genro-bag/actions/workflows/tests.yml)
+[![codecov](https://codecov.io/gh/genropy/genro-bag/branch/main/graph/badge.svg)](https://codecov.io/gh/genropy/genro-bag)
+[![Documentation](https://readthedocs.org/projects/genro-bag/badge/?version=latest)](https://genro-bag.readthedocs.io/en/latest/?badge=latest)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
+[![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-000000.svg)](https://github.com/astral-sh/ruff)
 
-**Modernized bag system for the Genropy framework**
+Modernized bag system for the Genropy framework - a hierarchical data container with XML serialization.
 
-## Status: Beta
+## Status
 
-**Current Version:** 0.1.0
+**Development Status: Pre-Alpha**
 
-This project is in early development. The architecture and features are still being defined.
+This project is currently in the planning and design phase. No implementation code is available yet.
 
-## Purpose
+## Overview
 
-genro-bag aims to modernize the bag data structure from Genropy, providing a contemporary Python implementation with improved design and features.
+The Bag is a foundational data structure in the Genropy framework, providing:
 
-The bag is a core data structure in Genropy used for hierarchical data storage and manipulation. This project will explore modern approaches to reimplementing this concept.
+- **Hierarchical Data Storage**: Tree-like structure for organizing nested data
+- **XML Serialization**: Native support for reading and writing XML format
+- **Attribute Support**: Nodes can have both values and attributes
+- **Path-based Access**: Navigate and manipulate data using path expressions
+- **Event System**: Subscribe to changes in the data structure
 
-## Goals
+## Use Cases
 
-- Modernize the bag architecture for current Python standards
-- Maintain compatibility with Genropy framework needs
-- Explore improved APIs and patterns
-- Document design decisions and trade-offs
+- Configuration management
+- Data interchange between components
+- UI component state management
+- Form data handling
+- XML document processing
+
+## Installation
+
+```bash
+pip install genro-bag
+```
+
+For development:
+
+```bash
+pip install genro-bag[dev]
+```
+
+For documentation:
+
+```bash
+pip install genro-bag[docs]
+```
+
+## Quick Example
+
+```python
+from genro_bag import Bag
+
+# Create a new bag
+bag = Bag()
+
+# Add nested data
+bag['config.database.host'] = 'localhost'
+bag['config.database.port'] = 5432
+
+# Access data
+host = bag['config.database.host']
+
+# Serialize to XML
+xml_content = bag.toXml()
+
+# Load from XML
+bag2 = Bag(xml_content)
+```
+
+## Documentation
+
+Full documentation is available at [genro-bag.readthedocs.io](https://genro-bag.readthedocs.io/).
+
+## Repository Structure
+
+```
+genro-bag/
+├── src/
+│   └── genro_bag/
+│       ├── __init__.py
+│       └── py.typed
+├── tests/
+│   └── __init__.py
+├── docs/
+│   ├── conf.py
+│   ├── index.md
+│   └── ...
+├── .github/
+│   └── workflows/
+│       ├── tests.yml
+│       ├── publish.yml
+│       └── docs.yml
+├── pyproject.toml
+├── README.md
+├── LICENSE
+├── NOTICE
+└── CLAUDE.md
+```
 
 ## Development
 
-This repository serves as a central place for:
-- Design discussions (via GitHub Issues)
-- Architecture documentation
-- Prototype implementations
-- Feature proposals
-
-### Setup Development Environment
+### Running Tests
 
 ```bash
-# Clone the repository
-git clone https://github.com/genropy/genro-bag.git
-cd genro-bag
-
-# Install in development mode
-pip install -e .[dev]
-
-# Run tests
 pytest
 ```
 
-## License
+With coverage:
 
-MIT License - see LICENSE file for details
+```bash
+pytest --cov=genro_bag --cov-report=html
+```
+
+### Code Quality
+
+```bash
+ruff check src/
+mypy src/
+```
 
 ## Contributing
 
-Contributions and discussions are welcome! Please open issues on GitHub to discuss features and architecture decisions.
+Contributions are welcome! Please see the [Contributing Guide](CONTRIBUTING.md) for details.
 
-## Links
+## License
 
-- Repository: https://github.com/genropy/genro-bag
-- Bug Reports: https://github.com/genropy/genro-bag/issues
+This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
+
+Copyright 2025 Softwell S.r.l.
+
+## Origin
+
+This project was originally part of the Genropy framework and has been extracted as a standalone module with modernized tooling and type hints.

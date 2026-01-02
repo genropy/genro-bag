@@ -1,70 +1,115 @@
+# Copyright 2025 Softwell S.r.l.
+# Licensed under the Apache License, Version 2.0
+
 [build-system]
-requires = ["setuptools>=65.0", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "genro-bag"
 version = "0.1.0"
-description = "Modernized bag system for the Genropy framework"
+description = "Modernized bag system for the Genropy framework - hierarchical data container with XML serialization"
 readme = "README.md"
-requires-python = ">=3.9"
-license = {text = "MIT"}
+license = "Apache-2.0"
+requires-python = ">=3.10"
 authors = [
-    {name = "Genropy Team", email = "info@genropy.org"}
+    {name = "Genropy Team"}
 ]
-keywords = ["bag", "data-container", "genropy"]
+keywords = [
+    "bag",
+    "hierarchical-data",
+    "xml-serialization",
+    "data-container",
+    "genro",
+    "genropy"
+]
 classifiers = [
     "Development Status :: 2 - Pre-Alpha",
     "Intended Audience :: Developers",
-    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Libraries :: Python Modules",
+    "Typing :: Typed",
 ]
-
 dependencies = []
 
 [project.optional-dependencies]
 dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
-    "black>=23.0",
     "ruff>=0.1.0",
     "mypy>=1.0",
+]
+docs = [
+    "sphinx>=8.0.0",
+    "sphinx-rtd-theme>=3.0.0",
+    "sphinx-autodoc-typehints>=3.0.0",
+    "myst-parser>=4.0.0",
+    "sphinxcontrib-mermaid>=1.0.0",
+]
+all = [
+    "genro-bag[dev,docs]",
 ]
 
 [project.urls]
 Homepage = "https://github.com/genropy/genro-bag"
+Documentation = "https://genro-bag.readthedocs.io"
 Repository = "https://github.com/genropy/genro-bag"
-"Bug Tracker" = "https://github.com/genropy/genro-bag/issues"
+Issues = "https://github.com/genropy/genro-bag/issues"
 
-[tool.setuptools]
-packages = ["genro_bag"]
-
-[tool.setuptools.package-data]
-genro_bag = ["py.typed"]
-
-[tool.black]
-line-length = 100
-target-version = ["py39"]
-
-[tool.ruff]
-line-length = 100
-target-version = "py39"
-
-[tool.mypy]
-python_version = "3.9"
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = true
+[tool.hatch.build.targets.wheel]
+packages = ["src/genro_bag"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-python_files = ["test_*.py"]
-addopts = "-v --cov=genro_bag --cov-report=term-missing"
-markers = [
-    "unit: Fast unit tests with no external dependencies",
+addopts = "-v --cov=genro_bag --cov-report=term-missing --cov-report=html --cov-report=xml"
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+src = ["src"]
+
+[tool.ruff.lint]
+select = [
+    "E",      # pycodestyle errors
+    "W",      # pycodestyle warnings
+    "F",      # Pyflakes
+    "I",      # isort
+    "B",      # flake8-bugbear
+    "C4",     # flake8-comprehensions
+    "UP",     # pyupgrade
+    "SIM",    # flake8-simplify
+]
+ignore = [
+    "E501",   # line too long
+    "B008",   # no function calls in arg defaults
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["genro_bag"]
+
+[tool.mypy]
+python_version = "3.10"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+files = ["src/genro_bag"]
+
+[tool.coverage.run]
+source = ["src/genro_bag"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+    "@abstractmethod",
+    "\\.\\.\\.",
 ]

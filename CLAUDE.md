@@ -1,53 +1,112 @@
 # Claude Code Instructions - genro-bag
 
-**Parent Document**: This project follows all policies from the central [genro-next-generation CLAUDE.md](https://github.com/genropy/genro-next-generation/blob/main/CLAUDE.md)
+**Parent Document**: This project follows all policies from the central [meta-genro-modules CLAUDE.md](https://github.com/softwellsrl/meta-genro-modules/blob/main/CLAUDE.md)
 
-Read the parent document first for:
-- Language policy (English only)
-- Git commit authorship rules (no Claude co-author)
-- Development status lifecycle (Pre-Alpha → Alpha → Beta)
-- Temporary files policy (use temp/ directories)
-- Standardization requirements
-- All general project policies
+## MODO MANUALE
+
+Quando l'utente dice `:modomanuale` o `modo manuale`:
+
+**REGOLA ASSOLUTA**: Fai **SOLO ED ESATTAMENTE** quello che viene chiesto.
+
+- **NON** lanciare i test se non richiesto
+- **NON** aggiungere nulla di extra
+- **NON** "completare" o "migliorare" nulla
+- **NON** anticipare passi successivi
+- Lo scopo **NON** è far passare i test
+- Lo scopo è **mantenere l'allineamento** per lavorare in modo sinergico
+- **Se un test fallisce**: dire SOLO quale test fallisce e perché, poi STOP. Nessuna proposta di soluzione, nessuna analisi aggiuntiva.
+
+Se fai diverso, si perde tempo a riallinearsi.
+
+---
+
+## REGOLA FONDAMENTALE: LE DECISIONI LE PRENDE L'UTENTE
+
+**ESTREMAMENTE IMPORTANTE: MAI prendere decisioni autonome su cosa aggiungere o rimuovere dal codice.**
+
+Questo include:
+- Rimuovere codice (anche se sembra "dead code" o non coperto)
+- Aggiungere ottimizzazioni
+- Semplificare implementazioni
+- Cambiare approcci architetturali
+
+**SEMPRE chiedere PRIMA di fare qualsiasi modifica che implichi una scelta.**
+
+Se identifichi un problema (es. branch non coperto, codice apparentemente inutile), DEVI:
+1. Spiegare il problema
+2. Proporre le possibili soluzioni
+3. **ASPETTARE** la decisione dell'utente
+
+**MAI procedere con una soluzione senza approvazione esplicita.**
+
+---
 
 ## Project-Specific Context
 
 ### Current Status
-- **Development Status**: Pre-Alpha
-- **Has Implementation Code**: No
-- **GitHub**: https://github.com/genropy/genro-bag
+- Development Status: Pre-Alpha
+- Has Implementation: No (only structure)
 
-### Project Purpose
+### Project Description
 
-Modernization of the bag data structure from Genropy. This project is in the design and planning phase - used for collecting requirements, discussing architecture, and creating issues about how to modernize the bag concept for contemporary Python.
+genro-bag is the modernized bag system for the Genropy framework. The Bag is a hierarchical data container with XML serialization capabilities, used throughout Genropy for:
+- Configuration management
+- Data interchange
+- UI component state
+- Form data handling
 
-### Background
+## Critical Testing Rules
 
-The bag is a core hierarchical data structure in Genropy used since 2006. This project explores:
-- Modern Python patterns for hierarchical data
-- API design improvements
-- Performance considerations
-- Integration with modern Python ecosystem
+### Rule: NO Private Methods in Tests
 
-### Key Decisions Pending
+**I test NON DEVONO MAI usare metodi privati (che iniziano con `_`).**
 
-- Data structure implementation approach
-- API surface design
-- Backward compatibility strategy (if any)
-- Serialization formats
-- Integration with type hints and modern Python features
+Questa regola è CRITICA perché:
+1. Un test che usa metodi privati testa l'implementazione, non il comportamento
+2. Se il test fallisce, la tentazione è modificare l'implementazione per farlo passare
+3. Questo rompe il codice di produzione per far passare un test invalido
 
-### Important
+**Prima di scrivere QUALSIASI test**:
+1. Verificare che NON si usino metodi/attributi che iniziano con `_`
+2. Se serve accedere a qualcosa di privato, il test è sbagliato
+3. Ripensare il test usando solo l'API pubblica
 
-**DO NOT add implementation code without discussion**. This is a Pre-Alpha project for gathering requirements and architectural decisions through GitHub issues.
+## Coding Style Rules
 
-When implementation begins, update:
-1. Development Status classifier in pyproject.toml to "3 - Alpha"
-2. README.md status section
-3. This CLAUDE.md file
+### Rule: Minimal Code - No Redundant Lines
+
+**Mai aggiungere righe di codice ridondanti o controlli inutili.**
+
+Meno righe = meno rischio di errori = codice più leggibile.
+
+**Pattern SBAGLIATI**:
+
+```python
+# if ridondante prima di for su dizionario vuoto
+options = data.get("config", {})
+if options:
+    for key, val in options.items():
+        process(key, val)
+
+# variabile intermedia non necessaria
+bucket = store.get(name, {})
+entry = bucket.setdefault(key, {})
+entry["value"] = x
+```
+
+**Pattern CORRETTI**:
+
+```python
+# for itera zero volte su dizionario vuoto
+for key, val in data.get("config", {}).items():
+    process(key, val)
+
+# concatenare setdefault
+store.get(name, {}).setdefault(key, {})["value"] = x
+```
+
+**Regola generale**: prima di creare una variabile intermedia o aggiungere un `if`, chiedersi se è davvero necessaria.
 
 ---
 
-**All general policies are inherited from the parent document: [genro-next-generation CLAUDE.md](https://github.com/genropy/genro-next-generation/blob/main/CLAUDE.md)**
-
-**Last Updated**: 2025-10-30
+**All general policies are inherited from the parent document.**
