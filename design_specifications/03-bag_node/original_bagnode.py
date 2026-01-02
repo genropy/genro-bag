@@ -20,23 +20,66 @@ class BagNode(object):
     * *attributes*: dictionary that contains node's metadata"""
 
     def __init__(self, parentbag, label, value=None, attr=None, resolver=None,
-                 validators=None, _removeNullAttributes=True,_attributes=None):
+                 validators=None, _removeNullAttributes=True, _attributes=None):
+        """Initialize a BagNode.
+
+        Args:
+            parentbag: The parent Bag containing this node. Required first param
+                       because nodes are always created within a Bag context.
+            label: The node's key/name within the parent Bag.
+            value: The node's value (can be scalar, Bag, or BagResolver).
+            attr: Dict of attributes to set via setAttr() (with processing).
+            resolver: A BagResolver for lazy/dynamic value loading.
+            validators: Dict of validators to apply to value changes.
+            _removeNullAttributes: If True, remove None values from attributes.
+            _attributes: FAST PATH - pre-built attributes dict (no processing).
+                        Used by deserialization to skip setAttr() overhead.
+
+        The constructor has two paths:
+
+        FAST PATH (_attributes provided):
+            - Direct assignment of _attributes dict (already processed)
+            - Direct assignment of value (no setValue() call)
+            - Early return - skips all processing
+            - Used by XML/JSON deserialization for performance
+
+        NORMAL PATH (_attributes is None):
+            - Empty attr dict created
+            - attr processed via setAttr() (handles null removal, triggers)
+            - validators set up if provided
+            - value processed via setValue() (handles Resolver detection,
+              BagNode unpacking, rootattributes, validators, triggers)
+        """
+        # Always set these first - basic node identity
         self.label = label
-        self.locked = False
+        self.locked = False  # NOTE: Never set to True anywhere in codebase (dead code)
         self._value = None
-        self.resolver = resolver
-        self.parentbag = parentbag
+        self.resolver = resolver  # Uses property setter -> sets resolver.parentNode = self
+        self.parentbag = parentbag  # Uses property setter -> handles backref setup
         self._node_subscribers = {}
         self._validators = None
+
+        # FAST PATH: Deserialization bypass
+        # When loading from XML/JSON, attributes are already processed.
+        # Skip setAttr/setValue overhead - just assign directly.
         if _attributes:
-            self.attr = _attributes
-            self._value = value
-            return
+            self.attr = _attributes  # Already a clean dict
+            self._value = value      # Already the final value (no Resolver detection needed)
+            return  # Early exit - no further processing
+
+        # NORMAL PATH: Full initialization with processing
         self.attr = {}
+
+        # Process attributes via setAttr (handles null removal, etc.)
         if attr:
             self.setAttr(attr, trigger=False, _removeNullAttributes=_removeNullAttributes)
+
+        # Set up validators if provided
         if validators:
             self.setValidators(validators)
+
+        # Process value via setValue (handles Resolver detection, BagNode unpacking,
+        # rootattributes extraction, validator application, backref setup)
         self.setValue(value, trigger=False)
 
     def __eq__(self, other):

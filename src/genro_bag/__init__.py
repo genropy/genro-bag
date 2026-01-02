@@ -17,8 +17,9 @@
 genro-bag: Modernized bag system for the Genropy framework.
 """
 
+from genro_bag.bag_node import BagNode, BagNodeException
 from genro_bag.node_container import NodeContainer
 
 __version__ = "0.1.0"
 
-__all__ = ["NodeContainer"]
+__all__ = ["NodeContainer", "BagNode", "BagNodeException"]

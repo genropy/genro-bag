@@ -35,7 +35,10 @@ classifiers = [
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Typing :: Typed",
 ]
-dependencies = []
+dependencies = [
+    "genro-toolbox>=0.1.0",
+    "genro-tytx>=0.1.0",
+]
 
 [project.optional-dependencies]
 dev = [
