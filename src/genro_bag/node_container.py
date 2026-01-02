@@ -18,7 +18,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
-from typing import Any
+from typing import Any, cast
 
 
 class NodeContainer:
