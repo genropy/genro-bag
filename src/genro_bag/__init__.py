@@ -17,4 +17,8 @@
 genro-bag: Modernized bag system for the Genropy framework.
 """
 
+from genro_bag.node_container import NodeContainer
+
 __version__ = "0.1.0"
+
+__all__ = ["NodeContainer"]

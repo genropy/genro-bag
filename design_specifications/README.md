@@ -10,7 +10,7 @@ Each subdirectory represents a specific topic area, numbered for logical orderin
 design_specifications/
 ├── README.md                 # This file
 ├── 01-overview/              # Project overview and architecture
-├── 02-array_dict/            # Array and dictionary behaviors
+├── 02-node_container/        # NodeContainer for BagNodes
 └── ...                       # Additional topics as needed
 ```
 

@@ -1,20 +1,20 @@
-# ArrayDict Specification
+# NodeContainer Specification
 
 **Status**: 🔴 DA REVISIONARE
 
 ## Overview
 
-ArrayDict è un dizionario ordinato con supporto per inserimento posizionale e riordinamento degli elementi. Combina le caratteristiche di un `dict` con quelle di una lista ordinata.
+NodeContainer è un dizionario ordinato con supporto per inserimento posizionale e riordinamento degli elementi. Combina le caratteristiche di un `dict` con quelle di una lista ordinata.
 
 ## Struttura Interna
 
-ArrayDict mantiene due strutture dati sincronizzate:
+NodeContainer mantiene due strutture dati sincronizzate:
 
 1. **Dict interno**: per accesso O(1) per chiave
 2. **Lista ordinata**: per mantenere l'ordine e supportare accesso posizionale
 
 ```
-ArrayDict:
+NodeContainer:
   _dict: {'a': 1, 'b': 2, 'c': 3}
   _list: ['a', 'b', 'c']  # ordine delle chiavi
 ```
@@ -32,7 +32,7 @@ L'accesso agli elementi supporta tre notazioni **intercambiabili in tutti i meto
 Tutte e tre le notazioni funzionano ovunque: `__getitem__`, `__setitem__`, `__delitem__`, `pop()`, `move()`, etc.
 
 ```python
-d = ArrayDict()
+d = NodeContainer()
 d['foo'] = 1
 d['bar'] = 2
 d['baz'] = 3
@@ -45,10 +45,10 @@ d['#1']    # → 2
 
 ## Accesso a Chiavi Mancanti
 
-ArrayDict **non solleva mai eccezioni** per chiavi/indici mancanti. Restituisce sempre `None`:
+NodeContainer **non solleva mai eccezioni** per chiavi/indici mancanti. Restituisce sempre `None`:
 
 ```python
-d = ArrayDict()
+d = NodeContainer()
 d['foo'] = 1
 
 d['missing']   # → None (chiave mancante)
@@ -85,7 +85,7 @@ Il parametro `_position` controlla dove inserire un nuovo elemento:
 ### Esempi
 
 ```python
-d = ArrayDict()
+d = NodeContainer()
 d.set('a', 1)                      # [a]
 d.set('b', 2)                      # [a, b]
 d.set('c', 3, _position='<')       # [c, a, b]
@@ -99,7 +99,7 @@ d.set('f', 6, _position='#0')      # [f, c, a, e, d, b]
 Quando si assegna un valore a una chiave esistente, il valore viene sovrascritto **mantenendo la posizione originale**:
 
 ```python
-d = ArrayDict()
+d = NodeContainer()
 d['x'] = 1
 d['y'] = 2
 d['z'] = 3
@@ -134,7 +134,7 @@ def move(self, what, position):
 ### Esempi
 
 ```python
-d = ArrayDict({'a': 1, 'b': 2, 'c': 3, 'foo': 4, 'bar': 5, 'egg': 6})
+d = NodeContainer({'a': 1, 'b': 2, 'c': 3, 'foo': 4, 'bar': 5, 'egg': 6})
 # ordine: a, b, c, foo, bar, egg
 
 # Spostamento singolo
@@ -154,7 +154,7 @@ d.move([3, 'egg', '#2'], '<')  # tutti all'inizio, mantenendo ordine relativo
 Quando si spostano più elementi, l'ordine relativo tra loro viene preservato:
 
 ```python
-d = ArrayDict()
+d = NodeContainer()
 # ordine: a, b, c, foo, bar, egg
 
 d.move('foo,bar', '>egg')
@@ -171,7 +171,7 @@ Accettano un parametro `iter` (default `False`):
 - `iter=True` → restituisce un iteratore
 
 ```python
-d = ArrayDict()
+d = NodeContainer()
 d.set('c', 3)
 d.set('a', 1)
 d.set('b', 2)
@@ -188,7 +188,7 @@ d.items()          # → [('c', 3), ('a', 1), ('b', 2)] (lista)
 Lo slicing si applica ai risultati di `keys()`, `values()`, `items()`:
 
 ```python
-d = ArrayDict()
+d = NodeContainer()
 # ordine: a, b, c, d, e
 
 d.keys()[1:3]      # → ['b', 'c']
@@ -204,7 +204,7 @@ Il metodo `update()` segue la semantica standard di `dict`:
 - **Chiavi nuove**: append in coda (equivale a `_position='>'`)
 
 ```python
-d = ArrayDict()
+d = NodeContainer()
 d['a'] = 1
 d['b'] = 2
 d['c'] = 3
@@ -218,7 +218,7 @@ d.update({'b': 99, 'x': 10, 'y': 20})
 
 ## Clone
 
-Il metodo `clone()` crea un nuovo ArrayDict con un sottoinsieme degli elementi.
+Il metodo `clone()` crea un nuovo NodeContainer con un sottoinsieme degli elementi.
 
 ### Signature
 
@@ -234,14 +234,14 @@ def clone(self, selector=None):
             - callable: funzione che riceve (key, value) e ritorna True/False
 
     Returns:
-        Nuovo ArrayDict con gli elementi selezionati, nell'ordine originale
+        Nuovo NodeContainer con gli elementi selezionati, nell'ordine originale
     """
 ```
 
 ### Esempi
 
 ```python
-d = ArrayDict()
+d = NodeContainer()
 d['a'] = 1
 d['b'] = 2
 d['c'] = 3
@@ -250,21 +250,21 @@ d['e'] = 5
 # ordine: a, b, c, d, e
 
 # Clone totale
-d.clone()                    # → ArrayDict con a, b, c, d, e
+d.clone()                    # → NodeContainer con a, b, c, d, e
 
 # Clone con stringa
-d.clone('b,c,#4')            # → ArrayDict con b, c, e (ordine preservato)
+d.clone('b,c,#4')            # → NodeContainer con b, c, e (ordine preservato)
 
 # Clone con lista di riferimenti
-d.clone([1, 'c', '#4'])      # → ArrayDict con b, c, e (ordine preservato)
+d.clone([1, 'c', '#4'])      # → NodeContainer con b, c, e (ordine preservato)
 
 # Clone con callable
-d.clone(lambda k, v: v > 2)  # → ArrayDict con c, d, e (valori > 2)
+d.clone(lambda k, v: v > 2)  # → NodeContainer con c, d, e (valori > 2)
 ```
 
 ## Metodi Standard Dict
 
-ArrayDict supporta l'interfaccia standard di `dict`:
+NodeContainer supporta l'interfaccia standard di `dict`:
 
 - `__getitem__(key)` - accesso per chiave, indice, o `#n`
 - `__setitem__(key, value)` - assegnazione (supporta `_position` via `set()`)
@@ -283,7 +283,7 @@ ArrayDict supporta l'interfaccia standard di `dict`:
 ## API Completa
 
 ```python
-class ArrayDict:
+class NodeContainer:
     # Costruttori
     def __init__(self, data=None): ...
 
