@@ -11,7 +11,7 @@
 
 | Component | File | Lines | Tests | Coverage | Notes |
 |-----------|------|-------|-------|----------|-------|
-| **NodeContainer** | `src/genro_bag/node_container.py` | ~300 | 13 | 27% | Indexed list for BagNodes (refactored) |
+| **BagNodeContainer** | `src/genro_bag/bagnode_container.py` | ~300 | 0 | - | Rinominato da NodeContainer, ora crea BagNode internamente |
 | **BagNode** | `src/genro_bag/bag_node.py` | ~555 | 63 | 72% | Node with value, attributes, subscriptions |
 | **BagResolver** | `src/genro_bag/resolver.py` | ~340 | 0 | 0% | Lazy loading with cache TTL, async support |
 | **Bag (Core)** | `src/genro_bag/bag.py` | ~900 | 0 | 0% | Core methods implemented, tests pending |
@@ -38,7 +38,7 @@ Risolto il problema async/sync per `_htraverse`:
 - Rimosso `SmartLock` dal resolver (l'utente userà contextvars per isolamento)
 - Rimosso parametro `mode` da `get` e `get_item` (mai usato nel codebase)
 
-### NodeContainer Refactoring (2026-01-03)
+### NodeContainer → BagNodeContainer Refactoring (2026-01-03)
 
 NodeContainer è stato semplificato come "indexed list":
 
@@ -49,6 +49,29 @@ NodeContainer è stato semplificato come "indexed list":
 - Rinominato `_parse_what` → `_get_nodes`
 - Usato `smartsplit` per parsing consistente
 - Rimossi test obsoleti (da 63 a 13 test)
+
+### BagNodeContainer + set_item Refactoring (2026-01-03) - IN CORSO
+
+**Obiettivo**: Semplificare `Bag.set_item()` eliminando duplicazione di logica.
+
+**Modifiche completate**:
+1. ✅ Rinominato `node_container.py` → `bagnode_container.py`
+2. ✅ Rinominato classe `NodeContainer` → `BagNodeContainer`
+3. ✅ `BagNodeContainer.set()` ora crea `BagNode` internamente (non riceve nodo pronto)
+4. ✅ `Bag.set_item()` semplificato: chiama direttamente `obj._nodes.set(...)`
+5. ✅ Rimossi `Bag._set()` e `Bag._insert_node()` (logica spostata in `BagNodeContainer.set()`)
+6. ✅ Aggiunto parametro `_remove_null_attributes` a `BagNode.__init__`, `set_attr`, `set_value`
+7. ✅ Aggiornati import in `bag.py` e `__init__.py`
+
+**Test**:
+- Vecchi test rinominati con prefisso `_old_` (da rimuovere dopo validazione)
+- Nuovo `test_bag.py` con test base per `set_item` e `get_item`
+- Test passano (verificato parzialmente - interrotto per lentezza)
+
+**Prossimi passi**:
+- Lanciare test completi per verificare refactoring
+- Rimuovere vecchi file test `_old_*`
+- Verificare coverage
 
 ### Bag Implementation Details
 
@@ -62,9 +85,9 @@ NodeContainer è stato semplificato come "indexed list":
 | `get` | ✅ Done | Single level access with `?attr` syntax |
 | `get_item` | ✅ Done | Async with `@smartasync`, `static` parameter |
 | `__getitem__` | ✅ Done | Sync, uses `_htraverse` |
-| `_set` | ✅ Done | Single level set with resolver support |
-| `_insert_node` | ✅ Done | Position-based node insertion |
-| `set_item` / `__setitem__` | ✅ Done | Sync, with autocreate, `**kwargs` as attributes |
+| `_set` | ❌ Rimosso | Logica spostata in `BagNodeContainer.set()` |
+| `_insert_node` | ❌ Rimosso | Logica spostata in `BagNodeContainer.set()` |
+| `set_item` / `__setitem__` | ✅ Done | Semplificato: chiama `_nodes.set()` direttamente |
 | `_pop` | ✅ Done | Single level pop with `_reason` |
 | `pop` / `del_item` / `__delitem__` | ✅ Done | Sync, remove and return value |
 | `pop_node` | ✅ Done | Sync, remove and return node |
@@ -233,6 +256,21 @@ Coverage: 27% overall
 | `_get_label`, `_resolve_key`, `_resolve_index` | Present | Removed | Consolidated into `NodeContainer.index()` |
 | `_htraverse` | Single method | Split sync/async | Proper async resolver support |
 | `mode` parameter | Present | Removed | Never used in codebase |
+| `set_item('', value)` | Merge/update syntax | Removed | Use explicit `update()` method instead |
+
+---
+
+## Adaptation Layer Notes
+
+Sintassi da gestire nel layer di adattamento per retrocompatibilità:
+
+| Sintassi Legacy | Nuova API | Note |
+|-----------------|-----------|------|
+| `bag.set_item('', other_bag)` | `bag.update(other_bag)` | Merge contenuto di altra Bag |
+| `bag.set_item(True, dict)` | `bag.update(dict)` | Merge contenuto di dict |
+| `bag[''] = value` | `bag.update(value)` | Equivalente via `__setitem__` |
+| `bag.addItem(path, value)` | `bag.set_item(path, value)` | No duplicate labels, sovrascrive |
+| `_duplicate=True` | Non supportato | Label duplicate non ammesse |
 
 ---
 

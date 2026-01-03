@@ -13,36 +13,38 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""NodeContainer: Ordered container for BagNodes with positional insert and reordering."""
+"""BagNodeContainer: Ordered container for BagNodes with positional insert and reordering."""
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from genro_toolbox import smartsplit
 
+if TYPE_CHECKING:
+    from collections.abc import Callable, Iterator
 
-class NodeContainer:
+    from .bag import Bag
+
+from .bag_node import BagNode
+
+
+class BagNodeContainer:
     """Ordered container for BagNodes with positional insert and reordering.
 
-    NodeContainer combines dict-like access with list-like ordering. Elements can be
+    BagNodeContainer combines dict-like access with list-like ordering. Elements can be
     accessed by label, numeric index, or '#n' string index. Supports positional
     insertion and element reordering without removal.
 
-    Note:
-        This class is tightly coupled with BagNode. It assumes elements have
-        `.label` and `.attr` attributes (as BagNode does). This is intentional:
-        NodeContainer is designed specifically to hold BagNodes and is not meant
-        to be a general-purpose container.
+    This class creates and manages BagNode instances directly.
 
     Internal structure:
-        _dict: maps label -> value (for O(1) lookup by label)
-        _list: contains values in order (for O(1) access by index)
+        _dict: maps label -> BagNode (for O(1) lookup by label)
+        _list: contains BagNodes in order (for O(1) access by index)
     """
 
     def __init__(self, data: dict[str, Any] | None = None):
-        """Create a NodeContainer.
+        """Create a BagNodeContainer.
 
         Args:
             data: Optional dict to initialize from.
@@ -175,23 +177,44 @@ class NodeContainer:
         """Iterate over nodes in order."""
         return iter(self._list)
 
-    def set(self, key: str, value: Any, _position: str | int | None = '>') -> None:
-        """Set item with optional position.
+    def set(self, label: str, value: Any, _position: str | int | None = '>',
+            attr: dict | None = None, resolver: Any = None,
+            parent_bag: Bag | None = None,
+            _updattr: bool = False,
+            _remove_null_attributes: bool = True,
+            _reason: str | None = None) -> BagNode:
+        """Set or create a BagNode with optional position.
+
+        If label exists, updates the existing node's value.
+        If label doesn't exist, creates a new BagNode and inserts it.
 
         Args:
-            key: The label.
-            value: The value.
+            label: The node label.
+            value: The value to set.
             _position: Position specification (>, <, #n, <label, >label, etc.)
+            attr: Optional dict of attributes for new nodes.
+            resolver: Optional resolver for new nodes.
+            parent_bag: Parent Bag reference for new nodes.
+            _updattr: If True, update attributes instead of replacing.
+            _remove_null_attributes: If True, remove None attributes.
+            _reason: Reason for the change (for events).
+
+        Returns:
+            The created or updated BagNode.
         """
-        if key in self._dict:
-            old_value = self._dict[key]
-            idx = self._list.index(old_value)
-            self._list[idx] = value
-            self._dict[key] = value
+        if label in self._dict:
+            node = self._dict[label]
+            node.set_value(value, _attributes=attr, _updattr=_updattr,
+                          _remove_null_attributes=_remove_null_attributes,
+                          _reason=_reason)
         else:
+            node = BagNode(parent_bag, label=label, value=value, attr=attr,
+                          resolver=resolver,
+                          _remove_null_attributes=_remove_null_attributes)
             idx = self._parse_position(_position)
-            self._dict[key] = value
-            self._list.insert(idx, value)
+            self._dict[label] = node
+            self._list.insert(idx, node)
+        return node
 
     def _get_nodes(self, what: str | int | list) -> list[Any]:
         """Parse 'what' argument for move/clone into list of nodes.
@@ -262,7 +285,7 @@ class NodeContainer:
         self._dict.clear()
         self._list.clear()
 
-    def clone(self, selector: str | list | Callable[[str, Any], bool] | None = None) -> NodeContainer:
+    def clone(self, selector: str | list | Callable[[str, Any], bool] | None = None) -> BagNodeContainer:
         """Create a clone with selected elements.
 
         Args:
@@ -273,9 +296,9 @@ class NodeContainer:
                 - callable: function(key, value) -> bool
 
         Returns:
-            New NodeContainer with selected elements in original order.
+            New BagNodeContainer with selected elements in original order.
         """
-        result = NodeContainer()
+        result = BagNodeContainer()
 
         if selector is None:
             for value in self._list:

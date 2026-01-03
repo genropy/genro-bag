@@ -22,14 +22,13 @@ Example:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from genro_toolbox import smartasync, smartawait, smartsplit
+from genro_toolbox.typeutils import safe_is_instance
 
-from .node_container import NodeContainer
-
-if TYPE_CHECKING:
-    from .bag_node import BagNode
+from .bag_node import BagNode
+from .bagnode_container import BagNodeContainer
 
 
 def _normalize_path(path: str | list | Any) -> str | list:
@@ -54,7 +53,7 @@ class Bag:
     Each label at a given level must be unique.
 
     Attributes:
-        _nodes: NodeContainer holding the BagNodes.
+        _nodes: BagNodeContainer holding the BagNodes.
         _backref: If True, enables strict tree mode with parent references.
         _parent: Reference to parent Bag (only in backref mode).
         _parent_node: Reference to the BagNode containing this Bag.
@@ -77,7 +76,7 @@ class Bag:
             >>> bag['a']
             1
         """
-        self._nodes: NodeContainer = NodeContainer()
+        self._nodes: BagNodeContainer = BagNodeContainer()
         self._backref: bool = False
         self._parent: Bag | None = None
         self._parent_node: BagNode | None = None
@@ -197,8 +196,6 @@ class Bag:
         Raises:
             BagException: If write_mode and path uses '#n' for non-existent index.
         """
-        from .bag_node import BagNode
-
         if not pathlist:
             return curr, ''
 
@@ -427,109 +424,10 @@ class Bag:
             return obj.get(label)
         return None
 
-    # -------------------- _set (single level) --------------------------------
-
-    def _set(self, label: str, value: Any, _attributes: dict | None = None,
-             _position: str | None = None, _duplicate: bool = False,
-             _updattr: bool = False, _remove_null_attributes: bool = True,
-             _reason: str | None = None) -> None:
-        """Set value at a single level (no path traversal).
-
-        Internal method that handles the actual node creation/update logic.
-        Called by set_item() after path traversal.
-
-        Args:
-            label: Node label.
-            value: Value to set.
-            _attributes: Optional dict of attributes.
-            _position: Position for new nodes.
-            _duplicate: If True, always create new node (for addItem).
-            _updattr: If True, update attributes instead of replacing.
-            _remove_null_attributes: If True, remove None attributes.
-            _reason: Reason for the change (for events).
-        """
-        from .bag_node import BagNode
-        from .resolver import BagResolver
-
-        resolver = None
-        if isinstance(value, BagResolver):
-            resolver = value
-            value = None
-            if resolver.attributes:
-                _attributes = dict(_attributes or ())
-                _attributes.update(resolver.attributes)
-
-        i = -1 if _duplicate else self._nodes.index(label)
-
-        if i < 0:
-            if label.startswith('#'):
-                raise BagException('Not existing index in #n syntax')
-            else:
-                bagnode = BagNode(self, label=label, value=value, attr=_attributes,
-                                  resolver=resolver,
-                                  _remove_null_attributes=_remove_null_attributes)
-                self._insert_node(bagnode, _position, _reason=_reason)
-        else:
-            node = self._nodes[i]
-            if resolver is not None:
-                node.resolver = resolver
-            node.set_value(value, _attributes=_attributes, _updattr=_updattr,
-                           _remove_null_attributes=_remove_null_attributes, _reason=_reason)
-
-    # -------------------- _insert_node --------------------------------
-
-    def _insert_node(self, node: BagNode, position: str | int | None,
-                     _reason: str | None = None) -> int:
-        """Insert a node at the specified position.
-
-        Handles position parsing and node insertion logic.
-
-        Args:
-            node: The BagNode to insert.
-            position: Position specification:
-                - int: Insert at index
-                - None or '>': Append at end
-                - '<': Insert at beginning
-                - '#n': Insert at index n
-                - '<label': Insert before label
-                - '>label': Insert after label
-            _reason: Reason for insertion (for events).
-
-        Returns:
-            The index where the node was inserted.
-        """
-        if isinstance(position, int):
-            n = position
-        elif not position or position == '>':
-            n = -1
-        elif position == '<':
-            n = 0
-        elif position[0] == '#':
-            n = int(position[1:])
-        else:
-            if position[0] in '<>':
-                pos_char, label = position[0], position[1:]
-            else:
-                pos_char, label = '<', position
-            n = int(label[1:]) if label[0] == '#' else self._nodes.index(label)
-            if pos_char == '>' and n >= 0:
-                n = n + 1
-
-        if n < 0:
-            n = len(self._nodes)
-
-        self._nodes.insert(n, node)
-        node.parent_bag = self
-
-        if self.backref:
-            self._on_node_inserted(node, n, reason=_reason)
-
-        return n
-
     # -------------------- set_item --------------------------------
 
     def set_item(self, path: str, value: Any, _attributes: dict | None = None,
-                 _position: str | None = None, _duplicate: bool = False,
+                 _position: str | None = None,
                  _updattr: bool = False, _remove_null_attributes: bool = True,
                  _reason: str | None = None, **kwargs) -> None:
         """Set value at a hierarchical path.
@@ -553,6 +451,10 @@ class Bag:
                 - '#n': Insert at index n
                 - '<label': Insert before label
                 - '>label': Insert after label
+            _updattr: If True, update attributes instead of replacing.
+            _remove_null_attributes: If True, remove None attributes.
+            _reason: Reason for the change (for events).
+            **kwargs: Additional attributes to set on the node.
 
         Example:
             >>> bag = Bag()
@@ -561,28 +463,30 @@ class Bag:
             42
             >>> bag.set_item('a.b.d', 'hello', _attributes={'type': 'greeting'})
         """
-        from .resolver import BagResolver
-
         if kwargs:
             _attributes = dict(_attributes or {})
             _attributes.update(kwargs)
 
-        if path == '' or path is True:
-            if isinstance(value, BagResolver):
-                value = value()
-            if isinstance(value, Bag):
-                for el in value:
-                    self.set_item(el.label, el.value, _attributes=el.attr, _updattr=_updattr)
-            elif hasattr(value, 'items'):
-                for key, v in list(value.items()):
-                    self.set_item(key, v)
-            return self
-        else:
-            path = _normalize_path(path)
-            obj, label = self._htraverse(path, write_mode=True)
-            obj._set(label, value, _attributes=_attributes, _position=_position,
-                     _duplicate=_duplicate, _updattr=_updattr,
-                     _remove_null_attributes=_remove_null_attributes, _reason=_reason)
+        resolver = None
+        if safe_is_instance(value, "genro_bag.resolver.BagResolver"):
+            resolver = value
+            value = None
+            if resolver.attributes:
+                _attributes = dict(_attributes or ())
+                _attributes.update(resolver.attributes)
+
+        path = _normalize_path(path)
+        obj, label = self._htraverse(path, write_mode=True)
+
+        if label.startswith('#'):
+            raise BagException('Cannot create new node with #n syntax')
+
+        obj._nodes.set(label, value, _position,
+                      attr=_attributes, resolver=resolver,
+                      parent_bag=obj,
+                      _updattr=_updattr,
+                      _remove_null_attributes=_remove_null_attributes,
+                      _reason=_reason)
 
     def __setitem__(self, path: str, value: Any) -> None:
         self.set_item(path, value)
@@ -816,8 +720,6 @@ class Bag:
             >>> 'a.c' in bag
             False
         """
-        from .bag_node import BagNode
-
         if isinstance(what, str):
             return bool(self.get_node(what))
         elif isinstance(what, BagNode):
@@ -839,8 +741,6 @@ class Bag:
         Returns:
             The BagNode, or None if not found and not autocreate.
         """
-        from .bag_node import BagNode
-
         p = self._nodes.index(label)
         if p >= 0:
             node = self._nodes[p]

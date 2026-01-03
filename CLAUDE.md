@@ -73,6 +73,31 @@ Questa regola è CRITICA perché:
 
 ## Coding Style Rules
 
+### Rule: Use safe_is_instance to Avoid Circular Imports
+
+**MAI usare import locali a metà metodo per evitare import circolari.**
+
+Usare invece `safe_is_instance` da `genro_toolbox.typeutils`:
+
+```python
+# ❌ SBAGLIATO - import locale a metà metodo
+def set_item(self, path, value):
+    from .resolver import BagResolver  # import circolare evitato ma brutto
+    if isinstance(value, BagResolver):
+        ...
+
+# ✅ CORRETTO - safe_is_instance
+from genro_toolbox.typeutils import safe_is_instance
+
+def set_item(self, path, value):
+    if safe_is_instance(value, "genro_bag.resolver.BagResolver"):
+        ...
+```
+
+`safe_is_instance` controlla il tipo tramite la MRO (Method Resolution Order) senza importare la classe, evitando import circolari in modo pulito.
+
+---
+
 ### Rule: Minimal Code - No Redundant Lines
 
 **Mai aggiungere righe di codice ridondanti o controlli inutili.**

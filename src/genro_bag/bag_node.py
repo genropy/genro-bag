@@ -73,6 +73,7 @@ class BagNode:
         attr: dict[str, Any] | None = None,
         resolver: BagResolver | None = None,
         tag: str | None = None,
+        _remove_null_attributes: bool = True,
     ) -> None:
         """Initialize a BagNode.
 
@@ -83,6 +84,7 @@ class BagNode:
             attr: Dict of attributes to set via set_attr() (with processing).
             resolver: A BagResolver for lazy/dynamic value loading.
             tag: Optional type/tag for the node (used by builders).
+            _remove_null_attributes: If True, remove None values from attributes.
         """
         # Basic node identity
         self.label = label
@@ -103,7 +105,7 @@ class BagNode:
 
         # Process attributes via set_attr
         if attr:
-            self.set_attr(attr, trigger=False)
+            self.set_attr(attr, trigger=False, _remove_null_attributes=_remove_null_attributes)
 
         # Process value via set_value
         if value is not None:
@@ -203,6 +205,7 @@ class BagNode:
         trigger: bool = True,
         _attributes: dict[str, Any] | None = None,
         _updattr: bool | None = None,
+        _remove_null_attributes: bool = True,
         _reason: str | None = None,
     ) -> None:
         """Set the node's value.
@@ -212,6 +215,7 @@ class BagNode:
             trigger: If True, notify subscribers of the change.
             _attributes: Optional attributes to set along with value.
             _updattr: If False, clear existing attributes first.
+            _remove_null_attributes: If True, remove None values from attributes.
             _reason: Optional reason string for the trigger.
 
         Special value handling:
@@ -260,7 +264,8 @@ class BagNode:
             evt = 'upd_value_attr'
             # Call set_attr with trigger=False: node subscribers receive only
             # 'upd_value' from here, not a separate 'upd_attrs' event
-            self.set_attr(_attributes, trigger=False, _updattr=_updattr)
+            self.set_attr(_attributes, trigger=False, _updattr=_updattr,
+                          _remove_null_attributes=_remove_null_attributes)
 
         # Node subscribers always receive 'upd_value' (not 'upd_value_attr')
         # They don't need to know if attributes also changed
@@ -339,6 +344,7 @@ class BagNode:
         attr: dict[str, Any] | None = None,
         trigger: bool = True,
         _updattr: bool | None = True,
+        _remove_null_attributes: bool = True,
         **kwargs: Any,
     ) -> None:
         """Set attributes on the node.
@@ -347,6 +353,7 @@ class BagNode:
             attr: Dictionary of attributes to set.
             trigger: If True, notify subscribers of the change.
             _updattr: If False, clear existing attributes first.
+            _remove_null_attributes: If True, remove None values from attributes.
             **kwargs: Additional attributes as keyword arguments.
 
         Note:
@@ -362,6 +369,9 @@ class BagNode:
             self._attr.update(new_attr)
         else:
             self._attr = new_attr
+
+        if _remove_null_attributes:
+            self._attr = {k: v for k, v in self._attr.items() if v is not None}
 
         if trigger:
             if oldattr is not None:
