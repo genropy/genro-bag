@@ -611,6 +611,111 @@ class Bag:
         """Return list of (label, value) tuples in order."""
         return self._nodes.items()
 
+    # -------------------- get_nodes, digest --------------------------------
+
+    def get_nodes(self, condition: Any = None) -> list[BagNode]:
+        """Get the actual list of nodes contained in the Bag.
+
+        The get_nodes method works as the filter of a list.
+
+        Args:
+            condition: Optional callable that takes a BagNode and returns bool.
+
+        Returns:
+            List of BagNodes, optionally filtered by condition.
+        """
+        if not condition:
+            return list(self._nodes)
+        else:
+            return [n for n in self._nodes if condition(n)]
+
+    @property
+    def nodes(self) -> list[BagNode]:
+        """Property alias for get_nodes()."""
+        return self.get_nodes()
+
+    def digest(self, what: str | list | None = None, condition: Any = None,
+               as_columns: bool = False) -> list:
+        """Return a list of tuples with keys/values/attributes of Bag elements.
+
+        Args:
+            what: String of special keys separated by comma, or list of keys.
+                Special keys:
+                - '#k': label of each item
+                - '#v': value of each item
+                - '#v.path': inner values of each item
+                - '#__v': static value (bypassing resolver)
+                - '#a': all attributes of each item
+                - '#a.attrname': specific attribute for each item
+                - callable: custom function applied to each node
+            condition: Optional callable filter (receives BagNode, returns bool).
+            as_columns: If True, return list of lists. If False, return list of tuples.
+
+        Returns:
+            List of tuples (or list of lists if as_columns=True).
+
+        Example:
+            >>> bag.digest('#k,#a.createdOn,#a.createdBy')
+            [('letter_to_mark', '10-7-2003', 'Jack'), ...]
+        """
+        if not what:
+            what = '#k,#v,#a'
+        if isinstance(what, str):
+            if ':' in what:
+                where, what = what.split(':')
+                obj = self[where]
+            else:
+                obj = self
+            whatsplit = [x.strip() for x in what.split(',')]
+        else:
+            whatsplit = what
+            obj = self
+        result = []
+        nodes = obj.get_nodes(condition)
+        for w in whatsplit:
+            if w == '#k':
+                result.append([x.label for x in nodes])
+            elif callable(w):
+                result.append([w(x) for x in nodes])
+            elif w == '#v':
+                result.append([x.value for x in nodes])
+            elif w.startswith('#v.'):
+                w, path = w.split('.', 1)
+                result.append([x.value[path] for x in nodes if hasattr(x.value, 'get_item')])
+            elif w == '#__v':
+                result.append([x.static_value for x in nodes])
+            elif w.startswith('#a'):
+                attr = None
+                if '.' in w:
+                    w, attr = w.split('.', 1)
+                if w == '#a':
+                    result.append([x.get_attr(attr) for x in nodes])
+            else:
+                result.append([x.value[w] for x in nodes])
+        if as_columns:
+            return result
+        if len(result) == 1:
+            return result.pop()
+        return list(zip(*result, strict=False))
+
+    def columns(self, cols: str | list, attr_mode: bool = False) -> list:
+        """Return digest result as columns.
+
+        Args:
+            cols: Column names as comma-separated string or list.
+            attr_mode: If True, prefix columns with '#a.' for attribute access.
+
+        Returns:
+            List of lists (columns).
+        """
+        if isinstance(cols, str):
+            cols = cols.split(',')
+        mode = ''
+        if attr_mode:
+            mode = '#a.'
+        what = ','.join([f'{mode}{col}' for col in cols])
+        return self.digest(what, as_columns=True)
+
     # -------------------- __str__ --------------------------------
 
     def __str__(self, _visited: dict | None = None) -> str:

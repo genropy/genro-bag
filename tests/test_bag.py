@@ -616,3 +616,142 @@ class TestBagEventPropagation:
         assert len(events) == 1
         # pathlist for delete indicates "where" (parent), not "what" (node)
         assert events[0] == ['child']
+
+
+class TestBagGetNodes:
+    """Test get_nodes method and nodes property."""
+
+    def test_get_nodes_returns_all_nodes(self):
+        """get_nodes without condition returns all nodes."""
+        bag = Bag()
+        bag['a'] = 1
+        bag['b'] = 2
+        bag['c'] = 3
+        nodes = bag.get_nodes()
+        assert len(nodes) == 3
+        assert [n.label for n in nodes] == ['a', 'b', 'c']
+
+    def test_get_nodes_with_condition(self):
+        """get_nodes with condition filters nodes."""
+        bag = Bag()
+        bag.set_item('a', 1, even=False)
+        bag.set_item('b', 2, even=True)
+        bag.set_item('c', 3, even=False)
+        bag.set_item('d', 4, even=True)
+        nodes = bag.get_nodes(condition=lambda n: n.get_attr('even'))
+        assert len(nodes) == 2
+        assert [n.label for n in nodes] == ['b', 'd']
+
+    def test_nodes_property(self):
+        """nodes property returns same as get_nodes()."""
+        bag = Bag()
+        bag['x'] = 10
+        bag['y'] = 20
+        assert bag.nodes == bag.get_nodes()
+
+
+class TestBagDigest:
+    """Test digest method."""
+
+    def test_digest_default(self):
+        """digest without args returns #k,#v,#a."""
+        bag = Bag()
+        bag.set_item('a', 1, x=10)
+        bag.set_item('b', 2, y=20)
+        result = bag.digest()
+        assert len(result) == 2
+        assert result[0] == ('a', 1, {'x': 10})
+        assert result[1] == ('b', 2, {'y': 20})
+
+    def test_digest_keys_only(self):
+        """digest #k returns list of labels."""
+        bag = Bag()
+        bag['a'] = 1
+        bag['b'] = 2
+        result = bag.digest('#k')
+        assert result == ['a', 'b']
+
+    def test_digest_values_only(self):
+        """digest #v returns list of values."""
+        bag = Bag()
+        bag['a'] = 1
+        bag['b'] = 2
+        result = bag.digest('#v')
+        assert result == [1, 2]
+
+    def test_digest_keys_and_values(self):
+        """digest #k,#v returns tuples."""
+        bag = Bag()
+        bag['a'] = 1
+        bag['b'] = 2
+        result = bag.digest('#k,#v')
+        assert result == [('a', 1), ('b', 2)]
+
+    def test_digest_attribute(self):
+        """digest #a.attrname returns specific attribute."""
+        bag = Bag()
+        bag.set_item('x', 'file0', created_by='Jack')
+        bag.set_item('y', 'file1', created_by='Mark')
+        result = bag.digest('#k,#a.created_by')
+        assert result == [('x', 'Jack'), ('y', 'Mark')]
+
+    def test_digest_all_attributes(self):
+        """digest #a returns all attributes dict."""
+        bag = Bag()
+        bag.set_item('a', 1, x=10, y=20)
+        result = bag.digest('#a')
+        assert result == [{'x': 10, 'y': 20}]
+
+    def test_digest_with_condition(self):
+        """digest with condition filters nodes."""
+        bag = Bag()
+        bag.set_item('a', 1, active=True)
+        bag.set_item('b', 2, active=False)
+        bag.set_item('c', 3, active=True)
+        result = bag.digest('#k', condition=lambda n: n.get_attr('active'))
+        assert result == ['a', 'c']
+
+    def test_digest_with_path(self):
+        """digest with path:what syntax."""
+        bag = Bag()
+        bag['letters.a'] = 'alpha'
+        bag['letters.b'] = 'beta'
+        result = bag.digest('letters:#k,#v')
+        assert result == [('a', 'alpha'), ('b', 'beta')]
+
+    def test_digest_as_columns(self):
+        """digest with as_columns=True returns list of lists."""
+        bag = Bag()
+        bag['a'] = 1
+        bag['b'] = 2
+        result = bag.digest('#k,#v', as_columns=True)
+        assert result == [['a', 'b'], [1, 2]]
+
+    def test_digest_callable(self):
+        """digest with callable applies function to each node."""
+        bag = Bag()
+        bag['a'] = 10
+        bag['b'] = 20
+        result = bag.digest([lambda n: n.value * 2])
+        assert result == [20, 40]
+
+
+class TestBagColumns:
+    """Test columns method."""
+
+    def test_columns_from_values(self):
+        """columns extracts values as columns."""
+        bag = Bag()
+        bag['row1'] = Bag({'name': 'Alice', 'age': 30})
+        bag['row2'] = Bag({'name': 'Bob', 'age': 25})
+        result = bag.columns('name,age')
+        # columns uses digest on values, so it extracts from each row's value
+        assert len(result) == 2
+
+    def test_columns_attr_mode(self):
+        """columns with attr_mode extracts attributes."""
+        bag = Bag()
+        bag.set_item('a', 1, x=10, y=20)
+        bag.set_item('b', 2, x=30, y=40)
+        result = bag.columns('x,y', attr_mode=True)
+        assert result == [[10, 30], [20, 40]]
