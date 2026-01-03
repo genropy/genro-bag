@@ -28,6 +28,12 @@ class NodeContainer:
     accessed by label, numeric index, or '#n' string index. Supports positional
     insertion and element reordering without removal.
 
+    Note:
+        This class is tightly coupled with BagNode. It assumes elements have
+        `.label` and `.attr` attributes (as BagNode does). This is intentional:
+        NodeContainer is designed specifically to hold BagNodes and is not meant
+        to be a general-purpose container.
+
     Internal structure:
         _dict: maps label -> value (for O(1) lookup by label)
         _list: contains values in order (for O(1) access by index)
@@ -47,71 +53,27 @@ class NodeContainer:
                 self._dict[key] = value
                 self._list.append(value)
 
-    def _get_label(self, value: Any) -> str | None:
-        """Get label for a value by searching _dict.
+    def index(self, label: str) -> int:
+        """Return the index of a label in this container.
 
         Args:
-            value: The value to find.
+            label: The label or index syntax to look up.
 
         Returns:
-            The label, or None if not found.
+            Index position (0-based), or -1 if not found.
         """
-        for k, v in self._dict.items():
-            if v is value:
-                return k
-        return None
-
-    def _resolve_key(self, key: str | int) -> str | None:
-        """Resolve a key to a label.
-
-        Args:
-            key: Can be label (str), index (int), or '#n' (str).
-
-        Returns:
-            The label string, or None if not found.
-        """
-        if isinstance(key, int):
-            if 0 <= key < len(self._list):
-                return self._get_label(self._list[key])
-            return None
-
-        if isinstance(key, str) and key.startswith('#'):
-            try:
-                idx = int(key[1:])
-                if 0 <= idx < len(self._list):
-                    return self._get_label(self._list[idx])
-            except ValueError:
-                pass
-            return None
-
-        return key if key in self._dict else None
-
-    def _resolve_index(self, key: str | int) -> int:
-        """Resolve a key to an index.
-
-        Args:
-            key: Can be label (str), index (int), or '#n' (str).
-
-        Returns:
-            The index, or -1 if not found.
-        """
-        if isinstance(key, int):
-            return key if 0 <= key < len(self._list) else -1
-
-        if isinstance(key, str) and key.startswith('#'):
-            try:
-                idx = int(key[1:])
-                return idx if 0 <= idx < len(self._list) else -1
-            except ValueError:
-                return -1
-
-        if key in self._dict:
-            value = self._dict[key]
-            try:
-                return self._list.index(value)
-            except ValueError:
-                return -1
-        return -1
+        import re
+        if label in self._dict:
+            return next((i for i, node in enumerate(self._list) if node.label == label), -1)
+        if m := re.match(r'^#(\d+)$', label):
+            idx = int(m.group(1))
+            return idx if idx < len(self._list) else -1
+        if '=' in label:
+            attr, value = label[1:].split('=', 1)
+            if attr:
+                return next((i for i, node in enumerate(self._list) if node.attr.get(attr) == value), -1)
+            else:
+                return next((i for i, node in enumerate(self._list) if node._value == value), -1)
 
     def _parse_position(self, position: str | int | None) -> int:
         """Parse position syntax and return insertion index.
@@ -152,7 +114,7 @@ class NodeContainer:
                     return max(0, min(int(ref[1:]), len(self._list)))
                 except ValueError:
                     return len(self._list)
-            idx = self._resolve_index(ref)
+            idx = self.index(ref)
             return idx if idx >= 0 else len(self._list)
 
         if position.startswith('>'):
@@ -162,7 +124,7 @@ class NodeContainer:
                     return max(0, min(int(ref[1:]) + 1, len(self._list)))
                 except ValueError:
                     return len(self._list)
-            idx = self._resolve_index(ref)
+            idx = self.index(ref)
             return idx + 1 if idx >= 0 else len(self._list)
 
         return len(self._list)
@@ -201,9 +163,7 @@ class NodeContainer:
         if isinstance(key, int):
             if 0 <= key < len(self._list):
                 value = self._list[key]
-                label = self._get_label(value)
-                if label:
-                    del self._dict[label]
+                del self._dict[value.label]
                 self._list.remove(value)
             return
 
@@ -212,9 +172,7 @@ class NodeContainer:
                 idx = int(key[1:])
                 if 0 <= idx < len(self._list):
                     value = self._list[idx]
-                    label = self._get_label(value)
-                    if label:
-                        del self._dict[label]
+                    del self._dict[value.label]
                     self._list.remove(value)
             except ValueError:
                 pass
@@ -245,7 +203,7 @@ class NodeContainer:
 
     def __iter__(self) -> Iterator[str]:
         """Iterate over keys in order."""
-        return (self._get_label(v) for v in self._list)
+        return (v.label for v in self._list)
 
     def get(self, key: str | int, default: Any = None) -> Any:
         """Get item with default.
@@ -333,9 +291,7 @@ class NodeContainer:
         value = self[key]
 
         if value is not None:
-            label = self._get_label(value)
-            if label:
-                del self._dict[label]
+            del self._dict[value.label]
             self._list.remove(value)
             return value
 
@@ -359,8 +315,8 @@ class NodeContainer:
             List or iterator of keys.
         """
         if iter:
-            return (self._get_label(v) for v in self._list)
-        return [self._get_label(v) for v in self._list]
+            return (v.label for v in self._list)
+        return [v.label for v in self._list]
 
     def values(self, iter: bool = False) -> list[Any] | Iterator[Any]:
         """Return values in order.
@@ -385,8 +341,8 @@ class NodeContainer:
             List or iterator of (key, value) tuples.
         """
         if iter:
-            return ((self._get_label(v), v) for v in self._list)
-        return [(self._get_label(v), v) for v in self._list]
+            return ((v.label, v) for v in self._list)
+        return [(v.label, v) for v in self._list]
 
     def update(self, other: dict[str, Any] | None = None, **kwargs: Any) -> None:
         """Update from dict or kwargs.
@@ -426,20 +382,16 @@ class NodeContainer:
 
         if selector is None:
             for value in self._list:
-                label = self._get_label(value)
-                result._dict[label] = value
+                result._dict[value.label] = value
                 result._list.append(value)
         elif callable(selector):
             for value in self._list:
-                label = self._get_label(value)
-                if selector(label, value):
-                    result._dict[label] = value
+                if selector(value.label, value):
+                    result._dict[value.label] = value
                     result._list.append(value)
         else:
-            values = self._parse_what(selector)
-            for value in values:
-                label = self._get_label(value)
-                result._dict[label] = value
+            for value in self._parse_what(selector):
+                result._dict[value.label] = value
                 result._list.append(value)
 
         return result
