@@ -20,6 +20,8 @@ from __future__ import annotations
 from collections.abc import Callable, Iterator
 from typing import Any
 
+from genro_toolbox.string_utils import smartsplit
+
 
 class NodeContainer:
     """Ordered container for BagNodes with positional insert and reordering.
@@ -74,6 +76,7 @@ class NodeContainer:
                 return next((i for i, node in enumerate(self._list) if node.attr.get(attr) == value), -1)
             else:
                 return next((i for i, node in enumerate(self._list) if node._value == value), -1)
+        return -1
 
     def _parse_position(self, position: str | int | None) -> int:
         """Parse position syntax and return insertion index.
@@ -131,88 +134,46 @@ class NodeContainer:
 
     def __getitem__(self, key: str | int) -> Any:
         """Get item by label, index, or '#n'."""
-        if isinstance(key, int):
-            if 0 <= key < len(self._list):
-                return self._list[key]
-            return None
-
-        if isinstance(key, str) and key.startswith('#'):
-            try:
-                idx = int(key[1:])
-                if 0 <= idx < len(self._list):
-                    return self._list[idx]
-            except ValueError:
-                pass
-            return None
-
-        return self._dict.get(key)
+        if isinstance(key, str) and not key.startswith('#'):
+            return self._dict.get(key)
+        if not isinstance(key, int):
+            key = self.index(key)
+        if 0 <= key < len(self._list):
+            return self._list[key]
+        return None
 
     def __setitem__(self, key: str, value: Any) -> None:
         """Set item. For positional insert, use set()."""
         if key in self._dict:
-            old_value = self._dict[key]
-            idx = self._list.index(old_value)
+            idx = next((i for i, node in enumerate(self._list) if node.label == key), -1)
             self._list[idx] = value
-            self._dict[key] = value
         else:
-            self._dict[key] = value
             self._list.append(value)
+        self._dict[key] = value
 
     def __delitem__(self, key: str | int) -> None:
         """Delete item by label, index, or '#n'."""
         if isinstance(key, int):
-            if 0 <= key < len(self._list):
-                value = self._list[key]
-                del self._dict[value.label]
-                self._list.remove(value)
-            return
+            idx_to_delete = [key]
+        else:
+            idx_to_delete = [self.index(block) for block in smartsplit(key, ',')]
 
-        if isinstance(key, str) and key.startswith('#'):
-            try:
-                idx = int(key[1:])
-                if 0 <= idx < len(self._list):
-                    value = self._list[idx]
-                    del self._dict[value.label]
-                    self._list.remove(value)
-            except ValueError:
-                pass
-            return
+        for idx in sorted(idx_to_delete, reverse=True):
+            if 0 <= idx < len(self._list):
+                v = self._list.pop(idx)
+                self._dict.pop(v.label)
 
-        if key in self._dict:
-            value = self._dict[key]
-            del self._dict[key]
-            self._list.remove(value)
-
-    def __contains__(self, key: str | int) -> bool:
-        """Check if key exists."""
-        if isinstance(key, int):
-            return 0 <= key < len(self._list)
-
-        if isinstance(key, str) and key.startswith('#'):
-            try:
-                idx = int(key[1:])
-                return 0 <= idx < len(self._list)
-            except ValueError:
-                return False
-
+    def __contains__(self, key: str) -> bool:
+        """Check if label exists."""
         return key in self._dict
 
     def __len__(self) -> int:
         """Return number of elements."""
         return len(self._list)
 
-    def __iter__(self) -> Iterator[str]:
-        """Iterate over keys in order."""
-        return (v.label for v in self._list)
-
-    def get(self, key: str | int, default: Any = None) -> Any:
-        """Get item with default.
-
-        Note: Cannot distinguish between 'key not found' and 'value is None'.
-        If the stored value is None, default will be returned instead.
-        """
-        result = self[key]
-        return result if result is not None else default
+    def __iter__(self) -> Iterator[Any]:
+        """Iterate over nodes in order."""
+        return iter(self._list)
 
     def set(self, key: str, value: Any, _position: str | int | None = '>') -> None:
         """Set item with optional position.
@@ -232,25 +193,21 @@ class NodeContainer:
             self._dict[key] = value
             self._list.insert(idx, value)
 
-    def _parse_what(self, what: str | int | list) -> list[Any]:
-        """Parse 'what' argument for move/clone into list of values.
+    def _get_nodes(self, what: str | int | list) -> list[Any]:
+        """Parse 'what' argument for move/clone into list of nodes.
 
         Args:
             what: Can be label, index, '#n', comma-separated string, or list.
 
         Returns:
-            List of values in their current order.
+            List of nodes in their current order.
         """
-        refs: list[str | int] = []
-
         if isinstance(what, list):
             refs = what
         elif isinstance(what, int):
             refs = [what]
-        elif isinstance(what, str) and ',' in what:
-            refs = [r.strip() for r in what.split(',')]
         else:
-            refs = [what]
+            refs = smartsplit(what, ',')
 
         values = []
         for ref in refs:
@@ -268,7 +225,7 @@ class NodeContainer:
                   comma-separated string, or list of references.
             position: Destination using _position syntax.
         """
-        values = self._parse_what(what)
+        values = self._get_nodes(what)
 
         for value in values:
             self._list.remove(value)
@@ -305,66 +262,6 @@ class NodeContainer:
         self._dict.clear()
         self._list.clear()
 
-    def keys(self, iter: bool = False) -> list[str] | Iterator[str]:
-        """Return keys in order.
-
-        Args:
-            iter: If True, return iterator instead of list.
-
-        Returns:
-            List or iterator of keys.
-        """
-        if iter:
-            return (v.label for v in self._list)
-        return [v.label for v in self._list]
-
-    def values(self, iter: bool = False) -> list[Any] | Iterator[Any]:
-        """Return values in order.
-
-        Args:
-            iter: If True, return iterator instead of list.
-
-        Returns:
-            List or iterator of values.
-        """
-        if iter:
-            return (v for v in self._list)
-        return list(self._list)
-
-    def items(self, iter: bool = False) -> list[tuple[str, Any]] | Iterator[tuple[str, Any]]:
-        """Return (key, value) pairs in order.
-
-        Args:
-            iter: If True, return iterator instead of list.
-
-        Returns:
-            List or iterator of (key, value) tuples.
-        """
-        if iter:
-            return ((v.label, v) for v in self._list)
-        return [(v.label, v) for v in self._list]
-
-    def update(self, other: dict[str, Any] | None = None, **kwargs: Any) -> None:
-        """Update from dict or kwargs.
-
-        Existing keys: overwrite value, preserve position.
-        New keys: append at end.
-        """
-        items = {}
-        if other:
-            items.update(other)
-        items.update(kwargs)
-
-        for key, value in items.items():
-            if key in self._dict:
-                old_value = self._dict[key]
-                idx = self._list.index(old_value)
-                self._list[idx] = value
-                self._dict[key] = value
-            else:
-                self._dict[key] = value
-                self._list.append(value)
-
     def clone(self, selector: str | list | Callable[[str, Any], bool] | None = None) -> NodeContainer:
         """Create a clone with selected elements.
 
@@ -390,7 +287,7 @@ class NodeContainer:
                     result._dict[value.label] = value
                     result._list.append(value)
         else:
-            for value in self._parse_what(selector):
+            for value in self._get_nodes(selector):
                 result._dict[value.label] = value
                 result._list.append(value)
 

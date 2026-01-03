@@ -94,21 +94,6 @@ class TestMissingKeys:
 
         assert d['#99'] is None
 
-    def test_get_missing_returns_none(self):
-        """get() with missing key returns None."""
-        d = NodeContainer()
-        d['foo'] = 1
-
-        assert d.get('missing') is None
-
-    def test_get_with_default(self):
-        """get() with explicit default returns that default."""
-        d = NodeContainer()
-        d['foo'] = 1
-
-        assert d.get('missing', 5) == 5
-
-
 class TestContains:
     """Test __contains__ for checking existence."""
 
@@ -125,20 +110,6 @@ class TestContains:
         d['foo'] = 1
 
         assert 'missing' not in d
-
-    def test_contains_valid_index(self):
-        """Valid index exists."""
-        d = NodeContainer()
-        d['foo'] = 1
-
-        assert 0 in d
-
-    def test_contains_invalid_index(self):
-        """Invalid index does not exist."""
-        d = NodeContainer()
-        d['foo'] = 1
-
-        assert 99 not in d
 
 
 class TestPositionInsert:
