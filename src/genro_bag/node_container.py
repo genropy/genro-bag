@@ -117,10 +117,18 @@ class NodeContainer:
         """Parse position syntax and return insertion index.
 
         Args:
-            position: Position specification.
+            position: Position specification. Supported formats:
+                - None or '>': append at end
+                - '<': insert at beginning
+                - int: insert at this index (clamped to valid range)
+                - '#n': insert at index n
+                - '<label': insert before label
+                - '>label': insert after label
+                - '<#n': insert before index n
+                - '>#n': insert after index n
 
         Returns:
-            Index where to insert.
+            Index where to insert (always valid for list.insert).
         """
         if position is None or position == '>':
             return len(self._list)
@@ -240,7 +248,11 @@ class NodeContainer:
         return (self._get_label(v) for v in self._list)
 
     def get(self, key: str | int, default: Any = None) -> Any:
-        """Get item with default."""
+        """Get item with default.
+
+        Note: Cannot distinguish between 'key not found' and 'value is None'.
+        If the stored value is None, default will be returned instead.
+        """
         result = self[key]
         return result if result is not None else default
 

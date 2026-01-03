@@ -44,6 +44,14 @@ class BagNode:
     Attributes:
         label: The node's unique name/key within its parent.
         tag: Optional type/tag for the node (used by builders).
+
+    Internal Attributes (via __slots__):
+        _value: The node's actual value storage.
+        _attr: Dictionary of node attributes/metadata.
+        _parent_bag: Reference to the parent Bag containing this node.
+        _resolver: Optional BagResolver for lazy/dynamic value computation.
+        _node_subscribers: Dict mapping subscriber_id to callback for change notifications.
+        _invalid_reasons: List of validation error messages (empty if valid).
     """
 
     __slots__ = (
@@ -133,7 +141,11 @@ class BagNode:
 
     @parent_bag.setter
     def parent_bag(self, parent_bag: Bag | None) -> None:
-        """Set the parent Bag, handling backref setup if needed."""
+        """Set the parent Bag, handling backref setup if needed.
+
+        If the node's value is a Bag and the parent has backref=True,
+        establishes the bidirectional parent-child relationship via set_back_ref().
+        """
         self._parent_bag = None
         if parent_bag is not None:
             self._parent_bag = parent_bag
@@ -202,6 +214,11 @@ class BagNode:
             _updattr: If False, clear existing attributes first.
             _reason: Optional reason string for the trigger.
 
+        Special value handling:
+            - BagResolver: Assigned to self.resolver, value set to None.
+            - BagNode: Extracts value and merges attributes from the node.
+            - Objects with rootattributes: Merges rootattributes into _attributes.
+
         Note:
             Parameters prefixed with '_' are for internal/advanced use.
             The prefix avoids conflicts with user-defined node attributes.
@@ -266,7 +283,10 @@ class BagNode:
 
     @static_value.setter
     def static_value(self, value: Any) -> None:
-        """Set node's value directly (bypassing resolver and triggers)."""
+        """Set node's _value directly, bypassing set_value processing and triggers.
+
+        Note: This does NOT remove or affect the resolver. It only sets _value.
+        """
         self._value = value
 
     # -------------------------------------------------------------------------
@@ -358,7 +378,8 @@ class BagNode:
         """Remove attributes from the node.
 
         Args:
-            *attrs_to_delete: Attribute labels to remove.
+            *attrs_to_delete: Attribute labels to remove. Each can be a single
+                label or a comma-separated string of labels (e.g., 'a,b,c').
         """
         for attr in attrs_to_delete:
             if isinstance(attr, str) and ',' in attr:
@@ -406,7 +427,11 @@ class BagNode:
 
     @property
     def parent_node(self) -> BagNode | None:
-        """Get the parent node (grandparent's node)."""
+        """Get the node that contains this node's parent Bag.
+
+        In the hierarchy: grandparent_bag contains parent_node, whose value
+        is parent_bag, which contains this node.
+        """
         if self._parent_bag:
             return self._parent_bag.parent_node
         return None
@@ -521,7 +546,7 @@ class BagNode:
             typed: If True, include type information.
 
         Returns:
-            Dict representation of the node.
+            Dict with keys 'label', 'value', and 'attr'.
         """
         value = self.value
         if hasattr(value, 'to_json'):
