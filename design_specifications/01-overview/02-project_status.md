@@ -9,12 +9,12 @@
 
 ### Completed Components
 
-| Component | File | Lines | Tests | Coverage | Notes |
+| Component | File | Stmts | Tests | Coverage | Notes |
 |-----------|------|-------|-------|----------|-------|
-| **BagNodeContainer** | `src/genro_bag/bagnode_container.py` | ~300 | 0 | - | Rinominato da NodeContainer, ora crea BagNode internamente |
-| **BagNode** | `src/genro_bag/bag_node.py` | ~555 | 63 | 72% | Node with value, attributes, subscriptions |
-| **BagResolver** | `src/genro_bag/resolver.py` | ~340 | 0 | 0% | Lazy loading with cache TTL, async support |
-| **Bag (Core)** | `src/genro_bag/bag.py` | ~900 | 0 | 0% | Core methods implemented, tests pending |
+| **BagNodeContainer** | `src/genro_bag/bagnode_container.py` | 111 | - | 79% | Container ordinato con `keys()`, `values()`, `items()` |
+| **BagNode** | `src/genro_bag/bag_node.py` | 209 | - | 38% | Node con resolver, backref, subscribers (parziale) |
+| **BagResolver** | `src/genro_bag/resolver.py` | 97 | 0 | 0% | Lazy loading con cache TTL, async support |
+| **Bag (Core)** | `src/genro_bag/bag.py` | 255 | 50 | 60% | Core methods, `__str__` aggiunto |
 
 ### Async/Sync Refactoring (2026-01-03)
 
@@ -40,17 +40,16 @@ Risolto il problema async/sync per `_htraverse`:
 
 ### NodeContainer → BagNodeContainer Refactoring (2026-01-03)
 
-NodeContainer è stato semplificato come "indexed list":
+NodeContainer è stato semplificato come "indexed list", poi esteso:
 
-- Rimossi metodi dict-like non usati: `get()`, `keys()`, `values()`, `items()`, `update()`
-- `__iter__` ora ritorna nodi (non label)
+- `__iter__` ritorna nodi (non label)
 - `__contains__` solo per label (non indici)
 - `__delitem__` supporta cancellazione multipla con virgola
-- Rinominato `_parse_what` → `_get_nodes`
 - Usato `smartsplit` per parsing consistente
-- Rimossi test obsoleti (da 63 a 13 test)
+- Aggiunti `keys()`, `values()`, `items()` che operano sui nodi
+- `get()` supporta label, indice numerico e sintassi `#n`
 
-### BagNodeContainer + set_item Refactoring (2026-01-03) - IN CORSO
+### BagNodeContainer + set_item Refactoring (2026-01-03) - COMPLETATO
 
 **Obiettivo**: Semplificare `Bag.set_item()` eliminando duplicazione di logica.
 
@@ -61,46 +60,64 @@ NodeContainer è stato semplificato come "indexed list":
 4. ✅ `Bag.set_item()` semplificato: chiama direttamente `obj._nodes.set(...)`
 5. ✅ Rimossi `Bag._set()` e `Bag._insert_node()` (logica spostata in `BagNodeContainer.set()`)
 6. ✅ Aggiunto parametro `_remove_null_attributes` a `BagNode.__init__`, `set_attr`, `set_value`
-7. ✅ Aggiornati import in `bag.py` e `__init__.py`
+7. ✅ `Bag.keys()`, `values()`, `items()` sono wrapper su `_nodes.*`
+8. ✅ 50 test passano
 
-**Test**:
-- Vecchi test rinominati con prefisso `_old_` (da rimuovere dopo validazione)
-- Nuovo `test_bag.py` con test base per `set_item` e `get_item`
-- Test passano (verificato parzialmente - interrotto per lentezza)
+**Test coverage attuale** (2026-01-03):
 
-**Prossimi passi**:
-- Lanciare test completi per verificare refactoring
-- Rimuovere vecchi file test `_old_*`
-- Verificare coverage
+- `bag.py`: 60% (255 stmts, 86 missing) - aggiunto `__str__`
+- `bagnode_container.py`: 79% (111 stmts, 20 missing)
+- `bag_node.py`: 38% (209 stmts, 111 missing)
+- `resolver.py`: 0% (97 stmts, 97 missing)
+- **TOTAL**: 49%
 
 ### Bag Implementation Details
 
 | Method | Status | Notes |
 |--------|--------|-------|
-| `__init__` | ✅ Done | Uses NodeContainer for _nodes |
+| `__init__` | ✅ Done | Uses BagNodeContainer for _nodes |
 | `fill_from` | ⏳ Stub | TODO: implement |
 | `parent` / `parent_node` / `backref` | ✅ Done | Properties |
+| `_htraverse_before` | ✅ Done | Parse path, handle `#parent` navigation |
+| `_htraverse_after` | ✅ Done | Finalize traversal, autocreate in write mode |
+| `_traverse_until` | ✅ Done | Sync loop (always `static=True`) |
+| `_async_traverse_until` | ✅ Done | Async loop with `@smartasync` |
 | `_htraverse` | ✅ Done | Sync version, never triggers resolvers |
 | `_async_htraverse` | ✅ Done | Async version with `static` parameter |
-| `get` | ✅ Done | Single level access with `?attr` syntax |
+| `get` | ✅ Done | Single level access with `?attr` and `#n` syntax |
 | `get_item` | ✅ Done | Async with `@smartasync`, `static` parameter |
 | `__getitem__` | ✅ Done | Sync, uses `_htraverse` |
-| `_set` | ❌ Rimosso | Logica spostata in `BagNodeContainer.set()` |
-| `_insert_node` | ❌ Rimosso | Logica spostata in `BagNodeContainer.set()` |
-| `set_item` / `__setitem__` | ✅ Done | Semplificato: chiama `_nodes.set()` direttamente |
+| `set_item` | ✅ Done | Semplificato: chiama `_nodes.set()` direttamente |
+| `__setitem__` | ✅ Done | Alias for `set_item` |
 | `_pop` | ✅ Done | Single level pop with `_reason` |
-| `pop` / `del_item` / `__delitem__` | ✅ Done | Sync, remove and return value |
+| `pop` | ✅ Done | Sync, remove and return value |
+| `del_item` | ✅ Done | Alias for `pop` |
+| `__delitem__` | ✅ Done | Alias for `pop` |
 | `pop_node` | ✅ Done | Sync, remove and return node |
 | `clear` | ✅ Done | Remove all nodes |
-| `keys` / `values` / `items` | ✅ Done | Dict-like access |
-| `__iter__` / `__len__` / `__contains__` | ✅ Done | Iteration and membership (str + BagNode) |
+| `keys` | ✅ Done | Wrapper su `_nodes.keys()` |
+| `values` | ✅ Done | Wrapper su `_nodes.values()` |
+| `items` | ✅ Done | Wrapper su `_nodes.items()` |
+| `__str__` | ✅ Done | Formatted output, handles circular refs |
+| `__iter__` | ✅ Done | Yields BagNodes |
+| `__len__` | ✅ Done | Number of direct children |
 | `__call__` | ✅ Done | `bag()` returns keys, `bag(path)` returns value |
+| `__contains__` | ✅ Done | Check path or BagNode existence |
 | `_get_node` | ✅ Done | Single level get with autocreate |
-| `get_node` | ✅ Done | Async with `@smartasync`, `static` parameter |
-| `_on_node_inserted` | ⏳ Stub | Event trigger |
-| `_on_node_deleted` | ⏳ Stub | Event trigger |
-| `subscribe` / `unsubscribe` | ❌ Not started | Event subscription system |
-| `set_backref` / `clear_backref` | ❌ Not started | Backref mode management |
+| `get_node` | ✅ Done | Async with `@smartasync`, `static`, `as_tuple` |
+| `set_backref` | ✅ Done | Enable backref mode |
+| `del_parent_ref` | ✅ Done | Remove parent reference |
+| `clear_backref` | ✅ Done | Clear backref recursively |
+| `_on_node_changed` | ✅ Done | Trigger for update events |
+| `_on_node_inserted` | ✅ Done | Trigger for insert events |
+| `_on_node_deleted` | ✅ Done | Trigger for delete events |
+| `_subscribe` | ✅ Done | Internal subscribe helper |
+| `subscribe` | ✅ Done | Subscribe to events |
+| `unsubscribe` | ✅ Done | Unsubscribe from events |
+
+**Metodi rimossi (logica spostata in BagNodeContainer):**
+- `_set` → `BagNodeContainer.set()`
+- `_insert_node` → `BagNodeContainer.set()`
 
 ### Pending Components
 
@@ -154,12 +171,10 @@ The file `js_bag_methods.md` documents all JS methods for `GnrBagNode`, `GnrBag`
 ## Test Summary
 
 ```
-Total tests: 76
-- test_node_container.py: 13 tests
-- test_bag_node.py: 63 tests
-- test_bag.py: 0 tests (pending)
+Total tests: 66
+- test_bag.py: 66 tests (set_item, get_item, position, iteration, call, index by attr, backref, subscribe)
 
-Coverage: 27% overall
+Coverage: 54% overall
 ```
 
 ---
@@ -279,12 +294,11 @@ Sintassi da gestire nel layer di adattamento per retrocompatibilità:
 **Branch**: main
 **Last commits**:
 
+- `3cbe865` - refactor: Simplify set_item with BagNodeContainer creating nodes internally
+- `ece5957` - docs: Update project status with async/sync refactoring details
 - `f07f77d` - refactor: Split _htraverse into sync/async with static parameter
 - `ce7732e` - test: Remove obsolete NodeContainer tests for removed methods
 - `3a70929` - refactor: Simplify NodeContainer as indexed list
-- `abcd9b5` - refactor: Simplify NodeContainer index methods
-- `07a7402` - docs: Add project status document for session continuity
-- `036a887` - test: Add comprehensive BagNode tests (63 tests)
 
 ---
 

@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Any
 from genro_toolbox import smartsplit
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterator
+    from collections.abc import Iterator
 
     from .bag import Bag
 
@@ -43,19 +43,10 @@ class BagNodeContainer:
         _list: contains BagNodes in order (for O(1) access by index)
     """
 
-    def __init__(self, data: dict[str, Any] | None = None):
-        """Create a BagNodeContainer.
-
-        Args:
-            data: Optional dict to initialize from.
-        """
+    def __init__(self):
+        """Create an empty BagNodeContainer."""
         self._dict: dict[str, Any] = {}
         self._list: list[Any] = []
-
-        if data:
-            for key, value in data.items():
-                self._dict[key] = value
-                self._list.append(value)
 
     def index(self, label: str) -> int:
         """Return the index of a label in this container.
@@ -135,14 +126,29 @@ class BagNodeContainer:
         return len(self._list)
 
     def __getitem__(self, key: str | int) -> Any:
-        """Get item by label, index, or '#n'."""
-        if isinstance(key, str) and not key.startswith('#'):
-            return self._dict.get(key)
-        if not isinstance(key, int):
-            key = self.index(key)
-        if 0 <= key < len(self._list):
-            return self._list[key]
-        return None
+        """Get item by label or index."""
+        if isinstance(key, int):
+            return self._list[key] if 0 <= key < len(self._list) else None
+        return self._dict.get(key)
+
+    def get(self, key: str | int) -> Any:
+        """Get node by label, index, or #n syntax.
+
+        Args:
+            key: Label string, integer index, or '#n' syntax.
+
+        Returns:
+            The BagNode if found, None otherwise.
+        """
+        if isinstance(key, int):
+            return self._list[key] if 0 <= key < len(self._list) else None
+        if key.startswith('#'):
+            try:
+                idx = int(key[1:])
+                return self._list[idx] if 0 <= idx < len(self._list) else None
+            except ValueError:
+                return None
+        return self._dict.get(key)
 
     def __setitem__(self, key: str, value: Any) -> None:
         """Set item. For positional insert, use set()."""
@@ -214,59 +220,18 @@ class BagNodeContainer:
             idx = self._parse_position(_position)
             self._dict[label] = node
             self._list.insert(idx, node)
+            if parent_bag is not None and parent_bag.backref:
+                parent_bag._on_node_inserted(node, idx, reason=_reason)
         return node
 
-    def _get_nodes(self, what: str | int | list) -> list[Any]:
-        """Parse 'what' argument for move/clone into list of nodes.
-
-        Args:
-            what: Can be label, index, '#n', comma-separated string, or list.
-
-        Returns:
-            List of nodes in their current order.
-        """
-        if isinstance(what, list):
-            refs = what
-        elif isinstance(what, int):
-            refs = [what]
-        else:
-            refs = smartsplit(what, ',')
-
-        values = []
-        for ref in refs:
-            value = self[ref]
-            if value is not None and value not in values:
-                values.append(value)
-
-        return sorted(values, key=lambda x: self._list.index(x))
-
-    def move(self, what: str | int | list, position: str) -> None:
-        """Move element(s) to a new position.
-
-        Args:
-            what: Element(s) to move. Can be label, index, '#n',
-                  comma-separated string, or list of references.
-            position: Destination using _position syntax.
-        """
-        values = self._get_nodes(what)
-
-        for value in values:
-            self._list.remove(value)
-
-        target_idx = self._parse_position(position)
-
-        for i, value in enumerate(values):
-            self._list.insert(target_idx + i, value)
-
-    def pop(self, key: str | int, *default: Any) -> Any:
+    def pop(self, key: str | int) -> Any:
         """Remove and return item.
 
         Args:
             key: Label, index, or '#n'.
-            default: Optional default if not found.
 
         Returns:
-            The value, or default if provided and not found.
+            The removed BagNode, or None if not found.
         """
         value = self[key]
 
@@ -275,9 +240,6 @@ class BagNodeContainer:
             self._list.remove(value)
             return value
 
-        if default:
-            return default[0]
-
         return None
 
     def clear(self) -> None:
@@ -285,33 +247,15 @@ class BagNodeContainer:
         self._dict.clear()
         self._list.clear()
 
-    def clone(self, selector: str | list | Callable[[str, Any], bool] | None = None) -> BagNodeContainer:
-        """Create a clone with selected elements.
+    def keys(self) -> list[str]:
+        """Return list of node labels in order."""
+        return [node.label for node in self._list]
 
-        Args:
-            selector: Can be:
-                - None: clone all
-                - str: comma-separated references ('a,b,#2')
-                - list: list of references ([1, 'b', '#2'])
-                - callable: function(key, value) -> bool
+    def values(self) -> list:
+        """Return list of node values in order."""
+        return [node.get_value() for node in self._list]
 
-        Returns:
-            New BagNodeContainer with selected elements in original order.
-        """
-        result = BagNodeContainer()
+    def items(self) -> list[tuple[str, Any]]:
+        """Return list of (label, value) tuples in order."""
+        return [(node.label, node.get_value()) for node in self._list]
 
-        if selector is None:
-            for value in self._list:
-                result._dict[value.label] = value
-                result._list.append(value)
-        elif callable(selector):
-            for value in self._list:
-                if selector(value.label, value):
-                    result._dict[value.label] = value
-                    result._list.append(value)
-        else:
-            for value in self._get_nodes(selector):
-                result._dict[value.label] = value
-                result._list.append(value)
-
-        return result

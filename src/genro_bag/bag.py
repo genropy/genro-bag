@@ -210,11 +210,11 @@ class Bag:
             label = pathlist.pop(0)
             if label.startswith('#'):
                 raise BagException('Not existing index in #n syntax')
-            new_node = BagNode(curr, label=label, value=curr.__class__())
-            curr._nodes.set(label, new_node)
+            new_bag = curr.__class__()
+            new_node = curr._nodes.set(label, new_bag, parent_bag=curr)
             if self.backref:
                 self._on_node_inserted(new_node, len(curr._nodes) - 1, reason='autocreate')
-            curr = new_node._value
+            curr = new_bag
 
         return curr, pathlist[0]
 
@@ -235,15 +235,15 @@ class Bag:
                 - container: The last valid Bag reached
                 - remaining_path: List of path segments not yet traversed
         """
-        result = (curr, pathlist)
         while len(pathlist) > 1 and isinstance(curr, Bag):
-            result = (curr, list(pathlist))
             node = curr._nodes[pathlist[0]]
             if node:
                 pathlist.pop(0)
                 curr = node.get_value(static=True)
+            else:
+                break
 
-        return result
+        return (curr, pathlist)
 
     # -------------------- _async_traverse_until --------------------------------
 
@@ -265,15 +265,15 @@ class Bag:
                 - container: The last valid Bag reached
                 - remaining_path: List of path segments not yet traversed
         """
-        result = (curr, pathlist)
         while len(pathlist) > 1 and isinstance(curr, Bag):
-            result = (curr, list(pathlist))
             node = curr._nodes[pathlist[0]]
             if node:
                 pathlist.pop(0)
                 curr = await smartawait(node.get_value(static=static))
+            else:
+                break
 
-        return result
+        return (curr, pathlist)
 
     # -------------------- _htraverse (sync) --------------------------------
 
@@ -350,20 +350,17 @@ class Bag:
             >>> bag.get('x?type')  # get attribute
             'int'
         """
-        attrname = None
-
         if not label:
             return self
-        elif label == '#parent':
+        if label == '#parent':
             return self.parent
-        else:
-            if '?' in label:
-                label, attrname = label.split('?')
-            i = self._nodes.index(label)
-            if i < 0:
-                return default
-            currnode = self._nodes[i]
-            return currnode.get_attr(attrname) if attrname else currnode.get_value()
+        attrname = None
+        if '?' in label:
+            label, attrname = label.split('?')
+        node = self._nodes.get(label)
+        if not node:
+            return default
+        return node.get_attr(attrname) if attrname else node.get_value()
 
     # -------------------- get_item --------------------------------
 
@@ -603,49 +600,68 @@ class Bag:
     # -------------------- keys, values, items --------------------------------
 
     def keys(self) -> list[str]:
-        """Return list of node labels in order.
-
-        Returns:
-            List of string labels for all direct child nodes.
-
-        Example:
-            >>> bag = Bag()
-            >>> bag['a'] = 1
-            >>> bag['b'] = 2
-            >>> bag.keys()
-            ['a', 'b']
-        """
-        return [node.label for node in self._nodes]
+        """Return list of node labels in order."""
+        return self._nodes.keys()
 
     def values(self) -> list[Any]:
-        """Return list of node values in order.
-
-        Returns:
-            List of values for all direct child nodes.
-
-        Example:
-            >>> bag = Bag()
-            >>> bag['a'] = 1
-            >>> bag['b'] = 2
-            >>> bag.values()
-            [1, 2]
-        """
-        return [node.value for node in self._nodes]
+        """Return list of node values in order."""
+        return self._nodes.values()
 
     def items(self) -> list[tuple[str, Any]]:
-        """Return list of (label, value) tuples in order.
+        """Return list of (label, value) tuples in order."""
+        return self._nodes.items()
 
-        Returns:
-            List of (label, value) tuples for all direct child nodes.
+    # -------------------- __str__ --------------------------------
+
+    def __str__(self, _visited: dict | None = None) -> str:
+        """Return formatted representation of bag contents.
+
+        Uses static=True to avoid triggering resolvers.
+        Handles circular references by tracking visited nodes.
 
         Example:
             >>> bag = Bag()
-            >>> bag['a'] = 1
-            >>> bag['b'] = 2
-            >>> bag.items()
-            [('a', 1), ('b', 2)]
+            >>> bag['name'] = 'test'
+            >>> bag.set_item('count', 42, dtype='int')
+            >>> print(bag)
+            0 - (str) name: test
+            1 - (int) count: 42  <dtype='int'>
         """
-        return [(node.label, node.value) for node in self._nodes]
+        if _visited is None:
+            _visited = {}
+
+        lines = []
+        for idx, node in enumerate(self._nodes):
+            value = node.get_value(static=True)
+
+            # Format attributes
+            attr = '<' + ' '.join(f"{k}='{v}'" for k, v in node.attr.items()) + '>'
+            if attr == '<>':
+                attr = ''
+
+            if isinstance(value, Bag):
+                node_id = id(node)
+                backref = '(*)' if value.backref else ''
+                lines.append(f"{idx} - ({value.__class__.__name__}) {node.label}{backref}: {attr}")
+                if node_id in _visited:
+                    lines.append(f"    visited at :{_visited[node_id]}")
+                else:
+                    _visited[node_id] = node.label
+                    inner = value.__str__(_visited)
+                    lines.extend(f"    {line}" for line in inner.split('\n'))
+            else:
+                # Format type name
+                type_name = type(value).__name__
+                if type_name == 'NoneType':
+                    type_name = 'None'
+                if '.' in type_name:
+                    type_name = type_name.split('.')[-1]
+                # Handle bytes
+                if isinstance(value, bytes):
+                    value = value.decode('UTF-8', 'ignore')
+                lines.append(f"{idx} - ({type_name}) {node.label}: {value}  {attr}")
+
+        return '\n'.join(lines)
 
     # -------------------- __iter__, __len__, __contains__, __call__ --------------------------------
 
@@ -803,39 +819,124 @@ class Bag:
 
         return None
 
-    # -------------------- trigger stubs --------------------------------
+    # -------------------- backref management --------------------------------
+
+    def set_backref(self, node: BagNode | None = None,
+                    parent: Bag | None = None) -> None:
+        """Force a Bag to a more strict structure (tree-leaf model).
+
+        Enables backref mode which maintains parent references and
+        propagates events up the hierarchy.
+
+        Args:
+            node: The BagNode that contains this Bag.
+            parent: The parent Bag.
+        """
+        if not self._backref:
+            self._backref = True
+            self._parent = parent
+            self._parent_node = node
+            for node in self:
+                node.parent_bag = self
+
+    def del_parent_ref(self) -> None:
+        """Set False in the parent Bag reference of the relative Bag."""
+        self._parent = None
+        self._backref = False
+
+    def clear_backref(self) -> None:
+        """Clear all the set_backref() assumption."""
+        if self._backref:
+            self._backref = False
+            self._parent = None
+            self._parent_node = None
+            for node in self:
+                node.parent_bag = None
+                value = node.get_value(static=True)
+                if isinstance(value, Bag):
+                    value.clear_backref()
+
+    # -------------------- event triggers --------------------------------
+
+    def _on_node_changed(self, node: BagNode, pathlist: list, evt: str,
+                         oldvalue: Any = None, reason: str | None = None) -> None:
+        """Trigger for node change events."""
+        for s in list(self._upd_subscribers.values()):
+            s(node=node, pathlist=pathlist, oldvalue=oldvalue, evt=evt, reason=reason)
+        if self._parent:
+            self._parent._on_node_changed(node, [self._parent_node.label] + pathlist,
+                                          evt, oldvalue, reason=reason)
 
     def _on_node_inserted(self, node: BagNode, ind: int, pathlist: list | None = None,
                           reason: str | None = None) -> None:
-        """Internal trigger called when a node is inserted.
+        """Trigger for node insert events."""
+        parent = node.parent_bag
+        if parent is not None and parent.backref and hasattr(node._value, '_htraverse'):
+            node._value.set_backref(node=node, parent=parent)
 
-        In backref mode, this propagates insert events up the hierarchy and
-        notifies subscribers. Currently a stub - will be implemented with
-        the subscription system.
-
-        Args:
-            node: The inserted BagNode.
-            ind: Index where the node was inserted.
-            pathlist: Path components leading to this location.
-            reason: Reason for insertion (e.g., 'autocreate').
-        """
-        pass
+        if pathlist is None:
+            pathlist = []
+        for s in list(self._ins_subscribers.values()):
+            s(node=node, pathlist=pathlist, ind=ind, evt='ins', reason=reason)
+        if self._parent:
+            self._parent._on_node_inserted(node, ind, [self._parent_node.label] + pathlist,
+                                           reason=reason)
 
     def _on_node_deleted(self, node: Any, ind: int, pathlist: list | None = None,
                          reason: str | None = None) -> None:
-        """Internal trigger called when a node is deleted.
+        """Trigger for node delete events."""
+        for s in list(self._del_subscribers.values()):
+            s(node=node, pathlist=pathlist, ind=ind, evt='del', reason=reason)
+        if self._parent:
+            if pathlist is None:
+                pathlist = []
+            self._parent._on_node_deleted(node, ind, [self._parent_node.label] + pathlist,
+                                          reason=reason)
 
-        In backref mode, this propagates delete events up the hierarchy and
-        notifies subscribers. Currently a stub - will be implemented with
-        the subscription system.
+    # -------------------- subscription --------------------------------
+
+    def _subscribe(self, subscriber_id: str, subscribers_dict: dict,
+                   callback: Any) -> None:
+        """Internal subscribe helper."""
+        if callback is not None:
+            subscribers_dict[subscriber_id] = callback
+
+    def subscribe(self, subscriber_id: str, update: Any = None, insert: Any = None,
+                  delete: Any = None, any: Any = None) -> None:
+        """Provide a subscribing of a function to an event.
 
         Args:
-            node: The deleted BagNode (or list of nodes for clear()).
-            ind: Index where the node was located (-1 for clear).
-            pathlist: Path components leading to this location.
-            reason: Reason for deletion.
+            subscriber_id: Unique identifier for this subscription.
+            update: Callback for update events.
+            insert: Callback for insert events.
+            delete: Callback for delete events.
+            any: Callback for all events (update, insert, delete).
         """
-        pass
+        if not self._backref:
+            self.set_backref()
+
+        self._subscribe(subscriber_id, self._upd_subscribers, update or any)
+        self._subscribe(subscriber_id, self._ins_subscribers, insert or any)
+        self._subscribe(subscriber_id, self._del_subscribers, delete or any)
+
+    def unsubscribe(self, subscriber_id: str, update: bool = False,
+                    insert: bool = False, delete: bool = False,
+                    any: bool = False) -> None:
+        """Delete a subscription of an event.
+
+        Args:
+            subscriber_id: The subscription identifier to remove.
+            update: Remove update subscription.
+            insert: Remove insert subscription.
+            delete: Remove delete subscription.
+            any: Remove all subscriptions.
+        """
+        if update or any:
+            self._upd_subscribers.pop(subscriber_id, None)
+        if insert or any:
+            self._ins_subscribers.pop(subscriber_id, None)
+        if delete or any:
+            self._del_subscribers.pop(subscriber_id, None)
 
 
 class BagException(Exception):

@@ -146,13 +146,13 @@ class BagNode:
         """Set the parent Bag, handling backref setup if needed.
 
         If the node's value is a Bag and the parent has backref=True,
-        establishes the bidirectional parent-child relationship via set_back_ref().
+        establishes the bidirectional parent-child relationship via set_backref().
         """
         self._parent_bag = None
         if parent_bag is not None:
             self._parent_bag = parent_bag
             if hasattr(self._value, '_htraverse') and parent_bag.backref:
-                self._value.set_back_ref(node=self, parent=parent_bag)
+                self._value.set_backref(node=self, parent=parent_bag)
 
     @property
     def _(self) -> Bag:
@@ -275,7 +275,7 @@ class BagNode:
 
         if self._parent_bag is not None and self._parent_bag.backref:
             if hasattr(value, '_htraverse'):
-                value.set_back_ref(node=self, parent=self._parent_bag)
+                value.set_backref(node=self, parent=self._parent_bag)
             if trigger:
                 self._parent_bag._on_node_changed(
                     self, [self.label], oldvalue=oldvalue, evt=evt, reason=_reason
