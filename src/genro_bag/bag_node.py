@@ -177,17 +177,17 @@ class BagNode:
         """Set the node's value."""
         self.set_value(value)
 
-    def get_value(self, mode: str = '') -> Any:
+    def get_value(self, static: bool = False) -> Any:
         """Return the value of the BagNode.
 
         Args:
-            mode: If 'static', return raw value even if resolver exists.
+            static: If True, return raw value without triggering resolver.
 
         Returns:
             The node's value, possibly resolved via resolver.
         """
         if self._resolver is not None:
-            if 'static' in mode:
+            if static:
                 return self._value
             else:
                 if self._resolver.read_only:

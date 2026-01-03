@@ -24,7 +24,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from genro_toolbox import smartsplit
+from genro_toolbox import smartasync, smartawait, smartsplit
 
 from .node_container import NodeContainer
 
@@ -146,102 +146,189 @@ class Bag:
         """
         return self._backref
 
-    # -------------------- _htraverse --------------------------------
+    # -------------------- _htraverse helpers --------------------------------
 
-    def _htraverse(self, pathlist: str | list, autocreate: bool = False,
-                   return_last_match: bool = False) -> tuple[Any, str]:
-        """Traverse a hierarchical path and return the container and final label.
+    def _htraverse_before(self, path: str | list) -> tuple[Bag, list]:
+        """Parse path and handle #parent navigation.
 
-        This is the core navigation method. Given a path like 'a.b.c', it traverses
-        the Bag hierarchy and returns the Bag containing 'c' along with the label 'c'.
-
-        Path syntax:
-            - 'a.b.c': Navigate through nested Bags
-            - '#0', '#1': Access by numeric index
-            - '../': Go to parent (converted to '#^')
-            - '#^': Parent reference
+        First phase of path traversal: converts path to list, handles '../' alias,
+        and processes any leading #parent segments.
 
         Args:
-            pathlist: Path as dot-separated string 'a.b.c' or list ['a', 'b', 'c'].
-            autocreate: If True, create intermediate Bags for missing path segments.
-            return_last_match: If True, on partial match return the deepest found
-                node and the remaining path instead of (None, None).
+            path: Dot-separated path like 'a.b.c' or list ['a', 'b', 'c'].
+
+        Returns:
+            Tuple of (curr, pathlist) where:
+                - curr: Starting Bag (may have moved up via #parent)
+                - pathlist: Remaining path segments to process
+        """
+        curr = self
+
+        if isinstance(path, str):
+            path = path.replace('../', '#parent.')
+            pathlist = [x for x in smartsplit(path, '.') if x]
+        else:
+            pathlist = list(path)
+
+        # handle parent reference #parent at the beginning
+        while pathlist and pathlist[0] == '#parent':
+            pathlist.pop(0)
+            curr = curr.parent
+
+        return curr, pathlist
+
+    def _htraverse_after(self, curr: Bag, pathlist: list,
+                         write_mode: bool = False) -> tuple[Any, str]:
+        """Finalize traversal and handle write_mode autocreate.
+
+        Final phase of path traversal: handles empty paths, checks for
+        incomplete paths in read mode, and creates intermediate nodes in write mode.
+
+        Args:
+            curr: Current Bag position after traversal.
+            pathlist: Remaining path segments.
+            write_mode: If True, create intermediate Bags for missing segments.
 
         Returns:
             Tuple of (container, label) where:
-                - container: The Bag containing the final element, or None if not found
-                - label: The final path segment, or remaining path if return_last_match
+                - container: The Bag containing the final element, or None
+                - label: The final path segment
 
         Raises:
-            BagException: If autocreate is True and path uses '#n' syntax for
-                non-existent index.
-
-        Example:
-            >>> bag = Bag()
-            >>> bag['a.b.c'] = 1
-            >>> container, label = bag._htraverse('a.b.c')
-            >>> container['c']  # same as bag['a.b']['c']
-            1
+            BagException: If write_mode and path uses '#n' for non-existent index.
         """
         from .bag_node import BagNode
-
-        curr = self
-        if isinstance(pathlist, str):
-            pathlist = pathlist.replace('../', '#parent.')
-            pathlist = [x for x in smartsplit(pathlist, '.') if x]
-        else:
-            pathlist = list(pathlist)
 
         if not pathlist:
             return curr, ''
 
-        label = pathlist.pop(0)
-
-        # handle parent reference #parent
-        while label == '#parent' and pathlist:
-            curr = curr.parent
-            label = pathlist.pop(0)
-
-        if not pathlist:
-            return curr, label
-
-        # find node at current level using index
-        i = curr._nodes.index(label)
-
-        if i < 0:
-            if autocreate:
-                if label.startswith('#'):
-                    raise BagException('Not existing index in #n syntax')
-                i = len(curr._nodes)
-                new_node = BagNode(curr, label=label, value=curr.__class__())
-                curr._nodes.set(label, new_node)
-                if self.backref:
-                    self._on_node_inserted(new_node, i, reason='autocreate')
-            elif return_last_match:
-                return self._parent_node, '.'.join([label] + pathlist)
-            else:
+        # In read mode, if we have more than one segment left, path doesn't exist
+        if not write_mode:
+            if len(pathlist) > 1:
                 return None, None
+            return curr, pathlist[0]
 
-        new_curr_node = curr._nodes[i]
-        new_curr = new_curr_node.value
-        is_bag = hasattr(new_curr, '_htraverse')
+        # Write mode: create intermediate nodes
+        while len(pathlist) > 1:
+            label = pathlist.pop(0)
+            if label.startswith('#'):
+                raise BagException('Not existing index in #n syntax')
+            new_node = BagNode(curr, label=label, value=curr.__class__())
+            curr._nodes.set(label, new_node)
+            if self.backref:
+                self._on_node_inserted(new_node, len(curr._nodes) - 1, reason='autocreate')
+            curr = new_node._value
 
-        if autocreate and not is_bag:
-            new_curr = curr.__class__()
-            new_curr_node.value = new_curr
-            is_bag = True
+        return curr, pathlist[0]
 
-        if is_bag:
-            return new_curr._htraverse(pathlist, autocreate=autocreate,
-                                        return_last_match=return_last_match)
-        else:
-            if return_last_match:
-                return new_curr_node, '.'.join(pathlist)
-            return new_curr, '.'.join(pathlist)
+    # -------------------- _traverse_until (sync) --------------------------------
+
+    def _traverse_until(self, curr: Bag, pathlist: list) -> tuple[Bag, list]:
+        """Traverse path segments synchronously (static mode, no resolver trigger).
+
+        Walks the path as far as possible without triggering resolvers.
+        Used by sync methods that always use static=True.
+
+        Args:
+            curr: Starting Bag position.
+            pathlist: Path segments to traverse.
+
+        Returns:
+            Tuple of (container, remaining_path) where:
+                - container: The last valid Bag reached
+                - remaining_path: List of path segments not yet traversed
+        """
+        result = (curr, pathlist)
+        while len(pathlist) > 1 and isinstance(curr, Bag):
+            result = (curr, list(pathlist))
+            node = curr._nodes[pathlist[0]]
+            if node:
+                pathlist.pop(0)
+                curr = node.get_value(static=True)
+
+        return result
+
+    # -------------------- _async_traverse_until --------------------------------
+
+    @smartasync
+    async def _async_traverse_until(self, curr: Bag, pathlist: list,
+                                    static: bool = False) -> tuple[Bag, list]:
+        """Traverse path segments with async support (may trigger resolvers).
+
+        Walks the path as far as possible. When static=False, may trigger
+        async resolvers during traversal.
+
+        Args:
+            curr: Starting Bag position.
+            pathlist: Path segments to traverse.
+            static: If True, don't trigger resolvers.
+
+        Returns:
+            Tuple of (container, remaining_path) where:
+                - container: The last valid Bag reached
+                - remaining_path: List of path segments not yet traversed
+        """
+        result = (curr, pathlist)
+        while len(pathlist) > 1 and isinstance(curr, Bag):
+            result = (curr, list(pathlist))
+            node = curr._nodes[pathlist[0]]
+            if node:
+                pathlist.pop(0)
+                curr = await smartawait(node.get_value(static=static))
+
+        return result
+
+    # -------------------- _htraverse (sync) --------------------------------
+
+    def _htraverse(self, path: str | list, write_mode: bool = False) -> tuple[Any, str]:
+        """Traverse a hierarchical path synchronously (static mode).
+
+        Sync version that never triggers resolvers. Used by set_item, pop, etc.
+
+        Args:
+            path: Path as dot-separated string 'a.b.c' or list ['a', 'b', 'c'].
+            write_mode: If True, create intermediate Bags for missing segments.
+
+        Returns:
+            Tuple of (container, label) where:
+                - container: The Bag containing the final element, or None
+                - label: The final path segment
+        """
+        curr, pathlist = self._htraverse_before(path)
+        if not pathlist:
+            return curr, ''
+        curr, pathlist = self._traverse_until(curr, pathlist)
+        return self._htraverse_after(curr, pathlist, write_mode)
+
+    # -------------------- _async_htraverse --------------------------------
+
+    @smartasync
+    async def _async_htraverse(self, path: str | list, write_mode: bool = False,
+                               static: bool = False) -> tuple[Any, str]:
+        """Traverse a hierarchical path with async support.
+
+        Async version that may trigger resolvers when static=False.
+        Used by get_item, get_node when resolver triggering is needed.
+
+        Args:
+            path: Path as dot-separated string 'a.b.c' or list ['a', 'b', 'c'].
+            write_mode: If True, create intermediate Bags for missing segments.
+            static: If True, don't trigger resolvers during traversal.
+
+        Returns:
+            Tuple of (container, label) where:
+                - container: The Bag containing the final element, or None
+                - label: The final path segment
+        """
+        curr, pathlist = self._htraverse_before(path)
+        if not pathlist:
+            return curr, ''
+        curr, pathlist = await smartawait(self._async_traverse_until(curr, pathlist, static=static))
+        return self._htraverse_after(curr, pathlist, write_mode)
 
     # -------------------- get (single level) --------------------------------
 
-    def get(self, label: str, default: Any = None, mode: str | None = None) -> Any:
+    def get(self, label: str, default: Any = None) -> Any:
         """Get value at a single level (no path traversal).
 
         Unlike get_item/`__getitem__`, this method only looks at direct children
@@ -251,11 +338,6 @@ class Bag:
             label: Node label to look up. Can be a string label or '#n' index.
                 Supports '?attr' suffix to get a node attribute instead of value.
             default: Value to return if label not found.
-            mode: Optional mode for result transformation:
-                - None: Return the value directly
-                - 'attrname': Return the specified attribute
-                - 'k:': Return list of keys (if value is Bag)
-                - 'd:what' or 'digest:what': Return digest of value
 
         Returns:
             The node's value if found, otherwise default.
@@ -271,55 +353,39 @@ class Bag:
             >>> bag.get('x?type')  # get attribute
             'int'
         """
-        result = None
-        currnode = None
-        currvalue = None
         attrname = None
 
         if not label:
-            currnode = self.parent_node
-            currvalue = self
+            return self
         elif label == '#parent':
-            currnode = self.parent.parent_node
+            return self.parent
         else:
             if '?' in label:
                 label, attrname = label.split('?')
             i = self._nodes.index(label)
             if i < 0:
                 return default
-            else:
-                currnode = self._nodes[i]
-
-        if currnode:
-            currvalue = currnode.get_attr(attrname) if attrname else currnode.get_value()
-
-        if not mode:
-            result = currvalue
-        else:
-            cmd = mode.lower()
-            if ':' not in cmd:
-                result = currnode.get_attr(mode)
-            else:
-                if cmd == 'k:':
-                    result = list(currvalue.keys())
-                elif cmd.startswith('d:') or cmd.startswith('digest:'):
-                    result = currvalue.digest(mode.split(':')[1])
-
-        return result
+            currnode = self._nodes[i]
+            return currnode.get_attr(attrname) if attrname else currnode.get_value()
 
     # -------------------- get_item --------------------------------
 
-    def get_item(self, path: str, default: Any = None, mode: str | None = None) -> Any:
+    @smartasync
+    async def get_item(self, path: str, default: Any = None,
+                       static: bool = False) -> Any:
         """Get value at a hierarchical path.
 
         Traverses the Bag hierarchy following the dot-separated path and returns
-        the value at the final location. This is the method behind `bag[path]`.
+        the value at the final location.
+
+        Decorated with @smartasync: can be called from sync or async context.
+        In async context with async resolvers, use `await bag.get_item(path)`.
 
         Args:
             path: Hierarchical path like 'a.b.c'. Empty path returns self.
-                Supports '?mode' suffix to specify mode (e.g., 'a.b?k' for keys).
+                Supports '?attr' suffix to get attribute instead of value.
             default: Value to return if path not found.
-            mode: Optional mode for result transformation (see get() for details).
+            static: If True, don't trigger resolvers during traversal.
 
         Returns:
             The value at the path if found, otherwise default.
@@ -329,34 +395,37 @@ class Bag:
             >>> bag['config.db.host'] = 'localhost'
             >>> bag.get_item('config.db.host')
             'localhost'
-            >>> bag['config.db.host']  # same thing
+            >>> bag['config.db.host']  # static=True, no resolver trigger
             'localhost'
-            >>> bag.get_item('missing.path', 'default')
-            'default'
+            >>> await bag.get_item('path.with.resolver')  # triggers resolver
         """
         if not path:
             return self
 
         path = _normalize_path(path)
 
-        if isinstance(path, str):
-            if '?' in path:
-                path, mode = path.split('?')
-                if mode == '':
-                    mode = 'k'
-
-        obj, label = self._htraverse(path)
+        obj, label = await smartawait(self._async_htraverse(path, static=static))
 
         if isinstance(obj, Bag):
-            return obj.get(label, default, mode=mode)
+            return obj.get(label, default)
 
         if hasattr(obj, 'get'):
-            value = obj.get(label, default)
-            return value
+            return obj.get(label, default)
         else:
             return default
 
-    __getitem__ = get_item
+    def __getitem__(self, path: str) -> Any:
+        """Get value at path using sync _htraverse (no resolver trigger).
+
+        Use bag.get_item(path) or await bag.get_item(path) to trigger resolvers.
+        """
+        path = _normalize_path(path)
+        obj, label = self._htraverse(path)
+        if isinstance(obj, Bag):
+            return obj.get(label)
+        if hasattr(obj, 'get'):
+            return obj.get(label)
+        return None
 
     # -------------------- _set (single level) --------------------------------
 
@@ -442,10 +511,7 @@ class Bag:
                 pos_char, label = position[0], position[1:]
             else:
                 pos_char, label = '<', position
-            if label[0] == '#':
-                n = int(label[1:])
-            else:
-                n = self._nodes.index(label)
+            n = int(label[1:]) if label[0] == '#' else self._nodes.index(label)
             if pos_char == '>' and n >= 0:
                 n = n + 1
 
@@ -471,6 +537,8 @@ class Bag:
         Traverses the Bag hierarchy following the dot-separated path, creating
         intermediate Bags as needed, and sets the value at the final location.
         This is the method behind `bag[path] = value`.
+
+        This method is synchronous and never triggers resolvers during traversal.
 
         If the path already exists, the value is updated. If it doesn't exist,
         a new node is created at the specified position.
@@ -511,12 +579,13 @@ class Bag:
             return self
         else:
             path = _normalize_path(path)
-            obj, label = self._htraverse(path, autocreate=True)
+            obj, label = self._htraverse(path, write_mode=True)
             obj._set(label, value, _attributes=_attributes, _position=_position,
                      _duplicate=_duplicate, _updattr=_updattr,
                      _remove_null_attributes=_remove_null_attributes, _reason=_reason)
 
-    __setitem__ = lambda self, path, value: self.set_item(path, value)
+    def __setitem__(self, path: str, value: Any) -> None:
+        self.set_item(path, value)
 
     # -------------------- _pop (single level) --------------------------------
 
@@ -788,8 +857,10 @@ class Bag:
 
     # -------------------- get_node --------------------------------
 
-    def get_node(self, path: str | None = None, as_tuple: bool = False,
-                 autocreate: bool = False, default: Any = None) -> BagNode | None:
+    @smartasync
+    async def get_node(self, path: str | None = None, as_tuple: bool = False,
+                       autocreate: bool = False, default: Any = None,
+                       static: bool = False) -> BagNode | None:
         """Get the BagNode at a path.
 
         Unlike get_item which returns the value, this returns the BagNode itself,
@@ -801,6 +872,7 @@ class Bag:
             as_tuple: If True, return (container_bag, node) tuple.
             autocreate: If True, create node if not found.
             default: Default value for autocreated node.
+            static: If True, don't trigger resolvers during traversal.
 
         Returns:
             The BagNode at the path, or None if not found.
@@ -821,7 +893,7 @@ class Bag:
         if isinstance(path, int):
             return self._nodes[path]
 
-        obj, label = self._htraverse(path, autocreate=autocreate)
+        obj, label = await smartawait(self._async_htraverse(path, write_mode=autocreate, static=static))
 
         if isinstance(obj, Bag):
             node = obj._get_node(label, autocreate, default)

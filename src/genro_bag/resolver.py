@@ -22,7 +22,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
-from genro_toolbox import SmartLock, smartasync, smartawait
+from genro_toolbox import smartasync, smartawait
 
 if TYPE_CHECKING:
     from .bag_node import BagNode
@@ -69,7 +69,6 @@ class BagResolver:
         '_parent_node',         # BagNode | None: bidirectional link to parent
         '_fingerprint',         # int: hash for __eq__ comparison
         '_cache_last_update',   # datetime | None: last load() timestamp
-        '_async_lock',          # SmartLock: for concurrent access
     )
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -91,9 +90,6 @@ class BagResolver:
 
         # Cache state
         self._cache_last_update: datetime | None = None
-
-        # Async concurrency control (created on-demand)
-        self._async_lock: SmartLock = SmartLock()
 
         # Build _kw dict from class_args and class_kwargs
         self._kw: dict[str, Any] = {}
@@ -223,25 +219,13 @@ class BagResolver:
 
     @smartasync
     async def _resolve_cached(self) -> Any:
-        """Resolve with concurrency control for read_only=False.
-
-        Ensures only one load() runs at a time. Other callers wait
-        for the result via Future.
+        """Resolve with caching for read_only=False.
 
         Returns:
             The resolved value, or None to signal Node to use _value.
         """
-        # Fast path: cache valid
         if not self.expired:
             return None  # Signal Node to use cached _value
-
-        return await self._async_lock.run_once(self._do_load)
-
-    async def _do_load(self) -> Any:
-        """Execute load and update cache timestamp."""
-        # Double-check after acquiring lock
-        if not self.expired:
-            return None  # Another caller completed while we waited
 
         result = await smartawait(self.load())
         self._cache_last_update = datetime.now()
