@@ -11,10 +11,32 @@
 
 | Component | File | Lines | Tests | Coverage | Notes |
 |-----------|------|-------|-------|----------|-------|
-| **NodeContainer** | `src/genro_bag/node_container.py` | ~300 | TBD | TBD | Indexed list for BagNodes (refactored) |
+| **NodeContainer** | `src/genro_bag/node_container.py` | ~300 | 13 | 27% | Indexed list for BagNodes (refactored) |
 | **BagNode** | `src/genro_bag/bag_node.py` | ~555 | 63 | 72% | Node with value, attributes, subscriptions |
 | **BagResolver** | `src/genro_bag/resolver.py` | ~340 | 0 | 0% | Lazy loading with cache TTL, async support |
-| **Bag (Core)** | `src/genro_bag/bag.py` | ~936 | 0 | 0% | Core methods implemented, tests pending |
+| **Bag (Core)** | `src/genro_bag/bag.py` | ~900 | 0 | 0% | Core methods implemented, tests pending |
+
+### Async/Sync Refactoring (2026-01-03)
+
+Risolto il problema async/sync per `_htraverse`:
+
+**Architettura implementata:**
+
+- `_htraverse_before(path)` - parsing path, gestione `#parent`
+- `_htraverse_after(curr, pathlist, write_mode)` - finalizzazione, autocreate in write mode
+- `_traverse_until(curr, pathlist)` - loop sync (sempre `static=True`)
+- `_async_traverse_until(curr, pathlist, static)` - loop async con `@smartasync`
+- `_htraverse(path, write_mode)` - metodo principale sync
+- `_async_htraverse(path, write_mode, static)` - metodo principale async
+
+**Decisioni:**
+
+- Setter (`set_item`, `pop`, `pop_node`) sono sempre sync → usano `_htraverse`
+- Getter (`get_item`, `get_node`) supportano async → usano `_async_htraverse` con `@smartasync`
+- `__getitem__` usa `_htraverse` sync (no resolver trigger)
+- Parametro `static`: quando `True`, non triggera i resolver durante il traversal
+- Rimosso `SmartLock` dal resolver (l'utente userà contextvars per isolamento)
+- Rimosso parametro `mode` da `get` e `get_item` (mai usato nel codebase)
 
 ### NodeContainer Refactoring (2026-01-03)
 
@@ -26,6 +48,7 @@ NodeContainer è stato semplificato come "indexed list":
 - `__delitem__` supporta cancellazione multipla con virgola
 - Rinominato `_parse_what` → `_get_nodes`
 - Usato `smartsplit` per parsing consistente
+- Rimossi test obsoleti (da 63 a 13 test)
 
 ### Bag Implementation Details
 
@@ -34,21 +57,23 @@ NodeContainer è stato semplificato come "indexed list":
 | `__init__` | ✅ Done | Uses NodeContainer for _nodes |
 | `fill_from` | ⏳ Stub | TODO: implement |
 | `parent` / `parent_node` / `backref` | ✅ Done | Properties |
-| `_htraverse` | ✅ Done | Core path navigation with `smartsplit` |
-| `get` | ✅ Done | Single level access with `mode` and `?attr` syntax |
-| `get_item` / `__getitem__` | ✅ Done | Hierarchical path access with `mode` |
+| `_htraverse` | ✅ Done | Sync version, never triggers resolvers |
+| `_async_htraverse` | ✅ Done | Async version with `static` parameter |
+| `get` | ✅ Done | Single level access with `?attr` syntax |
+| `get_item` | ✅ Done | Async with `@smartasync`, `static` parameter |
+| `__getitem__` | ✅ Done | Sync, uses `_htraverse` |
 | `_set` | ✅ Done | Single level set with resolver support |
 | `_insert_node` | ✅ Done | Position-based node insertion |
-| `set_item` / `__setitem__` | ✅ Done | With autocreate, `**kwargs` as attributes |
+| `set_item` / `__setitem__` | ✅ Done | Sync, with autocreate, `**kwargs` as attributes |
 | `_pop` | ✅ Done | Single level pop with `_reason` |
-| `pop` / `del_item` / `__delitem__` | ✅ Done | Remove and return value with `_reason` |
-| `pop_node` | ✅ Done | Remove and return node with `_reason` |
+| `pop` / `del_item` / `__delitem__` | ✅ Done | Sync, remove and return value |
+| `pop_node` | ✅ Done | Sync, remove and return node |
 | `clear` | ✅ Done | Remove all nodes |
 | `keys` / `values` / `items` | ✅ Done | Dict-like access |
 | `__iter__` / `__len__` / `__contains__` | ✅ Done | Iteration and membership (str + BagNode) |
 | `__call__` | ✅ Done | `bag()` returns keys, `bag(path)` returns value |
 | `_get_node` | ✅ Done | Single level get with autocreate |
-| `get_node` | ✅ Done | Get BagNode at path with `as_tuple`, `autocreate`, `default` |
+| `get_node` | ✅ Done | Async with `@smartasync`, `static` parameter |
 | `_on_node_inserted` | ⏳ Stub | Event trigger |
 | `_on_node_deleted` | ⏳ Stub | Event trigger |
 | `subscribe` / `unsubscribe` | ❌ Not started | Event subscription system |
@@ -69,6 +94,8 @@ NodeContainer è stato semplificato come "indexed list":
 | Dependency | Location | Purpose |
 |------------|----------|---------|
 | `smartsplit` | `genro_toolbox.string_utils` | Path splitting with escaped separators |
+| `smartasync` | `genro_toolbox` | Sync/async dual-mode decorator |
+| `smartawait` | `genro_toolbox` | Await coroutines or return values |
 
 ---
 
@@ -80,6 +107,7 @@ NodeContainer è stato semplificato come "indexed list":
 | `design_specifications/04-bag/original_bag_short.py` | Trimmed version: only methods to implement |
 | `design_specifications/04-bag/original_bag_methods.md` | Python method list with priorities |
 | `design_specifications/04-bag/js_bag_methods.md` | **JavaScript method list (gnrbag.js)** |
+| `design_specifications/04-bag/htraverse.md` | Comparison: Bag vs TreeStore _htraverse |
 
 ### JavaScript Reference (IMPORTANT)
 
@@ -103,12 +131,12 @@ The file `js_bag_methods.md` documents all JS methods for `GnrBagNode`, `GnrBag`
 ## Test Summary
 
 ```
-Total tests: 126
-- test_node_container.py: 63 tests
+Total tests: 76
+- test_node_container.py: 13 tests
 - test_bag_node.py: 63 tests
 - test_bag.py: 0 tests (pending)
 
-Coverage: 63% overall
+Coverage: 27% overall
 ```
 
 ---
@@ -120,27 +148,23 @@ Coverage: 63% overall
 | `01-overview/` | Project startup, status | Current |
 | `02-node_container/` | NodeContainer spec | Complete |
 | `03-bag_node/` | BagNode spec, decisions, comparison | Complete |
-| `04-bag/` | Bag spec, original code reference | **In progress** |
-| `05-resolver/` | Resolver spec, async problem | **Open question** |
+| `04-bag/` | Bag spec, original code reference, htraverse comparison | **In progress** |
+| `05-resolver/` | Resolver spec, async problem | **Resolved** |
 
 ---
 
 ## Open Questions
 
-### 1. Async/Sync Handling (DECISION PENDING)
+### 1. Async/Sync Handling (RESOLVED)
 
 **File**: `design_specifications/05-resolver/bag_async_problem.md`
 
-The resolver supports async `load()` via `@smartasync`. The problem is how to handle async in path traversal:
+**Decision taken**: Split approach
 
-**Scenario**: `bag['aaa.bbb.ccc']` where `bbb` has an async resolver
-
-**Options discussed**:
-- **Option A**: `_htraverse` with `@smartasync` - everything becomes async
-- **Option B**: Two methods - `bag['path']` sync, `await bag.get_item('path')` async
-- **Option C**: Resolver always returns coroutine, `@smartasync` handles it
-
-**Decision**: NOT YET TAKEN
+- `_htraverse` (sync) per setter - mai triggera resolver
+- `_async_htraverse` (async) per getter - può triggerare resolver
+- `@smartasync` permette di chiamare metodi async da contesto sync
+- Parametro `static` per controllare trigger dei resolver
 
 ---
 
@@ -152,17 +176,18 @@ The resolver supports async `load()` via `@smartasync`. The problem is how to ha
 2. ✅ Implement `Bag.get_item()` / `Bag.set_item()`
 3. ✅ Implement `Bag.__getitem__` / `Bag.__setitem__` / `Bag.__delitem__`
 4. ✅ Implement `Bag._set()` / `Bag._pop()` / `Bag._get_node()` / `Bag._insert_node()`
-5. ✅ Implement `Bag.get()` with `mode` and `?attr` syntax
-6. ✅ Implement `Bag.get_node()` with `as_tuple`, `autocreate`, `default`
-7. ⏳ Write tests for Bag methods
-8. ⏳ Implement `Bag.set_backref` / `Bag.clear_backref`
-9. ⏳ Implement `Bag.subscribe()` for change notifications
+5. ✅ Implement `Bag.get()` with `?attr` syntax
+6. ✅ Implement `Bag.get_node()` with `as_tuple`, `autocreate`, `default`, `static`
+7. ✅ Refactor _htraverse for sync/async separation
+8. ⏳ Write tests for Bag methods
+9. ⏳ Implement `Bag.set_backref` / `Bag.clear_backref`
+10. ⏳ Implement `Bag.subscribe()` for change notifications
 
 ### Priority 2: Resolver Integration
 
 1. Write resolver tests (excluded from this session)
 2. Test BagNode + Resolver integration
-3. Decide async/sync strategy
+3. ✅ Async/sync strategy decided and implemented
 
 ### Priority 3: Full Integration
 
@@ -190,6 +215,9 @@ The resolver supports async `load()` via `@smartasync`. The problem is how to ha
 | 12 | Serialization methods removed from first implementation | Approved |
 | 13 | Use `#parent` instead of `#^` for parent reference | Approved |
 | 14 | `smartsplit` moved to `genro_toolbox.string_utils` | Approved |
+| 15 | Split _htraverse: sync for setters, async for getters | Approved |
+| 16 | Remove `mode` parameter from get/get_item | Approved |
+| 17 | Remove SmartLock from resolver (use contextvars) | Approved |
 
 ---
 
@@ -203,6 +231,8 @@ The resolver supports async `load()` via `@smartasync`. The problem is how to ha
 | Storage | `list` | `NodeContainer` | No duplicate labels, ordered dict semantics |
 | `_index` in Bag | Present | Removed | Moved to `NodeContainer.index()` |
 | `_get_label`, `_resolve_key`, `_resolve_index` | Present | Removed | Consolidated into `NodeContainer.index()` |
+| `_htraverse` | Single method | Split sync/async | Proper async resolver support |
+| `mode` parameter | Present | Removed | Never used in codebase |
 
 ---
 
@@ -211,23 +241,19 @@ The resolver supports async `load()` via `@smartasync`. The problem is how to ha
 **Branch**: main
 **Last commits**:
 
+- `f07f77d` - refactor: Split _htraverse into sync/async with static parameter
+- `ce7732e` - test: Remove obsolete NodeContainer tests for removed methods
+- `3a70929` - refactor: Simplify NodeContainer as indexed list
 - `abcd9b5` - refactor: Simplify NodeContainer index methods
 - `07a7402` - docs: Add project status document for session continuity
 - `036a887` - test: Add comprehensive BagNode tests (63 tests)
-- `efee6d8` - docs: Improve docstrings for bag_node, node_container, and resolver
-- `eb00032` - feat: Implement BagNode with full API and documentation
-
-**Untracked files**:
-
-- `design_specifications/05-resolver/bag_async_problem.md` (notes, not committed)
-- `design_specifications/04-bag/` (reference files)
 
 ---
 
 ## How to Resume
 
 1. Read this file for context
-2. Check `bag_async_problem.md` if working on resolver/async
+2. Check `04-bag/htraverse.md` for sync/async traversal details
 3. Check `04-bag/original_bag_short.py` for reference implementation
 4. Run `pytest` to verify all tests pass
 5. Check coverage report in `htmlcov/index.html`
