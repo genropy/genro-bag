@@ -1109,6 +1109,50 @@ class Bag:
 
         return _walk_gen(self, "")
 
+    # -------------------- serialization --------------------------------
+
+    def to_tytx(
+        self,
+        transport: str = "json",
+        filename: str | None = None,
+        compact: bool = False,
+    ) -> str | bytes | None:
+        """Serialize to TYTX format.
+
+        Args:
+            transport: 'json' (.jbag), 'xml' (.xbag), or 'msgpack' (.mpbag).
+            filename: If provided, write to file (extension added automatically).
+                If None, return serialized data.
+            compact: Use numeric parent codes instead of path strings.
+
+        Returns:
+            Serialized data if filename is None, else None.
+
+        See serialization.to_tytx() for full documentation.
+        """
+        from .serialization import to_tytx
+        return to_tytx(self, transport=transport, filename=filename, compact=compact)
+
+    @classmethod
+    def from_tytx(
+        cls,
+        data: str | bytes,
+        transport: str = "json",
+    ) -> Bag:
+        """Deserialize from TYTX format.
+
+        Args:
+            data: Serialized data from to_tytx().
+            transport: Format matching serialization ('json', 'xml', 'msgpack').
+
+        Returns:
+            Reconstructed Bag.
+
+        See serialization.from_tytx() for full documentation.
+        """
+        from .serialization import from_tytx
+        return from_tytx(data, transport=transport)
+
     # -------------------- __str__ --------------------------------
 
     def __str__(self, _visited: dict | None = None) -> str:

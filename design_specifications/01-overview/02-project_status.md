@@ -1,7 +1,7 @@
 # Project Status
 
 **Last Updated**: 2026-01-04
-**Status**: In Development
+**Status**: In Development - Fase Resolver/Serialization
 
 ---
 
@@ -15,6 +15,8 @@
 | **BagNode** | `src/genro_bag/bag_node.py` | 209 | - | 38% | Node con resolver, backref, subscribers (parziale) |
 | **BagResolver** | `src/genro_bag/resolver.py` | 97 | 0 | 0% | Lazy loading con cache TTL, async support |
 | **Bag (Core)** | `src/genro_bag/bag.py` | 255 | 50 | 60% | Core methods, `__str__` aggiunto |
+| **DirectoryResolver** | `src/genro_bag/resolvers/directory_resolver.py` | - | 0 | 0% | Lazy directory listing as Bag |
+| **TxtDocResolver** | `src/genro_bag/resolvers/txt_doc_resolver.py` | - | 0 | 0% | Lazy text file loading |
 
 ### Async/Sync Refactoring (2026-01-03)
 
@@ -214,7 +216,72 @@ Coverage: 57% overall
 
 ## Next Steps
 
-### Priority 1: Complete Bag Core (CURRENT)
+### Priority 1: Serialization (IN PROGRESS)
+
+**Piano definitivo**: Vedi `07-serialization/03-definitive-plan.md`
+
+#### Architettura Serialization (2026-01-04)
+
+Due famiglie di funzioni:
+
+| Famiglia | Funzioni | Scopo | Estensioni |
+|----------|----------|-------|------------|
+| **TYTX** | `to_tytx`, `from_tytx` | Serializzazione Bag interna Genropy | `.bag.json`, `.bag.mp` |
+| **XML** | `to_xml`, `from_xml` | XML generico + legacy GenRoBag | `.xml` |
+| **JSON** | `to_json`, `from_json` | JSON legacy per interoperabilità | - |
+
+**Decisioni chiave**:
+- TYTX usa **solo** trasporti JSON e MessagePack (NO XML)
+- `to_xml`/`from_xml` supportano sia formato legacy (`_T` attribute) che TYTX (`::TYPE` suffix)
+- Sanitize tag XML sempre attivo (caratteri invalidi → `_`, originale in `_tag`)
+- Gestione duplicati sempre attiva in `from_xml` (suffissi `_1`, `_2`, etc.)
+- `to_json`/`from_json` mantengono formato legacy `[{label, value, attr}]` usando `genro_tytx` internamente
+
+#### Stato implementazione
+
+| Funzione | File | Status |
+|----------|------|--------|
+| `node_flattener()` | `serialization.py` | ✅ Implementato |
+| `to_tytx(transport='json'\|'msgpack')` | `serialization.py` | ✅ Implementato |
+| `from_tytx(transport='json'\|'msgpack')` | `serialization.py` | ✅ Implementato |
+| `to_xml(...)` | `serialization.py` | ⏳ Stub |
+| `from_xml(...)` | `serialization.py` | ⏳ Stub |
+| `to_json(...)` | `serialization.py` | ⏳ Stub |
+| `from_json(...)` | `serialization.py` | ⏳ Stub |
+
+#### File rimossi
+- `bag_serialization.py` - stub duplicato, rimosso
+- `to_xml_raw` / `from_xml_raw` - logica sarà integrata in `to_xml` / `from_xml`
+
+#### Da fare
+1. ✅ Rimuovere `transport='xml'` da `to_tytx`/`from_tytx` - COMPLETATO
+2. ✅ Rimuovere `to_xml_raw` / `from_xml_raw` - COMPLETATO
+3. ✅ Definire signature `to_xml` - COMPLETATO (vedi `03-compatibility_layer.md`)
+4. ✅ Definire signature `from_xml` - COMPLETATO (vedi `03-compatibility_layer.md`)
+5. ⏳ Implementare `to_xml` body
+6. ⏳ Implementare `from_xml` body
+7. ⏳ Implementare `to_json` / `from_json` (formato legacy con TYTX interno)
+
+**Estensioni file**:
+- `.bag.json` - TYTX con trasporto JSON
+- `.bag.mp` - TYTX con trasporto MessagePack
+- `.xml` - XML generico o legacy GenRoBag
+
+### Priority 2: Resolver Tests
+
+1. ⏳ Write tests for DirectoryResolver
+2. ⏳ Write tests for TxtDocResolver
+3. ⏳ Test BagNode + Resolver integration
+
+### Priority 3: Builder System
+
+Vedi `06-builder/01-overview.md`:
+- `_builder` slot
+- `builder` property
+- `__getattr__` delegazione
+- `child()` / `rowchild()` methods
+
+### Completed (Previous)
 
 1. ✅ Implement `Bag._htraverse()` for path navigation
 2. ✅ Implement `Bag.get_item()` / `Bag.set_item()`
@@ -223,21 +290,9 @@ Coverage: 57% overall
 5. ✅ Implement `Bag.get()` with `?attr` syntax
 6. ✅ Implement `Bag.get_node()` with `as_tuple`, `autocreate`, `default`, `static`
 7. ✅ Refactor _htraverse for sync/async separation
-8. ⏳ Write tests for Bag methods
-9. ⏳ Implement `Bag.set_backref` / `Bag.clear_backref`
-10. ⏳ Implement `Bag.subscribe()` for change notifications
-
-### Priority 2: Resolver Integration
-
-1. Write resolver tests (excluded from this session)
-2. Test BagNode + Resolver integration
-3. ✅ Async/sync strategy decided and implemented
-
-### Priority 3: Full Integration
-
-1. Test Bag + BagNode + Resolver together
-2. Navigation tests with parent hierarchy
-3. Serialization (XML, JSON) - deferred
+8. ✅ Async/sync strategy decided and implemented
+9. ✅ DirectoryResolver portato da originale
+10. ✅ TxtDocResolver portato da originale
 
 ---
 

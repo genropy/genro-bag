@@ -234,12 +234,79 @@ to_tytx([33, bag, 'kk'])
 
 ---
 
+## Estensioni File Bag
+
+**Decisione**: Usare estensioni dedicate per i file Bag serializzati.
+
+| Estensione | Formato | Trasporto | Leggibilità | Uso |
+|------------|---------|-----------|-------------|-----|
+| `.xbag` | TYTX | XML | ✅ Alta | Configurazione, debug |
+| `.jbag` | TYTX | JSON | ✅ Media | API, interscambio |
+| `.mpbag` | TYTX | MessagePack | ❌ Binario | Performance, storage |
+
+### Dettagli Formati
+
+#### `.xbag` - XML Transport
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<bag version="1.0" format="tytx">
+  <node label="name" value="Giovanni"/>
+  <node label="age" value="42::L"/>
+  <node label="config" value="::X">
+    <node label="host" value="localhost"/>
+  </node>
+</bag>
+```
+- Massima leggibilità
+- Più verboso
+- Ideale per configurazioni modificabili a mano
+
+#### `.jbag` - JSON Transport
+```json
+{"_v":"1.0","_f":"tytx","nodes":[["","name",null,"Giovanni",{}],["","age",null,"42::L",{}]]}
+```
+- Buona leggibilità
+- Compatto
+- Ideale per API REST, file transfer
+
+#### `.mpbag` - MessagePack Transport
+- Binario, non leggibile
+- Massima compattezza (~40% più piccolo di JSON)
+- Massima velocità di parsing
+- Ideale per storage, cache, comunicazione interna
+
+### API
+
+```python
+# Salvataggio
+bag.save('config.xbag')      # XML
+bag.save('data.jbag')        # JSON
+bag.save('cache.mpbag')      # MessagePack
+
+# Caricamento (auto-detect da estensione)
+bag = Bag.load('config.xbag')
+
+# Esplicito
+bag.to_tytx(transport='xml')
+bag.to_tytx(transport='json')
+bag.to_tytx(transport='msgpack')
+```
+
+### Note Implementative
+
+- Tutti i formati usano **TYTX internamente** per type preservation
+- Il trasporto (XML/JSON/MessagePack) è solo il "contenitore"
+- La conversione tra formati è lossless
+
+---
+
 ## Dipendenze
 
 | Package | Uso | Obbligatorio |
 |---------|-----|--------------|
-| `genro-tytx` | Encoding/decoding TYTX + hook registration | Sì (per to_tytx) |
-| `msgpack` | Transport binario | Opzionale |
+| `genro-tytx` | Encoding/decoding TYTX + hook registration | Sì |
+| `msgpack` | Transport MessagePack (.mpbag) | Opzionale |
+| `lxml` | Transport XML (.xbag) | Opzionale (fallback a xml.etree) |
 
 ---
 
