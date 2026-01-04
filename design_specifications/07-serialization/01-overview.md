@@ -1,250 +1,296 @@
-# Serialization Overview
+# Serialization Technical Details
 
-**Version**: 0.1.0
+**Version**: 0.2.0
 **Last Updated**: 2026-01-04
-**Status**: 🔴 DA REVISIONARE
+**Status**: 🟡 APPROVATO PARZIALMENTE - Architettura approvata, dettagli implementativi da revisionare
 
 ---
 
 ## Obiettivo
 
-Implementare la serializzazione per Bag supportando:
-- **TYTX** - Type-preserving format (Decimal, date, datetime, time)
-- **XML** - Standard XML import/export
-- **JSON** - Standard JSON (già stub presenti)
+Implementare la serializzazione per Bag con:
+
+- **flattener()** - Generator di tuple per pipeline composabile
+- **TYTX** - Type-preserving format con tipo `::X` per Bag
+- **XML/JSON puri** - Per interoperabilità esterna (no magia Genropy)
 
 ---
 
 ## Prerequisiti
 
 Prima della serializzazione, serve implementare:
+
 1. **`walk()`** - Traversal depth-first dell'albero
-2. **`flattened()`** - Generatore di tuple per serializzazione
+2. **`flattener()`** - Generatore di tuple per serializzazione
 
 ---
 
-## Modello di Riferimento: TreeStore
-
-### Metodo walk() in TreeStore
+## Metodo walk()
 
 ```python
-def walk(self, callback=None):
+def walk(
+    self,
+    callback: Callable[[BagNode], None] | None = None,
+) -> Generator[tuple[str, BagNode], None, None] | None:
     """Walk the tree depth-first.
 
     Args:
-        callback: If provided, call callback(node) for each node.
+        callback: If provided, call callback(node) for each node
+                  and return None.
                   If None, return generator of (path, node) tuples.
+
+    Returns:
+        Generator of (path, node) if callback is None, else None.
+
+    Example:
+        >>> # Callback mode
+        >>> bag.walk(lambda node: print(node.label))
+
+        >>> # Generator mode
+        >>> for path, node in bag.walk():
+        ...     print(f"{path}: {node.value}")
     """
     if callback is not None:
-        for node in self.nodes():
+        for node in self.nodes:
             callback(node)
-            if node.is_branch:
+            if isinstance(node.value, Bag):
                 node.value.walk(callback)
         return None
 
-    def _walk_gen(store, prefix):
-        for node in store.nodes():
+    def _walk_gen(bag: Bag, prefix: str) -> Generator[tuple[str, BagNode], None, None]:
+        for node in bag.nodes:
             path = f"{prefix}.{node.label}" if prefix else node.label
             yield path, node
-            if node.is_branch:
+            if isinstance(node.value, Bag):
                 yield from _walk_gen(node.value, path)
 
     return _walk_gen(self, "")
 ```
 
-### Metodo flattened() in TreeStore
+---
+
+## Metodo flattener()
+
+**Nome**: `flattener()` (non `flattened()` come in TreeStore)
+
+### Signature
 
 ```python
-def flattened(self, path_registry=None):
-    """Generate tuples for serialization.
+def flattener(
+    self,
+    path_registry: dict[int, str] | None = None,
+) -> Generator[tuple[str | int | None, str, str | None, str | None, dict], None, None]:
+    """Generate tuples for serialization in depth-first order.
 
     Args:
-        path_registry: If provided (dict), use compact mode with numeric codes.
-                       If None, use normal mode with path strings.
+        path_registry: If provided (empty dict), enables compact mode.
+            - Parent references become numeric codes (0, 1, 2...)
+            - Dict is populated with {code: path} for branch nodes
+            If None, parent references are full path strings.
 
     Yields:
-        (parent, label, tag, value, attr) tuples where:
-        - parent: Path string (normal) or int code (compact)
-        - label: Node's key within parent
-        - tag: Node type from builder (or None)
-        - value: None for branch, actual value for leaf
-        - attr: Dict of node attributes
+        Tuples of (parent, label, tag, value, attr) where:
+        - parent: Path string (normal) or int code (compact), None/'' for root
+        - label: Node's key within parent (e.g., 'setting_0')
+        - tag: Node type from builder (e.g., 'setting') or None
+        - value: TYTX-encoded value:
+            - "::X" for branch nodes (Bag)
+            - None for scalar None
+            - "value::SUFFIX" for typed values
+            - "string" for plain strings
+        - attr: Dict of node attributes (copy)
     """
 ```
 
-**Output Normal Mode**:
+### Implementazione
+
 ```python
-[
-    ("", "config_0", "config", None, {"name": "app"}),
-    ("config_0", "db_0", "section", None, {"name": "database"}),
-    ("config_0.db_0", "host_0", "setting", "localhost", {"key": "host"}),
-]
+def flattener(
+    self,
+    path_registry: dict[int, str] | None = None,
+) -> Generator[tuple[str | int | None, str, str | None, Any, dict], None, None]:
+
+    compact = path_registry is not None
+    if compact:
+        path_to_code: dict[str, int] = {}
+        code_counter = 0
+
+    walk_result = self.walk()
+    if walk_result is None:
+        return
+
+    for path, node in walk_result:
+        # Extract parent path
+        parent_path = path.rsplit(".", 1)[0] if "." in path else ""
+
+        # Determine value: Bag → "::X", otherwise raw value
+        if isinstance(node.value, Bag):
+            value = "::X"  # Branch marker
+        else:
+            value = node.value  # Raw value (encoding done later by serializer)
+
+        # Copy attributes
+        attr = dict(node.attr) if node.attr else {}
+
+        if compact:
+            # Compact mode: use numeric codes
+            if parent_path:
+                parent_ref = path_to_code.get(parent_path)
+            else:
+                parent_ref = None
+
+            yield (parent_ref, node.label, node.tag, value, attr)
+
+            # Register branch nodes
+            if isinstance(node.value, Bag):
+                path_to_code[path] = code_counter
+                path_registry[code_counter] = path
+                code_counter += 1
+        else:
+            # Normal mode: use path strings
+            yield (parent_path, node.label, node.tag, value, attr)
 ```
 
-**Output Compact Mode**:
+**Nota**: Il flattener emette valori Python raw. L'encoding TYTX (suffissi `::L`, `::D`, etc.) viene fatto successivamente dal serializer.
+
+### Output Examples
+
+**Normal Mode** (path strings):
+
 ```python
-[
-    (None, "config_0", "config", None, {"name": "app"}),
-    (0, "db_0", "section", None, {"name": "database"}),
-    (1, "host_0", "setting", "localhost", {"key": "host"}),
-]
-# path_registry = {0: "config_0", 1: "config_0.db_0"}
+bag = Bag()
+bag['name'] = 'Giovanni'
+bag['age'] = 42
+config = Bag()
+config['debug'] = True
+bag['config'] = config
+
+list(bag.flattener())
+# [
+#     ('', 'name', None, 'Giovanni', {}),
+#     ('', 'age', None, 42, {}),           # raw int
+#     ('', 'config', None, '::X', {}),     # branch marker
+#     ('config', 'debug', None, True, {}), # raw bool
+# ]
+```
+
+**Compact Mode** (numeric codes):
+
+```python
+paths = {}
+list(bag.flattener(path_registry=paths))
+# [
+#     (None, 'name', None, 'Giovanni', {}),
+#     (None, 'age', None, 42, {}),
+#     (None, 'config', None, '::X', {}),
+#     (0, 'debug', None, True, {}),
+# ]
+# paths = {0: 'config'}
+```
+
+---
+
+## Valori nel Flattener
+
+Il flattener emette valori Python raw, eccetto per le Bag:
+
+| Tipo Python | Valore emesso | Note |
+|-------------|---------------|------|
+| `Bag` | `"::X"` | Unico caso speciale - branch marker |
+| `None` | `None` | Raw |
+| `int` | `42` | Raw |
+| `float` | `3.14` | Raw |
+| `bool` | `True` | Raw |
+| `Decimal` | `Decimal("99.99")` | Raw |
+| `date` | `date(2026, 1, 4)` | Raw |
+| `datetime` | `datetime(...)` | Raw |
+| `time` | `time(10, 30)` | Raw |
+| `str` | `"hello"` | Raw |
+
+L'encoding TYTX (`::L`, `::D`, etc.) viene applicato dal serializer, non dal flattener.
+
+---
+
+## Pipeline con Localizer
+
+Il flattener produce un generator che può essere processato da iteratori composabili:
+
+```python
+def localizer(flattened_iter, translate_cb):
+    """Iteratore che traduce le stringhe localizzabili."""
+    for parent, label, tag, value, attr in flattened_iter:
+        # Traduci il valore se è stringa
+        if isinstance(value, str) and not value.endswith(('::X', '::L', '::R', '::B', '::N', '::D', '::DHZ', '::H')):
+            value = translate_cb(value)
+
+        # Traduci attributi stringa
+        translated_attr = {}
+        for k, v in attr.items():
+            if isinstance(v, str):
+                translated_attr[k] = translate_cb(v)
+            else:
+                translated_attr[k] = v
+
+        yield (parent, label, tag, value, translated_attr)
+```
+
+**Uso**:
+
+```python
+# Pipeline: flattener → localizer → serializer
+localized = localizer(bag.flattener(), my_translate_cb)
+rows = list(localized)
 ```
 
 ---
 
 ## Formato Wire TYTX
 
-### Struttura
+### Struttura con ::X
+
+```python
+# Bag serializzata
+'[["", "name", null, "Giovanni", {}], ["", "config", null, "::X", {}], ["config", "debug", null, "true::B", {}]]::X'
+```
+
+Il suffix `::X` finale indica "questa è una Bag serializzata".
+
+### Compact Mode
 
 ```python
 {
     "rows": [
-        (parent, label, tag, value, attr),
-        ...
+        [null, "name", null, "Giovanni", {}],
+        [null, "config", null, "::X", {}],
+        [0, "debug", null, "true::B", {}]
     ],
-    "paths": {  # Solo in compact mode
-        "0": "config_0",
-        "1": "config_0.db_0",
-        ...
-    }
+    "paths": {"0": "config"}
 }
 ```
 
-### Caratteristiche TYTX
-
-- **Type-preserving**: Decimal, date, datetime, time preservati
-- **Transport**: JSON (str) o MessagePack (bytes)
-- **Compact mode**: ~30% più piccolo senza compressione
-- **Normal mode**: Comprime meglio con gzip
-
 ---
 
-## Serializzazione in TreeStore
-
-### to_tytx()
-
-```python
-def to_tytx(store, transport=None, compact=False):
-    from genro_tytx import to_tytx as tytx_encode
-
-    if compact:
-        paths = {}
-        rows = list(store.flattened(path_registry=paths))
-        paths_str = {str(k): v for k, v in paths.items()}
-        return tytx_encode({"rows": rows, "paths": paths_str}, transport=transport)
-    else:
-        rows = list(store.flattened())
-        return tytx_encode({"rows": rows}, transport=transport)
-```
-
-### from_tytx()
-
-```python
-def from_tytx(data, transport=None, builder=None):
-    from genro_tytx import from_tytx as tytx_decode
-
-    parsed = tytx_decode(data, transport=transport)
-    rows = parsed["rows"]
-    paths_raw = parsed.get("paths")
-    code_to_path = {int(k): v for k, v in paths_raw.items()} if paths_raw else None
-
-    store = TreeStore(builder=builder)
-    path_to_store = {"": store}
-
-    for row in rows:
-        parent_ref, label, tag, value, attr = row
-
-        # Resolve parent
-        if code_to_path is not None:
-            parent_path = code_to_path.get(parent_ref, "") if parent_ref is not None else ""
-        else:
-            parent_path = parent_ref
-
-        parent_store = path_to_store.get(parent_path, store)
-        full_path = f"{parent_path}.{label}" if parent_path else label
-
-        # Create node
-        node = TreeStoreNode(label, attr, value=value, tag=tag)
-
-        if value is None:
-            # Branch - create child store
-            child_store = TreeStore(builder=builder)
-            node._value = child_store
-            child_store.parent = node
-            path_to_store[full_path] = child_store
-
-        node.parent = parent_store
-        parent_store._insert_node(node, trigger=False)
-
-    return store
-```
-
----
-
-## Stato Attuale in genro-bag
-
-### File bag_serialization.py
-
-Contiene solo stub:
-
-```python
-def to_xml(bag, root_tag=None) -> str:
-    raise NotImplementedError("to_xml not yet implemented")
-
-def from_xml(data, builder=None) -> "Bag":
-    raise NotImplementedError("from_xml not yet implemented")
-
-def to_json(bag, indent=None) -> str:
-    raise NotImplementedError("to_json not yet implemented")
-
-def from_json(data, builder=None) -> "Bag":
-    raise NotImplementedError("from_json not yet implemented")
-
-def as_dict(bag) -> dict:
-    raise NotImplementedError("as_dict not yet implemented")
-
-def as_dict_deeply(bag) -> dict:
-    raise NotImplementedError("as_dict_deeply not yet implemented")
-
-def as_string(bag) -> str:
-    raise NotImplementedError("as_string not yet implemented")
-```
-
-### Da Implementare
-
-| Funzione | Priorità | Note |
-|----------|----------|------|
-| `walk()` | Alta | Prerequisito per tutto |
-| `flattened()` | Alta | Prerequisito per TYTX |
-| `to_tytx()` | Alta | Serializzazione type-preserving |
-| `from_tytx()` | Alta | Deserializzazione type-preserving |
-| `to_xml()` | Media | Legacy Genropy |
-| `from_xml()` | Media | Legacy Genropy |
-| `to_json()` | Bassa | Può usare TYTX con transport='json' |
-| `as_dict()` | Bassa | Utility |
-
----
-
-## Differenze Bag vs TreeStore
+## Differenze da TreeStore
 
 | Aspetto | TreeStore | Bag |
 |---------|-----------|-----|
-| Branch detection | `isinstance(value, TreeStore)` | `isinstance(value, Bag)` |
-| Nodes iterator | `store.nodes()` | `bag.nodes` (property) |
-| Insert node | `store._insert_node(node)` | `bag.set_item(label, value, ...)` |
-| Tag attribute | `node.tag` | `node.tag` ✅ |
+| Nome metodo | `flattened()` | `flattener()` |
+| Branch detection | `value is None` | `value == "::X"` |
+| Tipo branch | Implicito | Esplicito `::X` |
+| Valori tipizzati | Post-processing | Nel flattener |
 
 ---
 
 ## Dipendenze
 
-- **genro-tytx** - Per serializzazione TYTX (opzionale, ImportError se mancante)
+- **genro-tytx** - Per encoding valori (opzionale, graceful fallback)
+- **genro-tytx#31** - Hook registration per tipo `::X`
 
 ---
 
 ## Riferimenti
 
-- TreeStore serialization: `genro-treestore/src/genro_treestore/store/serialization.py`
-- Bag stub: `genro-bag/src/genro_bag/bag_serialization.py`
-- TYTX docs: genro-tytx package
+- [00-overview.md](00-overview.md) - Architettura generale
+- [02-implementation-plan.md](02-implementation-plan.md) - Piano implementazione
+- [GitHub Issue #31](https://github.com/genropy/genro-tytx/issues/31) - Hook registration
+- TreeStore `flattened()`: `genro-treestore/src/genro_treestore/store/core.py`

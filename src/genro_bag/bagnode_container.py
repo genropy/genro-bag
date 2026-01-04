@@ -265,3 +265,9 @@ class BagNodeContainer:
             return ((node.label, node.get_value()) for node in self._list)
         return [(node.label, node.get_value()) for node in self._list]
 
+    def __eq__(self, other: object) -> bool:
+        """Two containers are equal if they have the same nodes in the same order."""
+        if not isinstance(other, BagNodeContainer):
+            return False
+        return self._list == other._list
+

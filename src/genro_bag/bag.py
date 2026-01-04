@@ -22,7 +22,7 @@ Example:
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from typing import Any
 
 from genro_toolbox import smartasync, smartawait, smartsplit
@@ -1007,6 +1007,78 @@ class Bag:
             mode = '#a.'
         what = ','.join([f'{mode}{col}' for col in cols])
         return self.digest(what, as_columns=True)
+
+    # -------------------- walk --------------------------------
+
+    def walk(self, callback: Callable[[BagNode], Any] | None = None,
+             _mode: str = 'static', **kwargs) -> Iterator[tuple[str, BagNode]] | Any:
+        """Walk the tree depth-first.
+
+        Two modes of operation:
+
+        1. **Generator mode** (no callback): Returns a generator yielding
+           (path, node) tuples for all nodes in the tree.
+
+        2. **Legacy callback mode**: Calls callback(node, **kwargs) for each
+           node. Supports early exit (if callback returns truthy value),
+           _pathlist and _indexlist kwargs for path tracking.
+
+        Args:
+            callback: If None, return generator of (path, node) tuples.
+                If provided, call callback(node, **kwargs) for each node.
+            _mode: For callback mode only. 'static' (default) doesn't trigger
+                resolvers, other values ('deep', '') trigger resolvers.
+            **kwargs: Passed to callback. Special keys:
+                - _pathlist: list of labels from root (auto-updated)
+                - _indexlist: list of indices from root (auto-updated)
+
+        Returns:
+            Generator of (path, node) if callback is None.
+            If callback provided: value returned by callback if truthy, else None.
+
+        Examples:
+            >>> # Generator mode (modern)
+            >>> for path, node in bag.walk():
+            ...     print(f"{path}: {node.value}")
+
+            >>> # Early exit with generator
+            >>> for path, node in bag.walk():
+            ...     if node.get_attr('id') == 'target':
+            ...         found = node
+            ...         break
+
+            >>> # Legacy callback mode
+            >>> bag.walk(my_callback, _pathlist=[])
+        """
+        if callback is not None:
+            # Legacy callback mode
+            for idx, node in enumerate(self._nodes):
+                kw = dict(kwargs)
+                if '_pathlist' in kwargs:
+                    kw['_pathlist'] = kwargs['_pathlist'] + [node.label]
+                if '_indexlist' in kwargs:
+                    kw['_indexlist'] = kwargs['_indexlist'] + [idx]
+
+                result = callback(node, **kw)
+                if result:
+                    return result
+
+                value = node.get_value(static=(_mode == 'static'))
+                if isinstance(value, Bag):
+                    result = value.walk(callback, _mode=_mode, **kw)
+                    if result:
+                        return result
+            return None
+
+        # Generator mode
+        def _walk_gen(bag: Bag, prefix: str) -> Iterator[tuple[str, BagNode]]:
+            for node in bag._nodes:
+                path = f"{prefix}.{node.label}" if prefix else node.label
+                yield path, node
+                if isinstance(node.value, Bag):
+                    yield from _walk_gen(node.value, path)
+
+        return _walk_gen(self, "")
 
     # -------------------- __str__ --------------------------------
 

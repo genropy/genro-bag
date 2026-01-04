@@ -112,9 +112,9 @@ class BagNode:
             self.set_value(value, trigger=False)
 
     def __eq__(self, other: object) -> bool:
-        """One BagNode is equal to another if its attr and value/resolver match."""
+        """One BagNode is equal to another if label, attr and value/resolver match."""
         try:
-            if isinstance(other, BagNode) and (self._attr == other._attr):
+            if isinstance(other, BagNode) and (self.label == other.label) and (self._attr == other._attr):
                 if self._resolver is None:
                     return self._value == other._value
                 else:
@@ -283,8 +283,8 @@ class BagNode:
 
     @property
     def static_value(self) -> Any:
-        """Get node's value in static mode (bypassing resolver)."""
-        return self.get_value('static')
+        """Get node's raw _value (bypassing resolver)."""
+        return self._value
 
     @static_value.setter
     def static_value(self, value: Any) -> None:

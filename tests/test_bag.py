@@ -755,3 +755,130 @@ class TestBagColumns:
         bag.set_item('b', 2, x=30, y=40)
         result = bag.columns('x,y', attr_mode=True)
         assert result == [[10, 30], [20, 40]]
+
+
+class TestBagWalk:
+    """Test walk method."""
+
+    def test_walk_generator_flat(self):
+        """walk() without callback returns generator of (path, node)."""
+        bag = Bag()
+        bag['a'] = 1
+        bag['b'] = 2
+        bag['c'] = 3
+        result = list(bag.walk())
+        assert len(result) == 3
+        assert result[0] == ('a', bag.get_node('a'))
+        assert result[1] == ('b', bag.get_node('b'))
+        assert result[2] == ('c', bag.get_node('c'))
+
+    def test_walk_generator_nested(self):
+        """walk() traverses nested Bags depth-first."""
+        bag = Bag()
+        bag['a'] = 1
+        bag['b.x'] = 10
+        bag['b.y'] = 20
+        bag['c'] = 3
+        result = [(path, node.value) for path, node in bag.walk()]
+        # Should be: a, b (Bag), b.x, b.y, c
+        assert len(result) == 5
+        assert result[0] == ('a', 1)
+        assert result[1][0] == 'b'  # b is a Bag
+        assert result[2] == ('b.x', 10)
+        assert result[3] == ('b.y', 20)
+        assert result[4] == ('c', 3)
+
+    def test_walk_generator_deeply_nested(self):
+        """walk() handles deeply nested structures."""
+        bag = Bag()
+        bag['a.b.c.d'] = 'deep'
+        result = [(path, node.value) for path, node in bag.walk()]
+        # a (Bag), a.b (Bag), a.b.c (Bag), a.b.c.d
+        assert len(result) == 4
+        paths = [path for path, _ in result]
+        assert paths == ['a', 'a.b', 'a.b.c', 'a.b.c.d']
+        assert result[-1] == ('a.b.c.d', 'deep')
+
+    def test_walk_generator_early_exit(self):
+        """walk() generator supports early exit via break."""
+        bag = Bag()
+        bag['a'] = 1
+        bag['b'] = 2
+        bag['c'] = 3
+        bag['d'] = 4
+        found = None
+        for path, node in bag.walk():
+            if node.value == 2:
+                found = path
+                break
+        assert found == 'b'
+
+    def test_walk_callback_basic(self):
+        """walk() with callback calls it for each node."""
+        bag = Bag()
+        bag['a'] = 1
+        bag['b'] = 2
+        visited = []
+        bag.walk(lambda n: visited.append(n.label))
+        assert visited == ['a', 'b']
+
+    def test_walk_callback_nested(self):
+        """walk() with callback traverses nested Bags."""
+        bag = Bag()
+        bag['a'] = 1
+        bag['b.x'] = 10
+        bag['b.y'] = 20
+        visited = []
+        bag.walk(lambda n: visited.append(n.label))
+        assert visited == ['a', 'b', 'x', 'y']
+
+    def test_walk_callback_early_exit(self):
+        """walk() with callback supports early exit."""
+        bag = Bag()
+        bag['a'] = 1
+        bag['b'] = 2
+        bag['c'] = 3
+
+        def find_b(node):
+            if node.value == 2:
+                return node  # truthy return stops walk
+        result = bag.walk(find_b)
+        assert result.value == 2
+        assert result.label == 'b'
+
+    def test_walk_callback_pathlist(self):
+        """walk() with _pathlist tracks path."""
+        bag = Bag()
+        bag['a.b.c'] = 'deep'
+        paths = []
+
+        def collect_paths(node, _pathlist=None):
+            paths.append(_pathlist)
+        bag.walk(collect_paths, _pathlist=[])
+        assert paths == [['a'], ['a', 'b'], ['a', 'b', 'c']]
+
+    def test_walk_callback_indexlist(self):
+        """walk() with _indexlist tracks indices."""
+        bag = Bag()
+        bag['a'] = 1
+        bag['b'] = 2
+        bag['c'] = 3
+        indices = []
+
+        def collect_indices(node, _indexlist=None):
+            indices.append(_indexlist)
+        bag.walk(collect_indices, _indexlist=[])
+        assert indices == [[0], [1], [2]]
+
+    def test_walk_empty_bag(self):
+        """walk() on empty bag returns empty generator."""
+        bag = Bag()
+        result = list(bag.walk())
+        assert result == []
+
+    def test_walk_callback_empty_bag(self):
+        """walk() with callback on empty bag does nothing."""
+        bag = Bag()
+        visited = []
+        bag.walk(lambda n: visited.append(n.label))
+        assert visited == []

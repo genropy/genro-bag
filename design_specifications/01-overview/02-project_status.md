@@ -175,10 +175,10 @@ The file `js_bag_methods.md` documents all JS methods for `GnrBagNode`, `GnrBag`
 ## Test Summary
 
 ```
-Total tests: 81
-- test_bag.py: 81 tests (set_item, get_item, position, iteration, call, index by attr, backref, subscribe, get_nodes, digest, columns)
+Total tests: 92
+- test_bag.py: 92 tests (set_item, get_item, position, iteration, call, index by attr, backref, subscribe, get_nodes, digest, columns, walk)
 
-Coverage: 58% overall
+Coverage: 52% overall
 ```
 
 ---
@@ -350,6 +350,7 @@ Per ogni metodo ancora da implementare (vedi `04-bag/original_bag_methods.md`):
 | `deepcopy` | ✅ Implementato (copia profonda ricorsiva) |
 | `update` | ✅ Implementato (merge con `ignore_none` parameter) |
 | `static_value` | ✅ Fix bug (era stringa invece di bool) |
+| `walk` | ✅ Implementato (dual mode: generator + legacy callback) |
 
 ### Metodi Non Portati
 
@@ -367,12 +368,12 @@ Per ogni metodo ancora da implementare (vedi `04-bag/original_bag_methods.md`):
 | `diff()` | Problemi design (ritorno misto), da rivalutare |
 | `copy()` | Deprecato, usava shallow copy (bug). Usa `deepcopy()` |
 | `filter()` | Nessun uso nel codebase. Usa `get_nodes(condition)` |
+| `traverse()` | Nel compatibility layer, wrapper su `walk()` che yielda solo node |
 
 ### Metodi da Valutare (prossima sessione)
 
 **Query & Iteration**:
-- `walk` - visita tutti i nodi ricorsivamente → **Spec in 07-serialization/**
-- `traverse` - generatore depth-first
+
 - `get_index` / `get_index_list` - indice completo
 - `get_leaves` - solo foglie
 - `is_empty` - bag vuota?

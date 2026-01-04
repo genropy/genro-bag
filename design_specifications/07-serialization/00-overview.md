@@ -1,8 +1,117 @@
 # Serialization Overview
 
-**Version**: 0.1.0
+**Version**: 0.2.0
 **Last Updated**: 2026-01-04
-**Status**: 🔴 DA REVISIONARE
+**Status**: 🟡 APPROVATO PARZIALMENTE - Architettura approvata, dettagli implementativi da revisionare
+
+---
+
+## Decisioni Architetturali (2026-01-04)
+
+### 1. Separazione XML Puro vs TYTX
+
+**Decisione**: `to_xml` e `from_xml` saranno metodi XML **puri**, non per interscambio nell'ecosistema Genropy.
+
+| Metodo | Scopo | Ecosistema |
+|--------|-------|------------|
+| `to_xml()` / `from_xml()` | XML standard, nessuna magia | Esterno (interoperabilità) |
+| `to_json()` / `from_json()` | JSON standard, nessuna magia | Esterno (interoperabilità) |
+| `flattener()` | Generator di nodi appiattiti | Interno (pipeline) |
+| `to_tytx()` / `from_tytx()` | Serializzazione type-preserving | Interno (Genropy) |
+
+### 2. Pipeline Composabile con Iteratori
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                        BAG                                       │
+└─────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+                       ┌──────────┐
+                       │ flattener│  ← Generator di tuple
+                       └──────────┘
+                              │
+                              ▼
+                   ┌─────────────────┐
+                   │   Iteratori     │
+                   │   Composabili   │
+                   └─────────────────┘
+                              │
+              ┌───────────────┼───────────────┐
+              ▼               ▼               ▼
+        ┌──────────┐   ┌──────────┐   ┌──────────┐
+        │Localizer │   │  Filter  │   │  Altri   │
+        └──────────┘   └──────────┘   └──────────┘
+                              │
+                              ▼
+                   ┌─────────────────┐
+                   │   Serializer    │
+                   │   (TYTX, ...)   │
+                   └─────────────────┘
+```
+
+### 3. Tipo `::X` per Bag in TYTX
+
+**Decisione**: La Bag viene serializzata con suffix `::X` in TYTX.
+
+```python
+# Bag come root
+to_tytx(mia_bag)
+# → '[["", "name", null, "test", {}], ...]::X'
+
+# Bag dentro una struttura
+to_tytx([33, mia_bag, 'kk'])
+# → '[33, "[[...]]::X", "kk"]::JS'
+```
+
+**Marker `::X`**:
+- Indica "questo è una Bag serializzata come flattened JSON"
+- I valori dentro le tuple usano suffissi TYTX (`::L`, `::D`, etc.)
+- `"::X"` come valore indica "questo nodo è una Bag (branch)"
+
+### 4. Hook Registration in genro-tytx
+
+**Issue GitHub**: [genro-tytx#31 - Add custom type registration hooks](https://github.com/genropy/genro-tytx/issues/31)
+
+Per evitare dipendenze circolari (tytx → bag), genro-tytx fornirà un meccanismo di hook registration:
+
+```python
+# In genro-tytx
+def register_type(
+    cls: type,
+    suffix: str,
+    serializer: Callable[[Any], str],
+    deserializer: Callable[[str], Any]
+) -> None:
+    """Register a custom type for TYTX serialization."""
+
+# In genro-bag (all'import)
+from genro_tytx import register_type
+
+register_type(Bag, "X", _serialize_bag, _deserialize_bag)
+```
+
+### 5. Niente `is_branch` - Tipo Esplicito
+
+**Decisione**: Non usare `is_branch` come concetto. Il tipo è esplicito:
+
+```python
+# Nel flattener
+if isinstance(node.value, Bag):
+    yield (parent, label, tag, "::X", attr)  # Branch
+else:
+    yield (parent, label, tag, to_tytx_value(node.value), attr)  # Leaf
+```
+
+La ricostruzione è univoca:
+- `"::X"` → crea Bag, i figli arriveranno dopo
+- `None` → valore None scalare
+- `"valore::SUFFIX"` → decodifica con TYTX
+- `"stringa"` → stringa pura
+
+### 6. Nome Metodo: `flattener` (non `flattened`)
+
+**Decisione**: Usare `flattener()` come nome del metodo generator.
 
 ---
 
@@ -10,123 +119,118 @@
 
 ### Formato Primario: TYTX
 
-**genro-bag** userà **TYTX** come formato primario di serializzazione.
+**genro-bag** userà **TYTX** come formato primario di serializzazione per l'ecosistema Genropy.
 
-TYTX (Type-preserving Transfer) è un formato sviluppato internamente che preserva i tipi Python nativi attraverso la serializzazione:
+TYTX (Type-preserving Transfer) preserva i tipi Python nativi:
 
 - `Decimal` → rimane `Decimal` (non float)
 - `date`, `datetime`, `time` → preservati
+- `Bag` → serializzata come `::X`
 - `None`, `bool`, `int`, `float`, `str` → preservati
-- Strutture nested → preservate
 
 ### Perché TYTX
 
 | Aspetto | XML Legacy | JSON Standard | TYTX |
 |---------|------------|---------------|------|
 | Type preservation | ❌ Tutto stringa | ❌ Perde Decimal, date | ✅ Completo |
+| Bag support | Via gnrbagxml | ❌ No | ✅ Tipo ::X |
 | Parsing | Lento | Veloce | Veloce |
 | Dimensione | Grande | Media | Compatta |
 | Human readable | ✅ | ✅ | ✅ (JSON) |
 | Binary option | ❌ | ❌ | ✅ (MessagePack) |
 
-### Metodi Legacy nel Compatibility Layer
-
-I vecchi metodi di serializzazione XML della Bag originale **non saranno reimplementati** nel core di genro-bag. Resteranno disponibili nel **compatibility layer** per retrocompatibilità:
-
-```
-genro-bag (core)           genro-bag-compat (layer)
-─────────────────          ──────────────────────────
-to_tytx()          ←──     toXml()  → chiama to_tytx() + conversione
-from_tytx()        ←──     fromXml() → parsing XML → from_tytx()
-                           pickle() → deprecato
-                           unpickle() → deprecato
-```
-
 ### Metodi Core (genro-bag)
 
 | Metodo | Descrizione |
 |--------|-------------|
-| `bag.to_tytx(transport='json')` | Serializza in JSON TYTX |
+| `bag.to_tytx(transport='json')` | Serializza in JSON TYTX con `::X` |
 | `bag.to_tytx(transport='msgpack')` | Serializza in MessagePack binario |
 | `Bag.from_tytx(data)` | Deserializza da TYTX |
-| `bag.flattened()` | Generatore di tuple per serializzazione |
+| `bag.flattener()` | Generatore di tuple per serializzazione |
 | `bag.walk()` | Traversal depth-first |
+| `bag.to_xml()` | XML puro standard |
+| `bag.to_json()` | JSON puro standard |
 
-### Metodi Compatibility Layer (genro-bag-compat)
+### Metodi XML/JSON Puri
 
-| Metodo Legacy | Implementazione |
-|---------------|-----------------|
-| `toXml()` | Wrapper → to_tytx() + XML envelope |
-| `fromXml()` | Parse XML → from_tytx() |
-| `pickle()` | Deprecato, warning |
-| `unpickle()` | Deprecato, warning |
-| `as_dict()` | Conversione a dict Python |
-| `as_dict_deeply()` | Conversione ricorsiva |
+Questi metodi sono per **interoperabilità esterna**, non per ecosistema Genropy:
 
----
+```python
+# XML puro - senza tipi TYTX
+bag.to_xml()
+# → '<root><name>test</name><count>42</count></root>'
 
-## Architettura
-
-```
-┌─────────────────────────────────────────────────────────┐
-│                    Application Code                      │
-├─────────────────────────────────────────────────────────┤
-│                                                         │
-│   bag.to_tytx()              bag.toXml()  (compat)     │
-│        │                          │                     │
-│        ▼                          ▼                     │
-│   ┌─────────┐              ┌─────────────┐             │
-│   │  TYTX   │◄─────────────│  XML Layer  │             │
-│   │ Encoder │              │  (wrapper)  │             │
-│   └────┬────┘              └─────────────┘             │
-│        │                                                │
-│        ▼                                                │
-│   ┌─────────────────┐                                  │
-│   │  bag.flattened()│  ← Generatore tuple              │
-│   └────────┬────────┘                                  │
-│            │                                            │
-│            ▼                                            │
-│   ┌─────────────────┐                                  │
-│   │   bag.walk()    │  ← Traversal depth-first         │
-│   └─────────────────┘                                  │
-│                                                         │
-└─────────────────────────────────────────────────────────┘
+# JSON puro - senza tipi TYTX
+bag.to_json()
+# → '{"name": "test", "count": 42}'
 ```
 
 ---
 
-## Formato Wire TYTX
+## Architettura Pipeline
 
-### Struttura Base
-
-```json
-{
-  "rows": [
-    ["", "config_0", "config", null, {"name": "app"}],
-    ["config_0", "db_0", "section", null, {}],
-    ["config_0.db_0", "host_0", "setting", "localhost", {}]
-  ]
-}
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Application Code                              │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                  │
+│   bag.to_tytx()                     bag.to_xml() (puro)         │
+│        │                                 │                       │
+│        ▼                                 ▼                       │
+│   ┌──────────────┐                 ┌──────────────┐             │
+│   │  flattener() │                 │  XML Writer  │             │
+│   └──────┬───────┘                 │  (standard)  │             │
+│          │                         └──────────────┘             │
+│          ▼                                                       │
+│   ┌──────────────┐                                              │
+│   │  Localizer   │  ← Iteratore opzionale                       │
+│   │  (optional)  │                                              │
+│   └──────┬───────┘                                              │
+│          │                                                       │
+│          ▼                                                       │
+│   ┌──────────────┐                                              │
+│   │ TYTX Encoder │  ← Aggiunge suffissi tipo                    │
+│   │   + ::X      │                                              │
+│   └──────────────┘                                              │
+│                                                                  │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-Ogni riga: `[parent_path, label, tag, value, attributes]`
+---
 
-### Compact Mode
+## Formato Wire TYTX con ::X
 
-```json
-{
-  "rows": [
-    [null, "config_0", "config", null, {"name": "app"}],
-    [0, "db_0", "section", null, {}],
-    [1, "host_0", "setting", "localhost", {}]
-  ],
-  "paths": {"0": "config_0", "1": "config_0.db_0"}
-}
+### Bag come Root
+
+```python
+bag = Bag()
+bag['name'] = 'Giovanni'
+bag['age'] = 42
+
+to_tytx(bag)
+# → '[["", "name", null, "Giovanni", {}], ["", "age", null, "42::L", {}]]::X'
 ```
 
-- `parent` diventa codice numerico
-- `paths` mappa codici → path
-- ~30% più compatto senza gzip
+### Bag Nested
+
+```python
+bag = Bag()
+config = Bag()
+config['host'] = 'localhost'
+bag['config'] = config
+
+to_tytx(bag)
+# → '[["", "config", null, "::X", {}], ["config", "host", null, "localhost", {}]]::X'
+#                           ^^^^ branch marker
+```
+
+### Bag dentro Struttura Mista
+
+```python
+to_tytx([33, bag, 'kk'])
+# → '[33, "[...]::X", "kk"]::JS'
+#         ^^^^^^^^ Bag serializzata come stringa con ::X
+```
 
 ---
 
@@ -134,14 +238,15 @@ Ogni riga: `[parent_path, label, tag, value, attributes]`
 
 | Package | Uso | Obbligatorio |
 |---------|-----|--------------|
-| `genro-tytx` | Encoding/decoding TYTX | Sì |
+| `genro-tytx` | Encoding/decoding TYTX + hook registration | Sì (per to_tytx) |
 | `msgpack` | Transport binario | Opzionale |
 
 ---
 
 ## Riferimenti
 
-- [01-overview.md](01-overview.md) - Dettagli tecnici walk/flattened
+- [01-overview.md](01-overview.md) - Dettagli tecnici walk/flattener
 - [02-implementation-plan.md](02-implementation-plan.md) - Piano implementazione
+- [GitHub Issue #31](https://github.com/genropy/genro-tytx/issues/31) - Hook registration in genro-tytx
 - `genro-treestore/store/serialization.py` - Implementazione reference
 - `genro-tytx` - Package TYTX
