@@ -175,10 +175,10 @@ The file `js_bag_methods.md` documents all JS methods for `GnrBagNode`, `GnrBag`
 ## Test Summary
 
 ```
-Total tests: 92
-- test_bag.py: 92 tests (set_item, get_item, position, iteration, call, index by attr, backref, subscribe, get_nodes, digest, columns, walk)
+Total tests: 98
+- test_bag.py: 98 tests (set_item, get_item, position, iteration, call, index by attr, backref, subscribe, get_nodes, digest, columns, walk, resolver)
 
-Coverage: 52% overall
+Coverage: 57% overall
 ```
 
 ---
@@ -351,6 +351,8 @@ Per ogni metodo ancora da implementare (vedi `04-bag/original_bag_methods.md`):
 | `update` | ✅ Implementato (merge con `ignore_none` parameter) |
 | `static_value` | ✅ Fix bug (era stringa invece di bool) |
 | `walk` | ✅ Implementato (dual mode: generator + legacy callback) |
+| `get_resolver` | ✅ Implementato (ritorna None se path non esiste - safe) |
+| `set_resolver` | ✅ Implementato (crea nodo con value=None) |
 
 ### Metodi Non Portati
 
@@ -373,6 +375,7 @@ Per ogni metodo ancora da implementare (vedi `04-bag/original_bag_methods.md`):
 | `getIndexList()` | Nel compatibility layer, wrapper su `walk()` - ritorna lista path |
 | `getLeaves()` | Nel compatibility layer, wrapper su `walk()` - solo foglie `[(path, value)]` |
 | `isEmpty()` | Non usato nel codebase. Usa `len(bag) == 0` o `not bag` |
+| `cbtraverse()` | Non usato nel codebase |
 
 ### Metodi da Valutare (prossima sessione)
 
@@ -388,9 +391,6 @@ Per ogni metodo ancora da implementare (vedi `04-bag/original_bag_methods.md`):
 - `builder` - property
 - `__getattr__` - delegazione al builder
 - Ereditarietà builder da parent a child
-
-**Resolver**:
-- `get_resolver` / `set_resolver`
 
 ---
 
@@ -408,6 +408,41 @@ Per ogni metodo ancora da implementare (vedi `04-bag/original_bag_methods.md`):
 
 ---
 
+## Legacy Adapter
+
+**File**: `/Users/gporcari/Sviluppo/Genropy/genropy/gnrpy/gnr/new_genro/bagadapter.py`
+
+Adapter di compatibilità per il codice Genropy esistente. Permette di usare la nuova `genro_bag` con l'API legacy camelCase.
+
+**Uso**:
+```python
+# Sostituire:
+from gnr.core.gnrbag import Bag, BagNode
+# con:
+from gnr.new_genro.bagadapter import Bag, BagNode
+```
+
+**Funzionalità**:
+
+| Categoria | Descrizione |
+|-----------|-------------|
+| **BagNode aliases** | `getValue`, `setValue`, `getAttr`, `setAttr`, `delAttr`, `hasAttr`, `getLabel`, `setLabel`, `asTuple`, `toJson`, `parentbag`, `parentNode` |
+| **Bag aliases** | `getItem`, `setItem`, `addItem`, `appendNode`, `popNode`, `getNode`, `getNodes`, `getNodeByAttr`, `getNodeByValue`, `setAttr`, `getAttr`, `delAttr`, `setBackRef`, `clearBackRef`, `delParentRef` |
+| **Traversal legacy** | `traverse()`, `getIndex()`, `getIndexList()`, `getLeaves()` - wrapper su `walk()` |
+| **Dict conversion** | `asDict()`, `asDictDeeply()` |
+| **Serialization** | `toXml()`, `toJson()`, `toTree()` - delega a legacy `gnrbag` |
+| **XML/URL loading** | `fill_from()` / `fillFrom()` - delega a legacy `gnrbag` per parsing XML |
+| **Python 2 compat** | `has_key()`, `iterkeys()`, `itervalues()`, `iteritems()` |
+| **Exceptions** | `BagValidationError`, `BagDeprecatedCall`, `BagAsXml` |
+| **Resolver** | `BagResolver` - delega a legacy (migrazione futura) |
+
+**Note**:
+- La serializzazione XML/JSON usa ancora il legacy `gnrbag` tramite conversione
+- I resolver usano il legacy `gnrbag` internamente (migrazione futura)
+- La property `tag` su `BagNode` ha comportamento smart: se c'è un builder ritorna `_tag`, altrimenti `label` (legacy)
+
+---
+
 ## External References
 
 | Reference | Location | Description |
@@ -416,3 +451,4 @@ Per ogni metodo ancora da implementare (vedi `04-bag/original_bag_methods.md`):
 | TreeStore Serialization | `genro-treestore/store/serialization.py` | to_tytx, from_tytx, XML |
 | Original gnrstructures.py | `Genropy/gnrpy/gnr/core/gnrstructures.py` | GnrStructData, GnrStructObj |
 | genro-tytx | Package separato | Type-preserving encoding/decoding |
+| **Legacy Adapter** | `Genropy/gnrpy/gnr/new_genro/bagadapter.py` | Compatibility layer camelCase → snake_case |

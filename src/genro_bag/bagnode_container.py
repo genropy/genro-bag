@@ -210,7 +210,7 @@ class BagNodeContainer:
         """
         if label in self._dict:
             node = self._dict[label]
-            node.set_value(value, _attributes=attr, _updattr=_updattr,
+            node.set_value(value or resolver, _attributes=attr, _updattr=_updattr,
                           _remove_null_attributes=_remove_null_attributes,
                           _reason=_reason)
         else:

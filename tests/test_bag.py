@@ -882,3 +882,89 @@ class TestBagWalk:
         visited = []
         bag.walk(lambda n: visited.append(n.label))
         assert visited == []
+
+
+class TestBagResolver:
+    """Tests for get_resolver and set_resolver methods."""
+
+    def test_set_resolver_creates_node(self):
+        """set_resolver creates node with resolver."""
+        from genro_bag import BagResolver
+
+        class SimpleResolver(BagResolver):
+            def load(self):
+                return 'resolved_value'
+
+        bag = Bag()
+        resolver = SimpleResolver()
+        bag.set_resolver('data', resolver)
+
+        assert 'data' in bag
+        node = bag.get_node('data')
+        assert node.resolver is resolver
+
+    def test_get_resolver_returns_resolver(self):
+        """get_resolver returns the resolver from a node."""
+        from genro_bag import BagResolver
+
+        class SimpleResolver(BagResolver):
+            def load(self):
+                return 'resolved_value'
+
+        bag = Bag()
+        resolver = SimpleResolver()
+        bag.set_resolver('data', resolver)
+
+        result = bag.get_resolver('data')
+        assert result is resolver
+
+    def test_get_resolver_nonexistent_path_returns_none(self):
+        """get_resolver returns None for nonexistent path."""
+        bag = Bag()
+        result = bag.get_resolver('nonexistent')
+        assert result is None
+
+    def test_get_resolver_no_resolver_returns_none(self):
+        """get_resolver returns None if node has no resolver."""
+        bag = Bag()
+        bag['data'] = 'value'
+        result = bag.get_resolver('data')
+        assert result is None
+
+    def test_set_resolver_nested_path(self):
+        """set_resolver works with nested paths."""
+        from genro_bag import BagResolver
+
+        class SimpleResolver(BagResolver):
+            def load(self):
+                return 'nested_resolved'
+
+        bag = Bag()
+        resolver = SimpleResolver()
+        bag.set_resolver('a.b.c', resolver)
+
+        assert bag.get_resolver('a.b.c') is resolver
+        assert bag.get_resolver('a') is None
+        assert bag.get_resolver('a.b') is None
+
+    def test_set_resolver_replaces_existing(self):
+        """set_resolver replaces existing resolver."""
+        from genro_bag import BagResolver
+
+        class Resolver1(BagResolver):
+            def load(self):
+                return 'first'
+
+        class Resolver2(BagResolver):
+            def load(self):
+                return 'second'
+
+        bag = Bag()
+        resolver1 = Resolver1()
+        resolver2 = Resolver2()
+
+        bag.set_resolver('data', resolver1)
+        assert bag.get_resolver('data') is resolver1
+
+        bag.set_resolver('data', resolver2)
+        assert bag.get_resolver('data') is resolver2

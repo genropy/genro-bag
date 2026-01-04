@@ -480,7 +480,7 @@ class Bag:
     def set_item(self, path: str, value: Any, _attributes: dict | None = None,
                  _position: str | None = None,
                  _updattr: bool = False, _remove_null_attributes: bool = True,
-                 _reason: str | None = None, **kwargs) -> None:
+                 _reason: str | None = None, resolver=None, **kwargs) -> None:
         """Set value at a hierarchical path.
 
         Traverses the Bag hierarchy following the dot-separated path, creating
@@ -518,13 +518,15 @@ class Bag:
             _attributes = dict(_attributes or {})
             _attributes.update(kwargs)
 
-        resolver = None
+        # Se value è un resolver, estrailo (legacy compatibility)
         if safe_is_instance(value, "genro_bag.resolver.BagResolver"):
             resolver = value
             value = None
-            if resolver.attributes:
-                _attributes = dict(_attributes or ())
-                _attributes.update(resolver.attributes)
+
+        # Gestisci resolver.attributes se presente
+        if resolver is not None and hasattr(resolver, 'attributes') and resolver.attributes:
+            _attributes = dict(_attributes or ())
+            _attributes.update(resolver.attributes)
 
         path = _normalize_path(path)
         obj, label = self._htraverse(path, write_mode=True)
@@ -813,6 +815,33 @@ class Bag:
         if self.parent_node:
             return self.parent_node.get_inherited_attributes()
         return {}
+
+    # -------------------------------------------------------------------------
+    # Resolver Methods
+    # -------------------------------------------------------------------------
+
+    def get_resolver(self, path: str):
+        """Get the resolver at the given path.
+
+        Args:
+            path: Path to the node.
+
+        Returns:
+            The resolver, or None if path doesn't exist or has no resolver.
+        """
+        node = self.get_node(path, static=True)
+        return node.resolver if node else None
+
+    def set_resolver(self, path: str, resolver) -> None:
+        """Set a resolver at the given path.
+
+        Creates the node if it doesn't exist, with value=None.
+
+        Args:
+            path: Path to the node.
+            resolver: The resolver to set.
+        """
+        self.set_item(path, None, resolver=resolver)
 
     def sort(self, key: str | Callable = '#k:a') -> Bag:
         """Sort nodes in place.
