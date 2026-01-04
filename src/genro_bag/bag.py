@@ -716,6 +716,103 @@ class Bag:
         """Property alias for get_nodes()."""
         return self.get_nodes()
 
+    def get_node_by_attr(self, attr: str, value: Any) -> BagNode | None:
+        """Return the first BagNode with the requested attribute value.
+
+        Searches recursively through the Bag hierarchy (breadth-first at each level).
+
+        Args:
+            attr: Attribute name to search.
+            value: Attribute value to match.
+
+        Returns:
+            BagNode if found, None otherwise.
+        """
+        sub_bags = []
+        for node in self._nodes:
+            if node.has_attr(attr, value):
+                return node
+            if isinstance(node.value, Bag):
+                sub_bags.append(node)
+
+        for node in sub_bags:
+            found = node.value.get_node_by_attr(attr, value)
+            if found:
+                return found
+
+        return None
+
+    def get_node_by_value(self, key: str, value: Any) -> BagNode | None:
+        """Return the first BagNode whose value contains key=value.
+
+        Searches only direct children (not recursive).
+        The node's value must be dict-like (Bag or dict).
+
+        Args:
+            key: Key to look for in node.value.
+            value: Value to match.
+
+        Returns:
+            BagNode if found, None otherwise.
+        """
+        for node in self._nodes:
+            node_value = node.value
+            if node_value and node_value[key] == value:
+                return node
+        return None
+
+    def set_attr(self, path: str | None = None, _attributes: dict | None = None,
+                 _remove_null_attributes: bool = True, **kwargs) -> None:
+        """Set attributes on a node at the given path.
+
+        Args:
+            path: Path to the node. If None, uses parent_node.
+            _attributes: Dict of attributes to set.
+            _remove_null_attributes: If True, remove attributes with None value.
+            **kwargs: Additional attributes to set.
+        """
+        self.get_node(path, autocreate=True, static=True).set_attr(
+            attr=_attributes, _remove_null_attributes=_remove_null_attributes, **kwargs
+        )
+
+    def get_attr(self, path: str | None = None, attr: str | None = None,
+                 default: Any = None) -> Any:
+        """Get an attribute from a node at the given path.
+
+        Args:
+            path: Path to the node. If None, uses parent_node.
+            attr: Attribute name to get.
+            default: Default value if node or attribute not found.
+
+        Returns:
+            Attribute value or default.
+        """
+        node = self.get_node(path, static=True)
+        if node:
+            return node.get_attr(label=attr, default=default)
+        return default
+
+    def del_attr(self, path: str | None = None, *attrs: str) -> None:
+        """Delete attributes from a node at the given path.
+
+        Args:
+            path: Path to the node. If None, uses parent_node.
+            *attrs: Attribute names to delete.
+        """
+        node = self.get_node(path, static=True)
+        if node:
+            node.del_attr(*attrs)
+
+    def get_inherited_attributes(self) -> dict[str, Any]:
+        """Get inherited attributes from parent chain.
+
+        Returns:
+            Dict of attributes inherited from parent nodes.
+        """
+        if self.parent_node:
+            return self.parent_node.get_inherited_attributes()
+        return {}
+
     def digest(self, what: str | list | None = None, condition: Any = None,
                as_columns: bool = False) -> list:
         """Return a list of tuples with keys/values/attributes of Bag elements.

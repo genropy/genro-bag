@@ -422,15 +422,15 @@ class BagNode:
     @property
     def position(self) -> int | None:
         """Get this node's index in parent's nodes list."""
-        if self._parent_bag is None:
+        if self.parent_bag is None:
             return None
-        return self._parent_bag.nodes.keys().index(self.label)
+        return self.parent_bag.nodes.keys().index(self.label)
 
     @property
     def fullpath(self) -> str | None:
         """Get dot-separated path from root to this node."""
-        if self._parent_bag is not None:
-            fullpath = self._parent_bag.fullpath
+        if self.parent_bag is not None:
+            fullpath = self.parent_bag.fullpath
             if fullpath is not None:
                 return f'{fullpath}.{self.label}'
         return None
@@ -442,8 +442,8 @@ class BagNode:
         In the hierarchy: grandparent_bag contains parent_node, whose value
         is parent_bag, which contains this node.
         """
-        if self._parent_bag:
-            return self._parent_bag.parent_node
+        if self.parent_bag:
+            return self.parent_bag.parent_node
         return None
 
     def get_inherited_attributes(self) -> dict[str, Any]:
@@ -453,8 +453,8 @@ class BagNode:
             Dict with all inherited attributes merged with this node's attributes.
         """
         inherited: dict[str, Any] = {}
-        if self._parent_bag and self._parent_bag.parent_node:
-            inherited = self._parent_bag.parent_node.get_inherited_attributes()
+        if self.parent_bag and self.parent_bag.parent_node:
+            inherited = self.parent_bag.parent_node.get_inherited_attributes()
         inherited.update(self._attr)
         return inherited
 

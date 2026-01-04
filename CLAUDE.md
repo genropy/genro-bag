@@ -98,6 +98,39 @@ def set_item(self, path, value):
 
 ---
 
+### Rule: Use Properties and Public Methods Internally
+
+**MOLTO IMPORTANTE: Usare sempre property e metodi pubblici invece di attributi privati anche all'interno della classe.**
+
+Questa regola facilita le future evoluzioni del codice:
+1. Se una property viene modificata (es. per aggiungere logica), tutto il codice che la usa beneficia automaticamente
+2. Garantisce consistenza di comportamento in tutta la classe
+3. Permette di cambiare l'implementazione interna senza modificare il resto del codice
+
+**Esempio - fullpath property**:
+
+```python
+# ❌ SBAGLIATO - accesso diretto all'attributo privato
+@property
+def fullpath(self) -> str | None:
+    if self._parent is not None:  # accesso diretto
+        parent_fullpath = self._parent.fullpath
+        ...
+
+# ✅ CORRETTO - usa la property
+@property
+def fullpath(self) -> str | None:
+    if self.parent is not None:  # usa la property parent
+        parent_fullpath = self.parent.fullpath
+        ...
+```
+
+**Eccezioni**:
+- Nel setter di una property, ovviamente si accede all'attributo privato
+- In `__init__` per l'inizializzazione degli attributi
+
+---
+
 ### Rule: Minimal Code - No Redundant Lines
 
 **Mai aggiungere righe di codice ridondanti o controlli inutili.**

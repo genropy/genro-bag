@@ -67,6 +67,9 @@ Documento che traccia le differenze tra l'implementazione originale (gnrbag) e l
 |--------|--------|
 | `node` (property) | Deprecato in originale, usa `parent_node` |
 | `merge()` | Deprecato in originale, usa `update()` |
+| `addItem()` | La nuova Bag non ammette label duplicate. Usa `set_item()` che sovrascrive se la label esiste |
+| `appendNode()` | Aggiungeva nodi "raw" senza controllo duplicati. Usa `set_item()` |
+| `getDeepestNode()` | Non usato nel codebase. Se necessario, usare `_traverse_until()` internamente |
 
 ---
 
@@ -104,6 +107,19 @@ def setdefault(self, path, default=None):
 | `digest` | `asColumns` | `as_columns` |
 | `columns` | `attrMode` | `attr_mode` |
 | `get_node` | `asTuple` | `as_tuple` |
+
+---
+
+## Nuovo Parametro `static` per Resolver
+
+La nuova Bag introduce il parametro `static` nei metodi `get_node` e `get_item`:
+
+- `static=False` (default): durante la navigazione, i resolver vengono triggerati se presenti
+- `static=True`: i resolver NON vengono triggerati, si ottiene il valore "statico"
+
+**Nota importante**: il default è `False` per compatibilità con il comportamento originale, ma in contesti sync è consigliabile usare `static=True` per evitare problemi con resolver async.
+
+I metodi sync come `set_attr`, `get_attr`, `del_attr` usano internamente `static=True`.
 
 ---
 
