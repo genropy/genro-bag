@@ -335,6 +335,14 @@ Per ogni metodo ancora da implementare (vedi `04-bag/original_bag_methods.md`):
 | `keys(iter=)` | ✅ Aggiunto parametro `iter` |
 | `values(iter=)` | ✅ Aggiunto parametro `iter` |
 | `items(iter=)` | ✅ Aggiunto parametro `iter` |
+| `get_node_by_attr` | ✅ Implementato (ricerca ricorsiva per attributo) |
+| `get_node_by_value` | ✅ Implementato (ricerca per valore, JS compat) |
+| `set_attr` | ✅ Implementato (wrapper su BagNode.set_attr) |
+| `get_attr` | ✅ Implementato (wrapper su BagNode.get_attr) |
+| `del_attr` | ✅ Implementato (wrapper su BagNode.del_attr) |
+| `get_inherited_attributes` | ✅ Implementato |
+| `sort` | ✅ Implementato (nuovi modes a/A/d/D per case sensitivity) |
+| `sum` | ✅ Implementato (aggiunto parametro condition) |
 
 ### Metodi Non Portati
 
@@ -345,8 +353,39 @@ Per ogni metodo ancora da implementare (vedi `04-bag/original_bag_methods.md`):
 | `iteritems()` | Python 2, usa `items(iter=True)` |
 | `has_key()` | Python 2, usa `path in bag` |
 | `node` (property) | Deprecato, usa `parent_node` |
+| `addItem()` | Label duplicate non ammesse, usa `set_item()` |
+| `appendNode()` | Label duplicate non ammesse, usa `set_item()` |
+| `getDeepestNode()` | Non usato, funzionalità in `_traverse_until()` |
+| `merge()` | Deprecato in originale, usa `update()` |
 
-### Metodi da Valutare
+### Metodi da Valutare (prossima sessione)
+
+**Comparison** (prossimo):
+- `__eq__` - uguaglianza tra Bag
+- `__ne__` - disuguaglianza tra Bag
+- `diff` - differenze tra Bag
+
+**Query & Iteration**:
+- `filter` - filtra nodi
+- `walk` - visita tutti i nodi ricorsivamente
+- `traverse` - generatore depth-first
+- `get_index` / `get_index_list` - indice completo
+- `get_leaves` - solo foglie
+- `is_empty` - bag vuota?
+
+**Copy & Merge**:
+- `copy` - copia shallow
+- `deepcopy` - copia deep
+- `update` - merge in place
+
+**Serialization** (da valutare se necessario):
+- `to_xml` / `from_xml`
+- `to_json` / `from_json`
+- `as_dict` / `as_dict_deeply`
+- `fill_from`
+
+**Resolver**:
+- `get_resolver` / `set_resolver`
 
 Vedi `04-bag/original_bag_methods.md` per la lista completa.
 Vedi `01-overview/03-compatibility_layer.md` per le differenze naming e comportamento.

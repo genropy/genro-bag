@@ -97,6 +97,30 @@ def setdefault(self, path, default=None):
     return node.value
 ```
 
+### sort
+
+**Originale:**
+- Parametro `pars` (stringa o callable)
+- Modes: `a`, `asc`, `>` per ascending; altri per descending
+- Sempre case-insensitive per label
+
+**Nuovo:**
+- Parametro rinominato `key`
+- Modes semplificati con controllo case sensitivity:
+  - `a`: ascending case-insensitive (default)
+  - `A`: ascending case-sensitive
+  - `d`: descending case-insensitive
+  - `D`: descending case-sensitive
+- I vecchi modes (`asc`, `desc`, `>`) non sono più supportati
+
+### sum
+
+**Nuovo parametro:**
+
+- `condition`: filtro opzionale (callable che riceve BagNode e ritorna bool)
+- Permette di sommare solo i nodi che soddisfano la condizione
+- Esempio: `bag.sum('#v', condition=lambda n: n.get_attr('active'))`
+
 ---
 
 ## Parametri Rinominati
@@ -107,6 +131,7 @@ def setdefault(self, path, default=None):
 | `digest` | `asColumns` | `as_columns` |
 | `columns` | `attrMode` | `attr_mode` |
 | `get_node` | `asTuple` | `as_tuple` |
+| `sort` | `pars` | `key` |
 
 ---
 

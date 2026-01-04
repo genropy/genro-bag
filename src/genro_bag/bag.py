@@ -22,6 +22,7 @@ Example:
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from genro_toolbox import smartasync, smartawait, smartsplit
@@ -812,6 +813,118 @@ class Bag:
         if self.parent_node:
             return self.parent_node.get_inherited_attributes()
         return {}
+
+    def sort(self, key: str | Callable = '#k:a') -> Bag:
+        """Sort nodes in place.
+
+        Args:
+            key: Sort specification string or callable.
+                If callable, used directly as key function for sort.
+                If string, format is 'criterion:mode' or multiple 'c1:m1,c2:m2'.
+
+                Criteria:
+                - '#k': sort by label
+                - '#v': sort by value
+                - '#a.attrname': sort by attribute
+                - 'fieldname': sort by field in value (if value is dict/Bag)
+
+                Modes:
+                - 'a': ascending, case-insensitive (default)
+                - 'A': ascending, case-sensitive
+                - 'd': descending, case-insensitive
+                - 'D': descending, case-sensitive
+
+        Returns:
+            Self (for chaining).
+
+        Examples:
+            >>> bag.sort('#k')           # by label ascending
+            >>> bag.sort('#k:d')         # by label descending
+            >>> bag.sort('#v:A')         # by value ascending, case-sensitive
+            >>> bag.sort('#a.name:a')    # by attribute 'name'
+            >>> bag.sort('field:d')      # by field in value
+            >>> bag.sort('#k:a,#v:d')    # multi-level sort
+            >>> bag.sort(lambda n: n.value)  # custom key function
+        """
+        def sort_key(value: Any, case_insensitive: bool) -> tuple:
+            """Create sort key handling None and case sensitivity."""
+            if value is None:
+                return (1, '')  # None values sort last
+            if case_insensitive and isinstance(value, str):
+                return (0, value.lower())
+            return (0, value)
+
+        if callable(key):
+            self._nodes.sort(key=key)
+        else:
+            levels = key.split(',')
+            levels.reverse()  # process in reverse for stable multi-level sort
+            for level in levels:
+                if ':' in level:
+                    what, mode = level.split(':', 1)
+                else:
+                    what = level
+                    mode = 'a'
+                what = what.strip()
+                mode = mode.strip()
+
+                reverse = mode in ('d', 'D')
+                case_insensitive = mode in ('a', 'd')
+
+                if what.lower() == '#k':
+                    self._nodes.sort(
+                        key=lambda n: sort_key(n.label, case_insensitive),
+                        reverse=reverse
+                    )
+                elif what.lower() == '#v':
+                    self._nodes.sort(
+                        key=lambda n: sort_key(n.value, case_insensitive),
+                        reverse=reverse
+                    )
+                elif what.lower().startswith('#a.'):
+                    attrname = what[3:]
+                    self._nodes.sort(
+                        key=lambda n, attr=attrname: sort_key(
+                            n.get_attr(attr), case_insensitive
+                        ),
+                        reverse=reverse
+                    )
+                else:
+                    # Sort by field in value
+                    self._nodes.sort(
+                        key=lambda n, field=what: sort_key(
+                            n.value[field] if n.value else None, case_insensitive
+                        ),
+                        reverse=reverse
+                    )
+        return self
+
+    def sum(self, what: str = '#v', condition: Callable[[BagNode], bool] | None = None
+            ) -> float | list[float]:
+        """Sum values or attributes.
+
+        Args:
+            what: What to sum (same syntax as digest).
+                - '#v': sum values
+                - '#a.attrname': sum attribute
+                - '#v,#a.price': multiple sums (returns list)
+            condition: Optional callable filter (receives BagNode, returns bool).
+
+        Returns:
+            Sum as float, or list of floats if multiple what specs.
+
+        Examples:
+            >>> bag.sum()                    # sum all values
+            >>> bag.sum('#a.price')          # sum 'price' attribute
+            >>> bag.sum('#v,#a.qty')         # [sum_values, sum_qty]
+            >>> bag.sum('#v', lambda n: n.get_attr('active'))  # filtered sum
+        """
+        if ',' in what:
+            return [
+                sum(v or 0 for v in self.digest(w.strip(), condition))
+                for w in what.split(',')
+            ]
+        return sum(v or 0 for v in self.digest(what, condition))
 
     def digest(self, what: str | list | None = None, condition: Any = None,
                as_columns: bool = False) -> list:
