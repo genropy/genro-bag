@@ -187,11 +187,13 @@ Coverage: 58% overall
 
 | Directory | Documents | Status |
 |-----------|-----------|--------|
-| `01-overview/` | Project startup, status | Current |
+| `01-overview/` | Project startup, status, compatibility layer | Current |
 | `02-node_container/` | NodeContainer spec | Complete |
 | `03-bag_node/` | BagNode spec, decisions, comparison | Complete |
 | `04-bag/` | Bag spec, original code reference, htraverse comparison | **In progress** |
 | `05-resolver/` | Resolver spec, async problem | **Resolved** |
+| `06-builder/` | Builder system (da TreeStore), gnrstructures.py reference | **New** |
+| `07-serialization/` | TYTX serialization, walk/flattened | **New** |
 
 ---
 
@@ -343,6 +345,11 @@ Per ogni metodo ancora da implementare (vedi `04-bag/original_bag_methods.md`):
 | `get_inherited_attributes` | ✅ Implementato |
 | `sort` | ✅ Implementato (nuovi modes a/A/d/D per case sensitivity) |
 | `sum` | ✅ Implementato (aggiunto parametro condition) |
+| `__eq__` | ✅ Implementato (Bag, BagNode, BagNodeContainer) |
+| `__ne__` | ✅ Implementato |
+| `deepcopy` | ✅ Implementato (copia profonda ricorsiva) |
+| `update` | ✅ Implementato (merge con `ignore_none` parameter) |
+| `static_value` | ✅ Fix bug (era stringa invece di bool) |
 
 ### Metodi Non Portati
 
@@ -357,35 +364,56 @@ Per ogni metodo ancora da implementare (vedi `04-bag/original_bag_methods.md`):
 | `appendNode()` | Label duplicate non ammesse, usa `set_item()` |
 | `getDeepestNode()` | Non usato, funzionalità in `_traverse_until()` |
 | `merge()` | Deprecato in originale, usa `update()` |
+| `diff()` | Problemi design (ritorno misto), da rivalutare |
+| `copy()` | Deprecato, usava shallow copy (bug). Usa `deepcopy()` |
+| `filter()` | Nessun uso nel codebase. Usa `get_nodes(condition)` |
 
 ### Metodi da Valutare (prossima sessione)
 
-**Comparison** (prossimo):
-- `__eq__` - uguaglianza tra Bag
-- `__ne__` - disuguaglianza tra Bag
-- `diff` - differenze tra Bag
-
 **Query & Iteration**:
-- `filter` - filtra nodi
-- `walk` - visita tutti i nodi ricorsivamente
+- `walk` - visita tutti i nodi ricorsivamente → **Spec in 07-serialization/**
 - `traverse` - generatore depth-first
 - `get_index` / `get_index_list` - indice completo
 - `get_leaves` - solo foglie
 - `is_empty` - bag vuota?
 
-**Copy & Merge**:
-- `copy` - copia shallow
-- `deepcopy` - copia deep
-- `update` - merge in place
+**Serialization** → **Vedi 07-serialization/**:
+- `to_tytx` / `from_tytx` - formato primario TYTX (type-preserving)
+- `flattened` - generatore per serializzazione
+- `to_xml` / `from_xml` - nel compatibility layer
+- `to_json` / `from_json` - nel compatibility layer
+- `as_dict` / `as_dict_deeply` - nel compatibility layer
 
-**Serialization** (da valutare se necessario):
-- `to_xml` / `from_xml`
-- `to_json` / `from_json`
-- `as_dict` / `as_dict_deeply`
-- `fill_from`
+**Builder System** → **Vedi 06-builder/**:
+- `_builder` - slot per builder instance
+- `builder` - property
+- `__getattr__` - delegazione al builder
+- Ereditarietà builder da parent a child
 
 **Resolver**:
 - `get_resolver` / `set_resolver`
 
-Vedi `04-bag/original_bag_methods.md` per la lista completa.
-Vedi `01-overview/03-compatibility_layer.md` per le differenze naming e comportamento.
+---
+
+## Reference Documentation
+
+| Document | Location | Description |
+|----------|----------|-------------|
+| Builder Overview | `06-builder/01-overview.md` | Pattern builder, gnrstructures.py, ereditarietà |
+| Builder Implementation | `06-builder/02-implementation-plan.md` | Piano porting da TreeStore |
+| Serialization Overview | `07-serialization/00-overview.md` | Strategia TYTX, compatibility layer |
+| Serialization Details | `07-serialization/01-overview.md` | walk/flattened dettagli |
+| Serialization Plan | `07-serialization/02-implementation-plan.md` | Piano implementazione |
+| Original Bag Methods | `04-bag/original_bag_methods.md` | Lista completa metodi originali |
+| Compatibility Layer | `01-overview/03-compatibility_layer.md` | Differenze naming e comportamento |
+
+---
+
+## External References
+
+| Reference | Location | Description |
+|-----------|----------|-------------|
+| TreeStore Builder | `genro-treestore/builders/` | BuilderBase, decorators, HtmlBuilder |
+| TreeStore Serialization | `genro-treestore/store/serialization.py` | to_tytx, from_tytx, XML |
+| Original gnrstructures.py | `Genropy/gnrpy/gnr/core/gnrstructures.py` | GnrStructData, GnrStructObj |
+| genro-tytx | Package separato | Type-preserving encoding/decoding |

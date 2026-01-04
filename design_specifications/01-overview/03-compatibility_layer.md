@@ -70,6 +70,9 @@ Documento che traccia le differenze tra l'implementazione originale (gnrbag) e l
 | `addItem()` | La nuova Bag non ammette label duplicate. Usa `set_item()` che sovrascrive se la label esiste |
 | `appendNode()` | Aggiungeva nodi "raw" senza controllo duplicati. Usa `set_item()` |
 | `getDeepestNode()` | Non usato nel codebase. Se necessario, usare `_traverse_until()` internamente |
+| `diff()` | Non portato. L'originale aveva problemi: ritorno misto (None/str), solo prima differenza, non gestiva tutti i casi. Da rivalutare se serve con design migliore (ritorno strutturato) |
+| `copy()` | Deprecato. L'originale delegava a `copy.copy()` che faceva shallow copy (bug: nodi condivisi). Usa `deepcopy()` |
+| `filter()` | Non portato. Nessun uso trovato nel codebase. Per filtrare usare `get_nodes(condition)` o `digest(condition=...)` |
 
 ---
 

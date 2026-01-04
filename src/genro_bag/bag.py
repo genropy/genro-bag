@@ -1140,6 +1140,93 @@ class Bag:
         else:
             return False
 
+    def __eq__(self, other: object) -> bool:
+        """Check equality with another Bag.
+
+        Two Bags are equal if they have the same nodes in the same order.
+        This comparison delegates to BagNodeContainer.__eq__ which in turn
+        compares BagNodes (label, attr, value/resolver).
+
+        Args:
+            other: Object to compare with.
+
+        Returns:
+            True if equal, False otherwise.
+        """
+        if not isinstance(other, Bag):
+            return False
+        return self._nodes == other._nodes
+
+    def __ne__(self, other: object) -> bool:
+        """Check inequality with another Bag."""
+        return not self.__eq__(other)
+
+    # -------------------- deepcopy --------------------------------
+
+    def deepcopy(self) -> Bag:
+        """Return a deep copy of this Bag.
+
+        Creates a new Bag with copies of all nodes. Nested Bags are
+        recursively deep copied. Values are copied by reference unless
+        they are Bags.
+
+        Returns:
+            A new Bag with copied nodes.
+
+        Example:
+            >>> bag = Bag({'a': 1, 'b': Bag({'c': 2})})
+            >>> copy = bag.deepcopy()
+            >>> copy['b.c'] = 3
+            >>> bag['b.c']  # Original unchanged
+            2
+        """
+        result = Bag()
+        for node in self:
+            value = node.static_value
+            if isinstance(value, Bag):
+                value = value.deepcopy()
+            result.set_item(node.label, value, attr=dict(node.attr))
+        return result
+
+    # -------------------- update --------------------------------
+
+    def update(self, source: Bag | dict, ignore_none: bool = False) -> None:
+        """Update this Bag with nodes from source.
+
+        Merges nodes from source into this Bag. For existing labels,
+        updates the value and merges attributes. For new labels, adds
+        the node.
+
+        Args:
+            source: A Bag or dict to merge from.
+            ignore_none: If True, don't overwrite existing values with None.
+
+        Example:
+            >>> bag = Bag({'a': 1, 'b': 2})
+            >>> bag.update({'a': 10, 'c': 3})
+            >>> bag['a'], bag['b'], bag['c']
+            (10, 2, 3)
+        """
+        # Normalize to list of (label, value, attr)
+        if isinstance(source, dict):
+            items = [(k, v, {}) for k, v in source.items()]
+        else:
+            keys, values, attrs = source.digest('#k', '#v', '#a')
+            items = list(zip(keys, values, attrs, strict=True))
+
+        for label, value, attr in items:
+            if label in self._nodes:
+                curr_node = self._nodes[label]
+                curr_node.attr.update(attr)
+                curr_value = curr_node.static_value
+                if isinstance(value, Bag) and isinstance(curr_value, Bag):
+                    curr_value.update(value, ignore_none=ignore_none)
+                else:
+                    if not ignore_none or value is not None:
+                        curr_node.value = value
+            else:
+                self.set_item(label, value, attr=attr)
+
     # -------------------- _get_node (single level) --------------------------------
 
     def _get_node(self, label: str, autocreate: bool = False,
