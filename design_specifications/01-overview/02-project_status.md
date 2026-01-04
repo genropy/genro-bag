@@ -1,6 +1,6 @@
 # Project Status
 
-**Last Updated**: 2026-01-03
+**Last Updated**: 2026-01-04
 **Status**: In Development
 
 ---
@@ -114,6 +114,10 @@ NodeContainer è stato semplificato come "indexed list", poi esteso:
 | `_subscribe` | ✅ Done | Internal subscribe helper |
 | `subscribe` | ✅ Done | Subscribe to events |
 | `unsubscribe` | ✅ Done | Unsubscribe from events |
+| `get_nodes` | ✅ Done | Return nodes list with optional filter |
+| `nodes` | ✅ Done | Property alias for get_nodes() |
+| `digest` | ✅ Done | Extract keys/values/attributes (#k, #v, #a, #__v, #v.path) |
+| `columns` | ✅ Done | Shortcut for digest with as_columns=True |
 
 **Metodi rimossi (logica spostata in BagNodeContainer):**
 - `_set` → `BagNodeContainer.set()`
@@ -171,10 +175,10 @@ The file `js_bag_methods.md` documents all JS methods for `GnrBagNode`, `GnrBag`
 ## Test Summary
 
 ```
-Total tests: 66
-- test_bag.py: 66 tests (set_item, get_item, position, iteration, call, index by attr, backref, subscribe)
+Total tests: 81
+- test_bag.py: 81 tests (set_item, get_item, position, iteration, call, index by attr, backref, subscribe, get_nodes, digest, columns)
 
-Coverage: 54% overall
+Coverage: 58% overall
 ```
 
 ---
@@ -294,11 +298,11 @@ Sintassi da gestire nel layer di adattamento per retrocompatibilità:
 **Branch**: main
 **Last commits**:
 
+- `a8c086d` - feat: Add get_nodes, digest and columns methods
 - `3cbe865` - refactor: Simplify set_item with BagNodeContainer creating nodes internally
 - `ece5957` - docs: Update project status with async/sync refactoring details
 - `f07f77d` - refactor: Split _htraverse into sync/async with static parameter
 - `ce7732e` - test: Remove obsolete NodeContainer tests for removed methods
-- `3a70929` - refactor: Simplify NodeContainer as indexed list
 
 ---
 
@@ -309,3 +313,40 @@ Sintassi da gestire nel layer di adattamento per retrocompatibilità:
 3. Check `04-bag/original_bag_short.py` for reference implementation
 4. Run `pytest` to verify all tests pass
 5. Check coverage report in `htmlcov/index.html`
+
+---
+
+## Processo di Implementazione Metodi Mancanti
+
+Per ogni metodo ancora da implementare (vedi `04-bag/original_bag_methods.md`):
+
+1. **Mostrare il codice originale** dal file `original_bag.py`
+2. **Chiedere all'utente** se il metodo va implementato
+3. **Se NO**: aggiungere al layer di compatibilità in `03-compatibility_layer.md` con nota "non portato"
+4. **Se SI**: mostrare la proposta di implementazione (originale vs nuovo) e procedere dopo approvazione
+
+### Metodi Implementati (2026-01-04)
+
+| Metodo | Status |
+|--------|--------|
+| `root_attributes` | ✅ Implementato |
+| `modified` | ✅ Implementato |
+| `setdefault` | ✅ Implementato (fix bug: ritorna sempre il valore) |
+| `keys(iter=)` | ✅ Aggiunto parametro `iter` |
+| `values(iter=)` | ✅ Aggiunto parametro `iter` |
+| `items(iter=)` | ✅ Aggiunto parametro `iter` |
+
+### Metodi Non Portati
+
+| Metodo | Motivo |
+|--------|--------|
+| `iterkeys()` | Python 2, usa `keys(iter=True)` |
+| `itervalues()` | Python 2, usa `values(iter=True)` |
+| `iteritems()` | Python 2, usa `items(iter=True)` |
+| `has_key()` | Python 2, usa `path in bag` |
+| `node` (property) | Deprecato, usa `parent_node` |
+
+### Metodi da Valutare
+
+Vedi `04-bag/original_bag_methods.md` per la lista completa.
+Vedi `01-overview/03-compatibility_layer.md` per le differenze naming e comportamento.

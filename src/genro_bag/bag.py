@@ -145,6 +145,59 @@ class Bag:
         """
         return self._backref
 
+    @property
+    def fullpath(self) -> str | None:
+        """Full path from root Bag to this Bag.
+
+        Returns the dot-separated path from the root of the hierarchy to this
+        Bag. Returns None if backref mode is not enabled or if this is the root.
+        """
+        if self.parent is not None:
+            parent_fullpath = self.parent.fullpath
+            if parent_fullpath:
+                return f'{parent_fullpath}.{self.parent_node.label}'
+            else:
+                return self.parent_node.label
+        return None
+
+    @property
+    def attributes(self) -> dict:
+        """Attributes of the parent node containing this Bag.
+
+        Returns the attributes dict of the BagNode that contains this Bag.
+        Returns an empty dict if this is a standalone Bag with no parent node.
+        """
+        if self.parent_node is not None:
+            return self.parent_node.get_attr()
+        return {}
+
+    @property
+    def root_attributes(self) -> dict | None:
+        """Attributes for the root Bag."""
+        return self._root_attributes
+
+    @root_attributes.setter
+    def root_attributes(self, attrs: dict) -> None:
+        self._root_attributes = dict(attrs)
+
+    @property
+    def modified(self) -> bool | None:
+        """Modification tracking flag (None=disabled, False=clean, True=modified)."""
+        return self._modified
+
+    @modified.setter
+    def modified(self, value: bool | None) -> None:
+        if value is None:
+            self._modified = None
+            self.unsubscribe('_modified_tracker_', any=True)
+        else:
+            if self._modified is None:
+                self.subscribe('_modified_tracker_', any=self._on_modified)
+            self._modified = value
+
+    def _on_modified(self, **kwargs) -> None:
+        self._modified = True
+
     # -------------------- _htraverse helpers --------------------------------
 
     def _htraverse_before(self, path: str | list) -> tuple[Bag, list]:
@@ -599,17 +652,46 @@ class Bag:
 
     # -------------------- keys, values, items --------------------------------
 
-    def keys(self) -> list[str]:
-        """Return list of node labels in order."""
-        return self._nodes.keys()
+    def keys(self, iter: bool = False) -> list[str]:
+        """Return node labels in order.
 
-    def values(self) -> list[Any]:
-        """Return list of node values in order."""
-        return self._nodes.values()
+        Args:
+            iter: If True, return a generator instead of a list.
 
-    def items(self) -> list[tuple[str, Any]]:
-        """Return list of (label, value) tuples in order."""
-        return self._nodes.items()
+        Note:
+            Replaces iterkeys() from Python 2 - use keys(iter=True) instead.
+        """
+        return self._nodes.keys(iter=iter)
+
+    def values(self, iter: bool = False) -> list[Any]:
+        """Return node values in order.
+
+        Args:
+            iter: If True, return a generator instead of a list.
+
+        Note:
+            Replaces itervalues() from Python 2 - use values(iter=True) instead.
+        """
+        return self._nodes.values(iter=iter)
+
+    def items(self, iter: bool = False) -> list[tuple[str, Any]]:
+        """Return (label, value) tuples in order.
+
+        Args:
+            iter: If True, return a generator instead of a list.
+
+        Note:
+            Replaces iteritems() from Python 2 - use items(iter=True) instead.
+        """
+        return self._nodes.items(iter=iter)
+
+    def setdefault(self, path: str, default: Any = None) -> Any:
+        """Return value at path, setting it to default if not present."""
+        node = self.get_node(path)
+        if not node:
+            self[path] = default
+            return default
+        return node.value
 
     # -------------------- get_nodes, digest --------------------------------
 
@@ -937,7 +1019,7 @@ class Bag:
             node: The BagNode that contains this Bag.
             parent: The parent Bag.
         """
-        if not self._backref:
+        if not self.backref:
             self._backref = True
             self._parent = parent
             self._parent_node = node
@@ -968,23 +1050,23 @@ class Bag:
         """Trigger for node change events."""
         for s in list(self._upd_subscribers.values()):
             s(node=node, pathlist=pathlist, oldvalue=oldvalue, evt=evt, reason=reason)
-        if self._parent:
-            self._parent._on_node_changed(node, [self._parent_node.label] + pathlist,
+        if self.parent:
+            self.parent._on_node_changed(node, [self.parent_node.label] + pathlist,
                                           evt, oldvalue, reason=reason)
 
     def _on_node_inserted(self, node: BagNode, ind: int, pathlist: list | None = None,
                           reason: str | None = None) -> None:
         """Trigger for node insert events."""
         parent = node.parent_bag
-        if parent is not None and parent.backref and hasattr(node._value, '_htraverse'):
-            node._value.set_backref(node=node, parent=parent)
+        if parent is not None and parent.backref and hasattr(node.value, '_htraverse'):
+            node.value.set_backref(node=node, parent=parent)
 
         if pathlist is None:
             pathlist = []
         for s in list(self._ins_subscribers.values()):
             s(node=node, pathlist=pathlist, ind=ind, evt='ins', reason=reason)
-        if self._parent:
-            self._parent._on_node_inserted(node, ind, [self._parent_node.label] + pathlist,
+        if self.parent:
+            self.parent._on_node_inserted(node, ind, [self.parent_node.label] + pathlist,
                                            reason=reason)
 
     def _on_node_deleted(self, node: Any, ind: int, pathlist: list | None = None,
@@ -992,10 +1074,10 @@ class Bag:
         """Trigger for node delete events."""
         for s in list(self._del_subscribers.values()):
             s(node=node, pathlist=pathlist, ind=ind, evt='del', reason=reason)
-        if self._parent:
+        if self.parent:
             if pathlist is None:
                 pathlist = []
-            self._parent._on_node_deleted(node, ind, [self._parent_node.label] + pathlist,
+            self.parent._on_node_deleted(node, ind, [self.parent_node.label] + pathlist,
                                           reason=reason)
 
     # -------------------- subscription --------------------------------
@@ -1017,7 +1099,7 @@ class Bag:
             delete: Callback for delete events.
             any: Callback for all events (update, insert, delete).
         """
-        if not self._backref:
+        if not self.backref:
             self.set_backref()
 
         self._subscribe(subscriber_id, self._upd_subscribers, update or any)

@@ -247,15 +247,21 @@ class BagNodeContainer:
         self._dict.clear()
         self._list.clear()
 
-    def keys(self) -> list[str]:
-        """Return list of node labels in order."""
+    def keys(self, iter: bool = False) -> list[str] | Iterator[str]:
+        """Return node labels in order."""
+        if iter:
+            return (node.label for node in self._list)
         return [node.label for node in self._list]
 
-    def values(self) -> list:
-        """Return list of node values in order."""
+    def values(self, iter: bool = False) -> list | Iterator:
+        """Return node values in order."""
+        if iter:
+            return (node.get_value() for node in self._list)
         return [node.get_value() for node in self._list]
 
-    def items(self) -> list[tuple[str, Any]]:
-        """Return list of (label, value) tuples in order."""
+    def items(self, iter: bool = False) -> list[tuple[str, Any]] | Iterator[tuple[str, Any]]:
+        """Return (label, value) tuples in order."""
+        if iter:
+            return ((node.label, node.get_value()) for node in self._list)
         return [(node.label, node.get_value()) for node in self._list]
 
