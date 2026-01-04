@@ -369,14 +369,12 @@ Per ogni metodo ancora da implementare (vedi `04-bag/original_bag_methods.md`):
 | `copy()` | Deprecato, usava shallow copy (bug). Usa `deepcopy()` |
 | `filter()` | Nessun uso nel codebase. Usa `get_nodes(condition)` |
 | `traverse()` | Nel compatibility layer, wrapper su `walk()` che yielda solo node |
+| `getIndex()` | Nel compatibility layer, wrapper su `walk()` - ritorna `[(pathlist, node)]` |
+| `getIndexList()` | Nel compatibility layer, wrapper su `walk()` - ritorna lista path |
+| `getLeaves()` | Nel compatibility layer, wrapper su `walk()` - solo foglie `[(path, value)]` |
+| `isEmpty()` | Non usato nel codebase. Usa `len(bag) == 0` o `not bag` |
 
 ### Metodi da Valutare (prossima sessione)
-
-**Query & Iteration**:
-
-- `get_index` / `get_index_list` - indice completo
-- `get_leaves` - solo foglie
-- `is_empty` - bag vuota?
 
 **Serialization** → **Vedi 07-serialization/**:
 - `to_tytx` / `from_tytx` - formato primario TYTX (type-preserving)
