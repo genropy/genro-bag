@@ -1,7 +1,7 @@
 # Project Status
 
-**Last Updated**: 2026-01-05
-**Status**: In Development - Fase Resolver/Serialization
+**Last Updated**: 2026-01-06
+**Status**: In Development - Fase Test Coverage
 
 ---
 
@@ -11,19 +11,17 @@
 
 | Component | File | Stmts | Tests | Coverage | Notes |
 |-----------|------|-------|-------|----------|-------|
-| **BagNodeContainer** | `src/genro_bag/bagnode_container.py` | 123 | - | 75% | Container ordinato con `keys()`, `values()`, `items()` |
-| **BagNode** | `src/genro_bag/bag_node.py` | 209 | - | 48% | Node con resolver, backref, subscribers (parziale) |
-| **BagResolver** | `src/genro_bag/resolver.py` | 97 | - | 61% | Lazy loading con cache TTL, async support |
-| **Bag (Core)** | `src/genro_bag/bag.py` | 578 | - | 64% | Core methods, `fill_from()` implementato |
-| **DirectoryResolver** | `src/genro_bag/resolvers/directory_resolver.py` | 99 | 25 | 95% | Lazy directory listing as Bag |
-| **TxtDocResolver** | `src/genro_bag/resolvers/txt_doc_resolver.py` | 9 | - | 100% | Lazy text file loading |
-| **SerializedBagResolver** | `src/genro_bag/resolvers/serialized_bag_resolver.py` | 8 | - | 100% | Lazy Bag loading from .xml/.bag.json/.bag.mp |
-| **BagXmlSerializer** | `src/genro_bag/bag_xml.py` | - | - | 81% | XML serialization |
-| **BagXmlParser** | `src/genro_bag/bag_xml.py` | - | - | 81% | XML parsing with legacy auto-detect |
-| **Serialization** | `src/genro_bag/serialization.py` | 78 | - | 91% | TYTX to_tytx/from_tytx |
-| **BagCbResolver** | `src/genro_bag/resolvers/callback_resolver.py` | - | - | - | Callback resolver (sync/async) |
-| **UrlResolver** | `src/genro_bag/resolvers/url_resolver.py` | - | - | - | HTTP URL resolver con qs, body, method |
-| **OpenApiResolver** | `src/genro_bag/resolvers/openapi_resolver.py` | - | - | - | OpenAPI spec loader, organizza per tags |
+| **init** | `src/genro_bag/__init__.py` | 6 | - | **100%** | Exports |
+| **resolvers/init** | `src/genro_bag/resolvers/__init__.py` | 5 | - | **100%** | Exports |
+| **DirectoryResolver** | `src/genro_bag/resolvers/directory_resolver.py` | 109 | 25 | **95%** | Lazy directory listing as Bag |
+| **BagResolver** | `src/genro_bag/resolver.py` | 105 | - | **86%** | Lazy loading con cache TTL, async support |
+| **BagParser** | `src/genro_bag/parser.py` | 167 | - | **81%** | from_xml, from_tytx, from_json classmethods |
+| **BagSerializer** | `src/genro_bag/serializer.py` | 139 | - | **80%** | to_xml, to_tytx, to_json instance methods |
+| **BagNodeContainer** | `src/genro_bag/bagnode_container.py` | 123 | - | **75%** | Container ordinato con `keys()`, `values()`, `items()` |
+| **OpenApiResolver** | `src/genro_bag/resolvers/openapi_resolver.py` | 160 | 17 | **72%** | OpenAPI spec loader, organizza per tags |
+| **Bag (Core)** | `src/genro_bag/bag.py` | 588 | - | **68%** | Core methods, `fill_from()` implementato |
+| **UrlResolver** | `src/genro_bag/resolvers/url_resolver.py` | 50 | 25 | **65%** | HTTP URL resolver con qs, body, method |
+| **BagNode** | `src/genro_bag/bag_node.py` | 209 | - | **51%** | Node con resolver, backref, subscribers (parziale) |
 
 ### Async/Sync Refactoring (2026-01-03)
 
@@ -184,12 +182,14 @@ The file `js_bag_methods.md` documents all JS methods for `GnrBagNode`, `GnrBag`
 ## Test Summary
 
 ```
-Total tests: 197
+Total tests: 260
 - test_bag.py: 110 tests (set_item, get_item, position, iteration, call, index by attr, backref, subscribe, get_nodes, digest, columns, walk, resolver, fill_from)
 - test_directory_resolver.py: 25 tests (basic, filtering, extensions, subdirectories, processors, callback, relocate, caching)
 - test_serialization.py: 62 tests (TYTX, XML, roundtrip)
+- test_url_resolver.py: 25 tests (fetch, caching, async, serialization, errors)
+- test_openapi_resolver.py: 17 tests (loading, structure, nested resolvers, caching, serialization)
 
-Coverage: 69% overall
+Coverage: 72% overall
 ```
 
 ---
@@ -225,7 +225,33 @@ Coverage: 69% overall
 
 ## Next Steps
 
-### Priority 1: Serialization (IN PROGRESS)
+### Priority 1: Verifica Metodi Ancora da Implementare
+
+Verificare `04-bag/original_bag_methods.md` per metodi non ancora portati:
+
+1. Confrontare lista metodi originali con implementazione attuale
+2. Per ogni metodo mancante: decidere se implementare o deprecare
+3. Aggiornare compatibility layer se necessario
+
+### Priority 2: Test Coverage BagNode (51% → 80%+)
+
+Linee non coperte in `bag_node.py`:
+
+| Linee | Funzionalità | Descrizione |
+|-------|--------------|-------------|
+| 118-121, 123-124, 127, 130 | `__eq__`, `__ne__`, `__str__` | Confronto tra nodi |
+| 164-166, 180 | `parent_bag` setter, `tag` getter | Property management |
+| 193, 197-199 | `tag` property | Tag setter/getter |
+| 236-238, 242-245, 252-255, 264-267, 274 | `set_value` | Casi speciali: BagNode come valore, rootattributes, trigger |
+| 295, 309-317 | `static_value` setter | Static value management |
+| 371, 373-376, 378-380, 382 | `set_attr` | Trigger e remove_null_attributes |
+| 394-400 | `del_attr` | Rimozione attributi |
+| 412-416 | `has_attr` | Check attributo con value |
+| 425-427, 432-436, 445-447, 455-459, 475-482 | Navigation | `position`, `fullpath`, `parent_node`, `get_inherited_attributes`, `attribute_owner_node` |
+| 501, 509, 518 | Subscription | Subscribe/unsubscribe su singolo nodo |
+| 533-542, 550, 561-564 | Serialization | `digest`, `serialize` del nodo |
+
+### Priority 3: Serialization (IN PROGRESS)
 
 **Piano definitivo**: Vedi `07-serialization/03-definitive-plan.md`
 

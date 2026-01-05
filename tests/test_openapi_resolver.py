@@ -37,25 +37,31 @@ class TestOpenApiResolverBasic:
 
     @pytest.mark.network
     def test_has_info(self):
-        """Loaded spec has info section."""
+        """Loaded spec has info section with title as attribute."""
         resolver = OpenApiResolver(PETSTORE_URL)
         api = resolver()
 
         assert 'info' in api.keys()
+        # info value is the description string
         info = api['info']
-        assert isinstance(info, Bag)
-        assert 'title' in info.keys()
+        assert isinstance(info, str)
+        # title is in node attributes
+        info_node = api.get_node('info')
+        assert info_node.attr.get('title') is not None
 
     @pytest.mark.network
     def test_has_tags_as_children(self):
-        """Tags from spec become child Bags."""
+        """Tags from spec become child Bags under 'api'."""
         resolver = OpenApiResolver(PETSTORE_URL)
         api = resolver()
 
+        # Tags are under api['api']
+        assert 'api' in api.keys()
+        api_bag = api['api']
         # Petstore has pet, store, user tags
-        assert 'pet' in api.keys()
-        assert 'store' in api.keys()
-        assert 'user' in api.keys()
+        assert 'pet' in api_bag.keys()
+        assert 'store' in api_bag.keys()
+        assert 'user' in api_bag.keys()
 
     @pytest.mark.network
     def test_tag_bag_has_endpoints(self):
@@ -63,7 +69,7 @@ class TestOpenApiResolverBasic:
         resolver = OpenApiResolver(PETSTORE_URL)
         api = resolver()
 
-        pet_bag = api['pet']
+        pet_bag = api['api.pet']
         assert isinstance(pet_bag, Bag)
         assert len(pet_bag) > 0
 
@@ -74,7 +80,7 @@ class TestOpenApiResolverBasic:
         api = resolver()
 
         # Get first endpoint from pet tag
-        pet_bag = api['pet']
+        pet_bag = api['api.pet']
         first_key = list(pet_bag.keys())[0]
         endpoint = pet_bag[first_key]
 
@@ -110,30 +116,44 @@ class TestOpenApiResolverStructure:
         assert 'Pet' in schemas.keys()
 
     @pytest.mark.network
-    def test_endpoint_has_method_attribute(self):
-        """Endpoint Bag has method as attribute."""
+    def test_endpoint_has_method_key(self):
+        """Endpoint Bag has method as a key."""
         resolver = OpenApiResolver(PETSTORE_URL)
         api = resolver()
 
-        pet_bag = api['pet']
+        pet_bag = api['api.pet']
         first_key = list(pet_bag.keys())[0]
         endpoint = pet_bag[first_key]
 
-        # Method should be in attributes
-        node = pet_bag.get_node(first_key)
-        endpoint_attrs = endpoint.get_attr() if hasattr(endpoint, 'get_attr') else {}
+        # Method should be a key in endpoint Bag
+        assert 'method' in endpoint.keys()
 
-        # The endpoint Bag itself should have method/path attributes
-        assert endpoint.get_attr('method') is not None or 'method' in endpoint_attrs
+    @pytest.mark.network
+    def test_endpoint_has_nested_url_resolver(self):
+        """Endpoint has nested UrlResolver accessible via Bag path."""
+        from genro_bag.resolvers import UrlResolver
+
+        # Create a Bag and put OpenApiResolver inside
+        apibag = Bag()
+        apibag['openapi.petstore'] = OpenApiResolver(PETSTORE_URL)
+
+        # Access nested UrlResolver via full path
+        value_node = apibag.get_node('openapi.petstore.api.store.getInventory.value')
+        assert value_node is not None
+        assert value_node.resolver is not None
+        assert isinstance(value_node.resolver, UrlResolver)
+
+        # Check resolver has correct method
+        assert value_node.resolver._kw['method'] == 'get'
 
 
 class TestOpenApiResolverCaching:
     """Cache behavior tests."""
 
     def test_cache_time_default(self):
-        """Default cache_time is 300 seconds."""
+        """Default cache_time is -1 (infinite cache)."""
         resolver = OpenApiResolver(PETSTORE_URL)
-        assert resolver.cache_time == 300
+        assert resolver.cache_time == -1
 
     def test_custom_cache_time(self):
         """Custom cache_time is respected."""
@@ -157,7 +177,7 @@ class TestOpenApiResolverInBag:
         # Trigger resolver
         api = node.resolver()
         assert isinstance(api, Bag)
-        assert 'pet' in api.keys()
+        assert 'pet' in api['api'].keys()
 
 
 class TestOpenApiResolverEquality:
