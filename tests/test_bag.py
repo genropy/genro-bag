@@ -1023,14 +1023,12 @@ class TestBagFillFrom:
 
     def test_fill_from_file_tytx_json(self, tmp_path):
         """fill_from loads .bag.json file."""
-        from genro_bag.serialization import to_tytx
-
         # Create source bag and save
         source = Bag()
         source['name'] = 'test'
         source['count'] = 42
         filepath = tmp_path / 'data.bag.json'
-        to_tytx(source, filename=str(filepath))
+        source.to_tytx(filename=str(filepath))
 
         # Load into new bag
         target = Bag()
@@ -1041,14 +1039,12 @@ class TestBagFillFrom:
 
     def test_fill_from_file_tytx_msgpack(self, tmp_path):
         """fill_from loads .bag.mp file."""
-        from genro_bag.serialization import to_tytx
-
         # Create source bag and save
         source = Bag()
         source['name'] = 'binary'
         source['value'] = 123
         filepath = tmp_path / 'data.bag.mp'
-        to_tytx(source, transport='msgpack', filename=str(filepath))
+        source.to_tytx(transport='msgpack', filename=str(filepath))
 
         # Load into new bag
         target = Bag()
@@ -1059,12 +1055,10 @@ class TestBagFillFrom:
 
     def test_fill_from_file_xml(self, tmp_path):
         """fill_from loads .xml file."""
-        from genro_bag.bag_xml import BagXmlSerializer
-
         # Create source bag and save
         source = Bag()
         source['item'] = 'xml_value'
-        xml_content = BagXmlSerializer.serialize(source)
+        xml_content = source.to_xml()
         filepath = tmp_path / 'data.xml'
         filepath.write_text(xml_content)
 
@@ -1101,12 +1095,10 @@ class TestBagFillFrom:
 
     def test_bag_constructor_with_file(self, tmp_path):
         """Bag constructor accepts file path."""
-        from genro_bag.serialization import to_tytx
-
         source = Bag()
         source['key'] = 'from_file'
         filepath = tmp_path / 'init.bag.json'
-        to_tytx(source, filename=str(filepath))
+        source.to_tytx(filename=str(filepath))
 
         bag = Bag(str(filepath))
         assert bag['key'] == 'from_file'

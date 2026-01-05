@@ -32,6 +32,8 @@ from genro_toolbox.typeutils import safe_is_instance
 
 from .bag_node import BagNode
 from .bagnode_container import BagNodeContainer
+from .parser import BagParser
+from .serializer import BagSerializer
 
 
 def _normalize_path(path: str | list | Any) -> str | list:
@@ -45,7 +47,7 @@ def _normalize_path(path: str | list | Any) -> str | list:
     return str(path).replace('.', '_')
 
 
-class Bag:
+class Bag(BagParser, BagSerializer):
     """Hierarchical data container with path-based access.
 
     A Bag is an ordered container of BagNodes, accessible by label, numeric index,
@@ -54,6 +56,10 @@ class Bag:
 
     Unlike the original gnrbag, this implementation does NOT support duplicate labels.
     Each label at a given level must be unique.
+
+    Inherits from:
+        BagParser: Provides from_xml, from_tytx, from_json classmethods
+        BagSerializer: Provides to_xml, to_tytx, to_json instance methods
 
     Attributes:
         _nodes: BagNodeContainer holding the BagNodes.
@@ -146,22 +152,19 @@ class Bag:
         if path.endswith('.bag.json'):
             with open(path, encoding='utf-8') as f:
                 data = f.read()
-            from .serialization import from_tytx
-            loaded = from_tytx(data, transport='json')
+            loaded = Bag.from_tytx(data, transport='json')
             self._fill_from_bag(loaded)
 
         elif path.endswith('.bag.mp'):
             with open(path, 'rb') as f:
                 data = f.read()
-            from .serialization import from_tytx
-            loaded = from_tytx(data, transport='msgpack')
+            loaded = Bag.from_tytx(data, transport='msgpack')
             self._fill_from_bag(loaded)
 
         elif path.endswith('.xml'):
             with open(path, encoding='utf-8') as f:
                 data = f.read()
-            from .bag_xml import BagXmlParser
-            loaded = BagXmlParser.parse(data)
+            loaded = Bag.from_xml(data)
             self._fill_from_bag(loaded)
 
         else:
@@ -254,27 +257,22 @@ class Bag:
 
         # Try based on extension/hint
         if source_lower.endswith('.xml') or content.strip().startswith(b'<?xml') or content.strip().startswith(b'<'):
-            from .bag_xml import BagXmlParser
-            return BagXmlParser.parse(content)
+            return cls.from_xml(content)
 
         if source_lower.endswith('.json') or source_lower.endswith('.bag.json'):
-            from .serialization import from_tytx
-            return from_tytx(content, transport='json')
+            return cls.from_tytx(content, transport='json')
 
         if source_lower.endswith('.bag.mp'):
-            from .serialization import from_tytx
-            return from_tytx(content, transport='msgpack')
+            return cls.from_tytx(content, transport='msgpack')
 
         # Auto-detect from content
         try:
-            from .bag_xml import BagXmlParser
-            return BagXmlParser.parse(content)
+            return cls.from_xml(content)
         except Exception:
             pass
 
         try:
-            from .serialization import from_tytx
-            return from_tytx(content, transport='json')
+            return cls.from_tytx(content, transport='json')
         except Exception:
             pass
 
@@ -1279,128 +1277,6 @@ class Bag:
                     yield from _walk_gen(node.value, path)
 
         return _walk_gen(self, "")
-
-    # -------------------- serialization --------------------------------
-
-    def to_tytx(
-        self,
-        transport: str = "json",
-        filename: str | None = None,
-        compact: bool = False,
-    ) -> str | bytes | None:
-        """Serialize to TYTX format.
-
-        Args:
-            transport: 'json' (.jbag), 'xml' (.xbag), or 'msgpack' (.mpbag).
-            filename: If provided, write to file (extension added automatically).
-                If None, return serialized data.
-            compact: Use numeric parent codes instead of path strings.
-
-        Returns:
-            Serialized data if filename is None, else None.
-
-        See serialization.to_tytx() for full documentation.
-        """
-        from .serialization import to_tytx
-        return to_tytx(self, transport=transport, filename=filename, compact=compact)
-
-    @classmethod
-    def from_tytx(
-        cls,
-        data: str | bytes,
-        transport: str = "json",
-    ) -> Bag:
-        """Deserialize from TYTX format.
-
-        Args:
-            data: Serialized data from to_tytx().
-            transport: Format matching serialization ('json', 'xml', 'msgpack').
-
-        Returns:
-            Reconstructed Bag.
-
-        See serialization.from_tytx() for full documentation.
-        """
-        from .serialization import from_tytx
-        return from_tytx(data, transport=transport)
-
-    def to_xml(
-        self,
-        filename: str | None = None,
-        encoding: str = 'UTF-8',
-        doc_header: bool | str | None = None,
-        pretty: bool = False,
-        self_closed_tags: list[str] | None = None,
-    ) -> str | None:
-        """Serialize to XML format.
-
-        All values are converted to strings without type information.
-        For type-preserving serialization, use to_tytx() instead.
-
-        Args:
-            filename: If provided, write to file. If None, return XML string.
-            encoding: XML encoding (default 'UTF-8').
-            doc_header: XML declaration (True for auto, False/None for none, str for custom).
-            pretty: If True, format with indentation.
-            self_closed_tags: List of tags to self-close when empty.
-
-        Returns:
-            XML string if filename is None, else None.
-
-        Example:
-            >>> bag = Bag()
-            >>> bag['name'] = 'test'
-            >>> bag['count'] = 42
-            >>> bag.to_xml()
-            '<name>test</name><count>42</count>'
-        """
-        from .bag_xml import BagXmlSerializer
-
-        return BagXmlSerializer.serialize(
-            self,
-            filename=filename,
-            encoding=encoding,
-            doc_header=doc_header,
-            pretty=pretty,
-            self_closed_tags=self_closed_tags,
-        )
-
-    @classmethod
-    def from_xml(
-        cls,
-        source: str | bytes,
-        empty: Callable[[], Any] | None = None,
-    ) -> Bag:
-        """Deserialize from XML format.
-
-        Automatically detects and handles legacy GenRoBag format:
-        - Decodes `_T` attribute for value types
-        - Decodes `::TYPE` suffix in attribute values (TYTX encoding)
-        - Handles `<GenRoBag>` root wrapper element
-
-        For plain XML without type markers, values remain as strings.
-
-        Args:
-            source: XML string or bytes to parse.
-            empty: Factory function for empty element values.
-
-        Returns:
-            Reconstructed Bag.
-
-        Example:
-            >>> # Plain XML
-            >>> bag = Bag.from_xml('<root><name>test</name></root>')
-            >>> bag['root']['name']
-            'test'
-
-            >>> # Legacy GenRoBag format (auto-detected)
-            >>> bag = Bag.from_xml('<GenRoBag><count _T="L">42</count></GenRoBag>')
-            >>> bag['count']
-            42
-        """
-        from .bag_xml import BagXmlParser
-
-        return BagXmlParser.parse(source, empty=empty)
 
     # -------------------- __str__ --------------------------------
 

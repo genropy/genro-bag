@@ -11,7 +11,6 @@ from genro_toolbox import smartasync
 
 from ..bag import Bag
 from ..resolver import BagResolver
-from ..serialization import from_json
 from .url_resolver import UrlResolver
 
 
@@ -43,7 +42,7 @@ class OpenApiResolver(BagResolver):
             response = await client.get(url, timeout=timeout)
             response.raise_for_status()
 
-        spec_bag = from_json(response.text)
+        spec_bag = Bag.from_json(response.text)
         return self._build_bag(spec_bag)
 
     def _build_bag(self, spec: Bag) -> Bag:

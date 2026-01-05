@@ -12,7 +12,6 @@ from genro_toolbox import smartasync
 
 from ..bag import Bag
 from ..resolver import BagResolver
-from ..serialization import from_json
 
 
 class UrlResolver(BagResolver):
@@ -88,7 +87,7 @@ class UrlResolver(BagResolver):
         text = response.text
 
         if 'application/json' in content_type:
-            return from_json(text)
+            return Bag.from_json(text)
         elif 'application/xml' in content_type or 'text/xml' in content_type:
             return Bag.from_xml(text)
         elif must_convert:
@@ -96,4 +95,4 @@ class UrlResolver(BagResolver):
                 f"Cannot convert response to Bag: unsupported content-type '{content_type}'"
             )
         else:
-            return from_json(text)  # default to JSON
+            return Bag.from_json(text)  # default to JSON
