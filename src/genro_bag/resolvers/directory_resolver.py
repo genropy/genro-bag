@@ -166,7 +166,12 @@ class DirectoryResolver(BagResolver):
                     cbres = self._kw['callback'](nodeattr=nodeattr)
                     if cbres is False:
                         continue
-                result.set_item(label, handler(fullpath), **nodeattr)
+                handler_result = handler(fullpath)
+                # If handler returns a resolver, set it as resolver not as value
+                if isinstance(handler_result, BagResolver):
+                    result.set_item(label, None, resolver=handler_result, **nodeattr)
+                else:
+                    result.set_item(label, handler_result, **nodeattr)
         return result
 
     def _filter(self, name, include='', exclude='', wildcard='*'):
@@ -242,6 +247,27 @@ class DirectoryResolver(BagResolver):
         kwargs = self._instance_kwargs()
         kwargs['path'] = path
         return TxtDocResolver(**kwargs)
+
+    def processor_xml(self, path):
+        """Process an XML file entry.
+
+        Creates a SerializedBagResolver for the file, enabling lazy loading
+        of the XML content as a Bag.
+
+        Args:
+            path: Absolute path to the XML file.
+
+        Returns:
+            SerializedBagResolver: Resolver that will parse the XML into a Bag.
+        """
+        from .serialized_bag_resolver import SerializedBagResolver
+        kwargs = self._instance_kwargs()
+        kwargs['path'] = path
+        return SerializedBagResolver(**kwargs)
+
+    # Alias for XSD and HTML - same as XML
+    processor_xsd = processor_xml
+    processor_html = processor_xml
 
     def processor_default(self, path):
         """Default processor for unrecognized file types.

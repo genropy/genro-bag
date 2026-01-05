@@ -968,3 +968,145 @@ class TestBagResolver:
 
         bag.set_resolver('data', resolver2)
         assert bag.get_resolver('data') is resolver2
+
+
+class TestBagFillFrom:
+    """Tests for fill_from method."""
+
+    def test_fill_from_dict_simple(self):
+        """fill_from with dict populates bag."""
+        bag = Bag()
+        bag.fill_from({'a': 1, 'b': 2})
+        assert bag['a'] == 1
+        assert bag['b'] == 2
+
+    def test_fill_from_dict_nested(self):
+        """fill_from with nested dict creates nested bags."""
+        bag = Bag()
+        bag.fill_from({'x': {'y': {'z': 'deep'}}})
+        assert bag['x.y.z'] == 'deep'
+        assert isinstance(bag['x'], Bag)
+
+    def test_fill_from_dict_clears_existing(self):
+        """fill_from clears existing content."""
+        bag = Bag()
+        bag['old'] = 'data'
+        bag.fill_from({'new': 'value'})
+        assert 'old' not in bag
+        assert bag['new'] == 'value'
+
+    def test_fill_from_bag(self):
+        """fill_from with another Bag copies nodes."""
+        source = Bag()
+        source.set_item('a', 1, attr1='x')
+        source.set_item('b', 2, attr2='y')
+
+        target = Bag()
+        target.fill_from(source)
+
+        assert target['a'] == 1
+        assert target['b'] == 2
+        node_a = target.get_node('a')
+        assert node_a.get_attr('attr1') == 'x'
+
+    def test_fill_from_bag_deep_copy(self):
+        """fill_from does deep copy of nested bags."""
+        source = Bag()
+        source['nested.value'] = 'original'
+
+        target = Bag()
+        target.fill_from(source)
+
+        # Modify source, target should be unchanged
+        source['nested.value'] = 'modified'
+        assert target['nested.value'] == 'original'
+
+    def test_fill_from_file_tytx_json(self, tmp_path):
+        """fill_from loads .bag.json file."""
+        from genro_bag.serialization import to_tytx
+
+        # Create source bag and save
+        source = Bag()
+        source['name'] = 'test'
+        source['count'] = 42
+        filepath = tmp_path / 'data.bag.json'
+        to_tytx(source, filename=str(filepath))
+
+        # Load into new bag
+        target = Bag()
+        target.fill_from(str(filepath))
+
+        assert target['name'] == 'test'
+        assert target['count'] == 42
+
+    def test_fill_from_file_tytx_msgpack(self, tmp_path):
+        """fill_from loads .bag.mp file."""
+        from genro_bag.serialization import to_tytx
+
+        # Create source bag and save
+        source = Bag()
+        source['name'] = 'binary'
+        source['value'] = 123
+        filepath = tmp_path / 'data.bag.mp'
+        to_tytx(source, transport='msgpack', filename=str(filepath))
+
+        # Load into new bag
+        target = Bag()
+        target.fill_from(str(filepath))
+
+        assert target['name'] == 'binary'
+        assert target['value'] == 123
+
+    def test_fill_from_file_xml(self, tmp_path):
+        """fill_from loads .xml file."""
+        from genro_bag.bag_xml import BagXmlSerializer
+
+        # Create source bag and save
+        source = Bag()
+        source['item'] = 'xml_value'
+        xml_content = BagXmlSerializer.serialize(source)
+        filepath = tmp_path / 'data.xml'
+        filepath.write_text(xml_content)
+
+        # Load into new bag
+        target = Bag()
+        target.fill_from(str(filepath))
+
+        assert target['item'] == 'xml_value'
+
+    def test_fill_from_file_not_found(self):
+        """fill_from raises FileNotFoundError for missing file."""
+        import pytest
+
+        bag = Bag()
+        with pytest.raises(FileNotFoundError):
+            bag.fill_from('/nonexistent/path/file.bag.json')
+
+    def test_fill_from_file_unknown_extension(self, tmp_path):
+        """fill_from raises ValueError for unknown extension."""
+        import pytest
+
+        filepath = tmp_path / 'data.unknown'
+        filepath.write_text('content')
+
+        bag = Bag()
+        with pytest.raises(ValueError, match='Unrecognized file extension'):
+            bag.fill_from(str(filepath))
+
+    def test_bag_constructor_with_dict(self):
+        """Bag constructor accepts dict source."""
+        bag = Bag({'a': 1, 'b': {'c': 2}})
+        assert bag['a'] == 1
+        assert bag['b.c'] == 2
+
+    def test_bag_constructor_with_file(self, tmp_path):
+        """Bag constructor accepts file path."""
+        from genro_bag.serialization import to_tytx
+
+        source = Bag()
+        source['key'] = 'from_file'
+        filepath = tmp_path / 'init.bag.json'
+        to_tytx(source, filename=str(filepath))
+
+        bag = Bag(str(filepath))
+        assert bag['key'] == 'from_file'

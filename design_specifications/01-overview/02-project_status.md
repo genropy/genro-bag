@@ -1,6 +1,6 @@
 # Project Status
 
-**Last Updated**: 2026-01-04
+**Last Updated**: 2026-01-05
 **Status**: In Development - Fase Resolver/Serialization
 
 ---
@@ -11,12 +11,16 @@
 
 | Component | File | Stmts | Tests | Coverage | Notes |
 |-----------|------|-------|-------|----------|-------|
-| **BagNodeContainer** | `src/genro_bag/bagnode_container.py` | 111 | - | 79% | Container ordinato con `keys()`, `values()`, `items()` |
-| **BagNode** | `src/genro_bag/bag_node.py` | 209 | - | 38% | Node con resolver, backref, subscribers (parziale) |
-| **BagResolver** | `src/genro_bag/resolver.py` | 97 | 0 | 0% | Lazy loading con cache TTL, async support |
-| **Bag (Core)** | `src/genro_bag/bag.py` | 255 | 50 | 60% | Core methods, `__str__` aggiunto |
-| **DirectoryResolver** | `src/genro_bag/resolvers/directory_resolver.py` | - | 0 | 0% | Lazy directory listing as Bag |
-| **TxtDocResolver** | `src/genro_bag/resolvers/txt_doc_resolver.py` | - | 0 | 0% | Lazy text file loading |
+| **BagNodeContainer** | `src/genro_bag/bagnode_container.py` | 123 | - | 75% | Container ordinato con `keys()`, `values()`, `items()` |
+| **BagNode** | `src/genro_bag/bag_node.py` | 209 | - | 48% | Node con resolver, backref, subscribers (parziale) |
+| **BagResolver** | `src/genro_bag/resolver.py` | 97 | - | 61% | Lazy loading con cache TTL, async support |
+| **Bag (Core)** | `src/genro_bag/bag.py` | 578 | - | 64% | Core methods, `fill_from()` implementato |
+| **DirectoryResolver** | `src/genro_bag/resolvers/directory_resolver.py` | 99 | 25 | 95% | Lazy directory listing as Bag |
+| **TxtDocResolver** | `src/genro_bag/resolvers/txt_doc_resolver.py` | 9 | - | 100% | Lazy text file loading |
+| **SerializedBagResolver** | `src/genro_bag/resolvers/serialized_bag_resolver.py` | 8 | - | 100% | Lazy Bag loading from .xml/.bag.json/.bag.mp |
+| **BagXmlSerializer** | `src/genro_bag/bag_xml.py` | - | - | 81% | XML serialization |
+| **BagXmlParser** | `src/genro_bag/bag_xml.py` | - | - | 81% | XML parsing with legacy auto-detect |
+| **Serialization** | `src/genro_bag/serialization.py` | 78 | - | 91% | TYTX to_tytx/from_tytx |
 
 ### Async/Sync Refactoring (2026-01-03)
 
@@ -78,7 +82,7 @@ NodeContainer è stato semplificato come "indexed list", poi esteso:
 | Method | Status | Notes |
 |--------|--------|-------|
 | `__init__` | ✅ Done | Uses BagNodeContainer for _nodes |
-| `fill_from` | ⏳ Stub | TODO: implement |
+| `fill_from` | ✅ Done | Supports dict, Bag, file path (.xml, .bag.json, .bag.mp) |
 | `parent` / `parent_node` / `backref` | ✅ Done | Properties |
 | `_htraverse_before` | ✅ Done | Parse path, handle `#parent` navigation |
 | `_htraverse_after` | ✅ Done | Finalize traversal, autocreate in write mode |
@@ -177,10 +181,12 @@ The file `js_bag_methods.md` documents all JS methods for `GnrBagNode`, `GnrBag`
 ## Test Summary
 
 ```
-Total tests: 98
-- test_bag.py: 98 tests (set_item, get_item, position, iteration, call, index by attr, backref, subscribe, get_nodes, digest, columns, walk, resolver)
+Total tests: 197
+- test_bag.py: 110 tests (set_item, get_item, position, iteration, call, index by attr, backref, subscribe, get_nodes, digest, columns, walk, resolver, fill_from)
+- test_directory_resolver.py: 25 tests (basic, filtering, extensions, subdirectories, processors, callback, relocate, caching)
+- test_serialization.py: 62 tests (TYTX, XML, roundtrip)
 
-Coverage: 57% overall
+Coverage: 69% overall
 ```
 
 ---
@@ -286,9 +292,11 @@ Due famiglie di funzioni:
 
 ### Priority 2: Resolver Tests
 
-1. ⏳ Write tests for DirectoryResolver
-2. ⏳ Write tests for TxtDocResolver
-3. ⏳ Test BagNode + Resolver integration
+1. ✅ Write tests for DirectoryResolver (25 tests)
+2. ✅ TxtDocResolver tested via DirectoryResolver
+3. ✅ SerializedBagResolver tested via DirectoryResolver
+4. ⏳ BagCbResolver - Callback resolver (chiama funzione)
+5. ⏳ UrlResolver - Carica da URL HTTP
 
 ### Priority 3: Builder System
 
@@ -310,6 +318,10 @@ Vedi `06-builder/01-overview.md`:
 8. ✅ Async/sync strategy decided and implemented
 9. ✅ DirectoryResolver portato da originale
 10. ✅ TxtDocResolver portato da originale
+11. ✅ `fill_from()` implementato (dict, Bag, file path)
+12. ✅ SerializedBagResolver creato (sostituto di XmlDocResolver)
+13. ✅ DirectoryResolver: aggiunti processor_xml, processor_xsd, processor_html
+14. ✅ Tests per DirectoryResolver (25 tests, 95% coverage)
 
 ---
 

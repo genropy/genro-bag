@@ -90,23 +90,116 @@ class Bag:
         if source:
             self.fill_from(source)
 
-    def fill_from(self, source: dict[str, Any]) -> None:
+    def fill_from(self, source: dict[str, Any] | str | Bag) -> None:
         """Fill bag from a source.
 
-        Populates the bag with data from a dict. Existing nodes are cleared first.
+        Populates the bag with data from various sources:
+        - dict: Keys become labels, values become node values
+        - str (file path): Load from file based on extension:
+            - .xml: Parse as XML
+            - .bag.json: Parse as TYTX JSON
+            - .bag.mp: Parse as TYTX MessagePack
+        - Bag: Copy nodes from another Bag
+
+        Existing nodes are cleared first.
 
         Args:
-            source: Dict where keys become labels and values become node values.
-                Nested dicts are converted to nested Bags.
+            source: Data source (dict, file path, or Bag).
 
         Example:
             >>> bag = Bag()
             >>> bag.fill_from({'x': 1, 'y': {'z': 2}})
             >>> bag['y.z']
             2
+            >>>
+            >>> bag2 = Bag()
+            >>> bag2.fill_from('/path/to/data.bag.json')
         """
-        # TODO: implement
-        pass
+        if isinstance(source, str):
+            self._fill_from_file(source)
+        elif isinstance(source, Bag):
+            self._fill_from_bag(source)
+        elif isinstance(source, dict):
+            self._fill_from_dict(source)
+
+    def _fill_from_file(self, path: str) -> None:
+        """Load bag contents from a file.
+
+        Detects format from file extension:
+        - .bag.json: TYTX JSON format
+        - .bag.mp: TYTX MessagePack format
+        - .xml: XML format (with auto-detect for legacy GenRoBag)
+
+        Args:
+            path: Path to the file to load.
+
+        Raises:
+            FileNotFoundError: If file does not exist.
+            ValueError: If file extension is not recognized.
+        """
+        import os
+
+        if not os.path.isfile(path):
+            raise FileNotFoundError(f"File not found: {path}")
+
+        # Detect format from extension
+        if path.endswith('.bag.json'):
+            with open(path, encoding='utf-8') as f:
+                data = f.read()
+            from .serialization import from_tytx
+            loaded = from_tytx(data, transport='json')
+            self._fill_from_bag(loaded)
+
+        elif path.endswith('.bag.mp'):
+            with open(path, 'rb') as f:
+                data = f.read()
+            from .serialization import from_tytx
+            loaded = from_tytx(data, transport='msgpack')
+            self._fill_from_bag(loaded)
+
+        elif path.endswith('.xml'):
+            with open(path, encoding='utf-8') as f:
+                data = f.read()
+            from .bag_xml import BagXmlParser
+            loaded = BagXmlParser.parse(data)
+            self._fill_from_bag(loaded)
+
+        else:
+            raise ValueError(
+                f"Unrecognized file extension: {path}. "
+                "Supported: .bag.json, .bag.mp, .xml"
+            )
+
+    def _fill_from_bag(self, other: Bag) -> None:
+        """Copy nodes from another Bag.
+
+        Clears current contents and copies all nodes from the source Bag.
+
+        Args:
+            other: Source Bag to copy from.
+        """
+        self.clear()
+        for node in other:
+            # Deep copy the value if it's a Bag
+            value = node.value
+            if isinstance(value, Bag):
+                value = value.deepcopy()
+            self.set_item(node.label, value, **dict(node.attr))
+
+    def _fill_from_dict(self, data: dict[str, Any]) -> None:
+        """Populate bag from a dictionary.
+
+        Clears current contents and creates nodes from dict items.
+        Nested dicts are converted to nested Bags.
+
+        Args:
+            data: Dict where keys become labels and values become node values.
+        """
+        self.clear()
+        for key, value in data.items():
+            if isinstance(value, dict):
+                value = Bag(value)
+            self.set_item(key, value)
 
     # -------------------- properties --------------------------------
 
