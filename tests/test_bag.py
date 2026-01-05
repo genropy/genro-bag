@@ -1110,3 +1110,161 @@ class TestBagFillFrom:
 
         bag = Bag(str(filepath))
         assert bag['key'] == 'from_file'
+
+
+class TestBagSubscriberLog:
+    """Test subscriber logging all operations on a Bag."""
+
+    def test_subscriber_logs_all_operations(self):
+        """Subscriber logs insert, update, delete operations."""
+        bag = Bag()
+        log = []
+
+        def logger(**kw):
+            log.append({
+                'evt': kw.get('evt'),
+                'pathlist': kw.get('pathlist'),
+                'node_label': kw.get('node').label if kw.get('node') else None,
+                'oldvalue': kw.get('oldvalue'),
+            })
+
+        bag.subscribe('logger', any=logger)
+
+        # Insert operations
+        bag['name'] = 'Alice'
+        bag['age'] = 30
+        bag['address.city'] = 'Rome'  # Creates 'address' Bag + 'city' inside
+
+        # Update operations
+        bag['name'] = 'Bob'
+        bag['age'] = 31
+
+        # Delete operations
+        del bag['age']
+
+        # Verify we have the expected event types
+        insert_events = [e for e in log if e['evt'] == 'ins']
+        update_events = [e for e in log if e['evt'] == 'upd_value']
+        delete_events = [e for e in log if e['evt'] == 'del']
+
+        # 4 inserts: name, age, address (Bag), city - no duplicates
+        assert len(insert_events) == 4
+
+        # 2 updates: name Alice->Bob, age 30->31
+        assert len(update_events) == 2
+
+        # 1 delete: age
+        assert len(delete_events) == 1
+
+        # Check inserts in order
+        assert insert_events[0]['node_label'] == 'name'
+        assert insert_events[1]['node_label'] == 'age'
+        assert insert_events[2]['node_label'] == 'address'
+        assert insert_events[3]['node_label'] == 'city'
+
+        # Check updates have oldvalue
+        name_update = [e for e in update_events if e['node_label'] == 'name'][0]
+        assert name_update['oldvalue'] == 'Alice'
+
+        age_update = [e for e in update_events if e['node_label'] == 'age'][0]
+        assert age_update['oldvalue'] == 30
+
+        # Check delete is for 'age'
+        assert delete_events[0]['node_label'] == 'age'
+
+    def test_subscriber_logs_nested_operations(self):
+        """Subscriber logs operations on nested bags."""
+        root = Bag()
+        log = []
+
+        def logger(**kw):
+            log.append({
+                'evt': kw.get('evt'),
+                'pathlist': kw.get('pathlist'),
+            })
+
+        root.subscribe('logger', any=logger)
+
+        # Create nested structure
+        root['level1.level2.level3'] = 'deep_value'
+
+        # Modify nested value
+        root['level1.level2.level3'] = 'updated_value'
+
+        # Delete nested
+        del root['level1.level2.level3']
+
+        # Find the update event
+        update_events = [e for e in log if e['evt'] == 'upd_value']
+        assert len(update_events) == 1
+        assert update_events[0]['pathlist'] == ['level1', 'level2', 'level3']
+
+        # Find delete event
+        delete_events = [e for e in log if e['evt'] == 'del']
+        assert len(delete_events) == 1
+        assert delete_events[0]['pathlist'] == ['level1', 'level2']
+
+    def test_subscriber_logs_attribute_changes(self):
+        """Subscriber logs attribute updates."""
+        bag = Bag()
+        log = []
+
+        def logger(**kw):
+            log.append({
+                'evt': kw.get('evt'),
+                'node_label': kw.get('node').label if kw.get('node') else None,
+            })
+
+        bag.subscribe('logger', any=logger)
+
+        # Insert with attributes
+        bag.set_item('item', 'value', color='red', size=10)
+
+        # Update attributes only
+        node = bag.get_node('item')
+        node.set_attr(color='blue')
+
+        # Check we got insert and attr update
+        assert log[0]['evt'] == 'ins'
+        assert log[0]['node_label'] == 'item'
+
+        assert log[1]['evt'] == 'upd_attrs'
+        assert log[1]['node_label'] == 'item'
+
+    def test_subscriber_multiple_subscribers_independent(self):
+        """Multiple subscribers receive events independently."""
+        bag = Bag()
+        log_inserts = []
+        log_updates = []
+        log_all = []
+
+        bag.subscribe('ins_logger', insert=lambda **kw: log_inserts.append(kw['evt']))
+        bag.subscribe('upd_logger', update=lambda **kw: log_updates.append(kw['evt']))
+        bag.subscribe('all_logger', any=lambda **kw: log_all.append(kw['evt']))
+
+        bag['x'] = 1  # insert
+        bag['x'] = 2  # update
+        bag['y'] = 3  # insert
+
+        assert log_inserts == ['ins', 'ins']
+        assert log_updates == ['upd_value']
+        assert log_all == ['ins', 'upd_value', 'ins']
+
+    def test_unsubscribe_stops_logging(self):
+        """After unsubscribe, no more events are logged."""
+        bag = Bag()
+        log = []
+
+        bag.subscribe('logger', any=lambda **kw: log.append(kw['evt']))
+
+        bag['a'] = 1
+        assert len(log) == 1
+
+        bag.unsubscribe('logger', any=True)
+
+        bag['b'] = 2
+        bag['a'] = 10
+        del bag['a']
+
+        # No new events after unsubscribe
+        assert len(log) == 1

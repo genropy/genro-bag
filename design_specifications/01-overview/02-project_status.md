@@ -21,6 +21,9 @@
 | **BagXmlSerializer** | `src/genro_bag/bag_xml.py` | - | - | 81% | XML serialization |
 | **BagXmlParser** | `src/genro_bag/bag_xml.py` | - | - | 81% | XML parsing with legacy auto-detect |
 | **Serialization** | `src/genro_bag/serialization.py` | 78 | - | 91% | TYTX to_tytx/from_tytx |
+| **BagCbResolver** | `src/genro_bag/resolvers/callback_resolver.py` | - | - | - | Callback resolver (sync/async) |
+| **UrlResolver** | `src/genro_bag/resolvers/url_resolver.py` | - | - | - | HTTP URL resolver con qs, body, method |
+| **OpenApiResolver** | `src/genro_bag/resolvers/openapi_resolver.py` | - | - | - | OpenAPI spec loader, organizza per tags |
 
 ### Async/Sync Refactoring (2026-01-03)
 
@@ -295,8 +298,61 @@ Due famiglie di funzioni:
 1. ✅ Write tests for DirectoryResolver (25 tests)
 2. ✅ TxtDocResolver tested via DirectoryResolver
 3. ✅ SerializedBagResolver tested via DirectoryResolver
-4. ⏳ BagCbResolver - Callback resolver (chiama funzione)
-5. ⏳ UrlResolver - Carica da URL HTTP
+4. ✅ BagCbResolver - Callback resolver (chiama funzione sync/async)
+5. ✅ UrlResolver - Carica da URL HTTP con supporto qs, body, method
+6. ✅ OpenApiResolver - Carica spec OpenAPI e organizza per tags
+
+### HTTP Resolvers (2026-01-05) - COMPLETATO
+
+Implementati due resolver per accesso HTTP:
+
+#### UrlResolver
+
+Resolver generico per fetch HTTP con parametri:
+
+| Parametro | Tipo | Default | Descrizione |
+|-----------|------|---------|-------------|
+| `url` | str | None | URL da chiamare |
+| `method` | str | 'get' | Metodo HTTP (get, post, put, delete, patch) |
+| `qs` | Bag/dict | None | Query string params (filtra None automaticamente) |
+| `body` | Bag | None | Request body (convertito in JSON) |
+| `timeout` | int | 30 | Timeout in secondi |
+| `as_bag` | bool | False | Se True, converte risposta in Bag |
+| `cache_time` | int | 300 | Cache TTL in secondi |
+| `read_only` | bool | True | Se False, DEVE convertire in Bag (raise se impossibile) |
+
+**Comportamento `read_only`**:
+- `read_only=True`: ritorna raw content o Bag se `as_bag=True`
+- `read_only=False`: DEVE essere Bag (per store), raise se content-type non supportato
+
+**Content-type supportati**: `application/json`, `application/xml`, `text/xml`
+
+#### OpenApiResolver
+
+Carica spec OpenAPI e crea struttura navigabile:
+
+```
+result['info'] -> description (value), title/version (attr)
+result['api']['pet'] -> tag node
+result['api']['pet']['findByStatus'] -> operation Bag
+  - summary, description, operationId, path, method, url
+  - qs: Bag vuota con nomi query params (user fills)
+  - body: Bag vuota con struttura body (user fills)
+  - value: UrlResolver pronto all'uso
+result['components'] -> schemas, etc.
+```
+
+**Workflow utente**:
+```python
+bag['api'] = OpenApiResolver('https://petstore.swagger.io/v3/openapi.json')
+op = bag['api']['api']['pet']['findPetsByStatus']
+op['qs']['status'] = 'available'  # fill params
+result = op['value']               # trigger request
+```
+
+**Cache policy**:
+- GET: cache_time=20
+- POST/PUT/PATCH/DELETE: cache_time=0
 
 ### Priority 3: Builder System
 

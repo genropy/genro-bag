@@ -252,17 +252,28 @@ def from_tytx(
 # ==================== JSON Serialization ====================
 
 
+def _node_to_json(node: any, typed: bool) -> dict:
+    """Convert a BagNode to JSON-serializable dict."""
+    from .bag import Bag
+
+    value = node.value
+    if isinstance(value, Bag):
+        value = [_node_to_json(n, typed) for n in value.nodes]
+    return {"label": node.label, "value": value, "attr": dict(node.attr) if node.attr else {}}
+
+
 def to_json(
     bag: Bag,
     typed: bool = True,
-    nested: bool = False,
 ) -> str:
     """Serialize Bag to JSON string.
 
+    Each node becomes {"label": ..., "value": ..., "attr": {...}}.
+    Nested Bags have value as a list of child nodes.
+
     Args:
         bag: The Bag to serialize.
-        typed: If True, include type information (TYTX encoding).
-        nested: If True, use nested object format instead of flat.
+        typed: If True, encode types for date/datetime/Decimal (TYTX).
 
     Returns:
         JSON string representation.
@@ -271,24 +282,90 @@ def to_json(
         >>> bag = Bag()
         >>> bag['name'] = 'test'
         >>> to_json(bag)
-        '[{"label": "name", "value": "test"}]'
+        '[{"label": "name", "value": "test", "attr": {}}]'
     """
-    # TODO: Implement
-    raise NotImplementedError("to_json not yet implemented")
+    import json
+
+    result = [_node_to_json(node, typed) for node in bag.nodes]
+
+    if typed:
+        from genro_tytx import to_tytx as tytx_encode
+        return tytx_encode(result)
+    return json.dumps(result)
 
 
 def from_json(
-    source: str,
+    source: str | dict | list,
     list_joiner: str | None = None,
 ) -> Bag:
     """Deserialize JSON to Bag.
 
+    Accepts JSON string, dict, or list. Recursively converts nested
+    structures to Bag hierarchy. Uses TYTX for parsing (orjson + type decoding).
+
     Args:
-        source: JSON string to parse.
-        list_joiner: If provided, join list values with this string.
+        source: JSON string, dict or list to parse.
+        list_joiner: If provided, join string lists with this separator.
 
     Returns:
         Deserialized Bag.
+
+    Example:
+        >>> from_json('{"name": "test", "count": 42}')
+        Bag with keys ['name', 'count']
     """
-    # TODO: Implement
-    raise NotImplementedError("from_json not yet implemented")
+
+    if isinstance(source, str):
+        from genro_tytx import from_tytx as tytx_decode
+        source = tytx_decode(source)
+
+    if not isinstance(source, (list, dict)):
+        # Wrap scalar in a dict
+        source = {"value": source}
+
+    return _from_json_recursive(source, list_joiner)
+
+
+def _from_json_recursive(
+    data: dict | list | any,
+    list_joiner: str | None = None,
+    parent_key: str | None = None,
+) -> Bag | any:
+    """Recursively convert JSON data to Bag."""
+    from .bag import Bag
+
+    if isinstance(data, list):
+        if not data:
+            return Bag()
+
+        # Check if list items have 'label' key (Bag node format)
+        if isinstance(data[0], dict) and 'label' in data[0]:
+            result = Bag()
+            for item in data:
+                label = item.get('label')
+                value = _from_json_recursive(item.get('value'), list_joiner)
+                attr = item.get('attr', {})
+                result.set_item(label, value, _attributes=attr)
+            return result
+
+        # String list with joiner
+        if list_joiner and all(isinstance(r, str) for r in data):
+            return list_joiner.join(data)
+
+        # Generic list -> Bag with prefix from parent key
+        result = Bag()
+        prefix = parent_key if parent_key else 'r'
+        for n, v in enumerate(data):
+            result.set_item(f'{prefix}_{n}', _from_json_recursive(v, list_joiner))
+        return result
+
+    if isinstance(data, dict):
+        if not data:
+            return Bag()
+        result = Bag()
+        for k, v in data.items():
+            result.set_item(k, _from_json_recursive(v, list_joiner, parent_key=k))
+        return result
+
+    # Scalar value
+    return data

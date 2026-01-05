@@ -201,6 +201,87 @@ class Bag:
                 value = Bag(value)
             self.set_item(key, value)
 
+    # -------------------- class methods --------------------------------
+
+    @classmethod
+    @smartasync
+    async def from_url(cls, url: str, timeout: int = 30) -> Bag:
+        """Load Bag from URL (async-capable).
+
+        Fetches content from URL and parses based on content type or URL extension.
+        Works in both sync and async contexts via @smartasync.
+
+        Args:
+            url: HTTP/HTTPS URL to fetch.
+            timeout: Request timeout in seconds. Default 30.
+
+        Returns:
+            Bag: Parsed content as Bag.
+
+        Raises:
+            httpx.HTTPError: If request fails.
+            ValueError: If content format is not recognized.
+
+        Example:
+            >>> # Sync context
+            >>> bag = Bag.from_url('https://example.com/data.xml')
+            >>>
+            >>> # Async context
+            >>> bag = await Bag.from_url('https://example.com/data.xml')
+        """
+        import httpx
+
+        async with httpx.AsyncClient() as client:
+            response = await client.get(url, timeout=timeout)
+            response.raise_for_status()
+            content = response.content
+
+        return cls._parse_content(content, url)
+
+    @classmethod
+    def _parse_content(cls, content: bytes, source_hint: str) -> Bag:
+        """Parse content bytes into a Bag based on format detection.
+
+        Args:
+            content: Raw bytes to parse.
+            source_hint: URL or filename for format detection.
+
+        Returns:
+            Bag: Parsed content.
+
+        Raises:
+            ValueError: If format cannot be detected or parsed.
+        """
+        source_lower = source_hint.lower().split('?')[0]  # Remove query string
+
+        # Try based on extension/hint
+        if source_lower.endswith('.xml') or content.strip().startswith(b'<?xml') or content.strip().startswith(b'<'):
+            from .bag_xml import BagXmlParser
+            return BagXmlParser.parse(content)
+
+        if source_lower.endswith('.json') or source_lower.endswith('.bag.json'):
+            from .serialization import from_tytx
+            return from_tytx(content, transport='json')
+
+        if source_lower.endswith('.bag.mp'):
+            from .serialization import from_tytx
+            return from_tytx(content, transport='msgpack')
+
+        # Auto-detect from content
+        try:
+            from .bag_xml import BagXmlParser
+            return BagXmlParser.parse(content)
+        except Exception:
+            pass
+
+        try:
+            from .serialization import from_tytx
+            return from_tytx(content, transport='json')
+        except Exception:
+            pass
+
+        raise ValueError(f"Cannot parse content from {source_hint}. Unknown format.")
+
     # -------------------- properties --------------------------------
 
     @property
@@ -353,14 +434,13 @@ class Bag:
             return curr, pathlist[0]
 
         # Write mode: create intermediate nodes
+        # Note: _nodes.set handles _on_node_inserted when parent_bag.backref is True
         while len(pathlist) > 1:
             label = pathlist.pop(0)
             if label.startswith('#'):
                 raise BagException('Not existing index in #n syntax')
             new_bag = curr.__class__()
-            new_node = curr._nodes.set(label, new_bag, parent_bag=curr)
-            if self.backref:
-                self._on_node_inserted(new_node, len(curr._nodes) - 1, reason='autocreate')
+            curr._nodes.set(label, new_bag, parent_bag=curr)
             curr = new_bag
 
         return curr, pathlist[0]
