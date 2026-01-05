@@ -12,7 +12,6 @@ Classes:
 from __future__ import annotations
 
 import datetime
-import html
 import os
 import re
 from collections.abc import Callable
@@ -124,15 +123,15 @@ class BagXmlSerializer:
         """Main serialization logic."""
         content = self._bag_to_xml(self.bag, namespaces=[])
 
+        # Pretty print (before adding header)
+        if self.pretty:
+            content = self._prettify(content)
+
         # Add XML declaration
         if self.doc_header is True:
             content = f"<?xml version='1.0' encoding='{self.encoding}'?>\n{content}"
         elif isinstance(self.doc_header, str):
             content = f'{self.doc_header}\n{content}'
-
-        # Pretty print
-        if self.pretty:
-            content = self._prettify(content)
 
         return content
 
@@ -175,7 +174,7 @@ class BagXmlSerializer:
         # Build attributes string
         attrs_parts = []
         if original_tag is not None:
-            attrs_parts.append(f'_tag={saxutils.quoteattr(html.escape(original_tag))}')
+            attrs_parts.append(f'_tag={saxutils.quoteattr(original_tag)}')
 
         if node.attr:
             for k, v in node.attr.items():
@@ -202,7 +201,7 @@ class BagXmlSerializer:
                 return f'<{tag}{attrs_str}/>'
             return f'<{tag}{attrs_str}></{tag}>'
 
-        text = html.escape(str(value))
+        text = saxutils.escape(str(value))
         return f'<{tag}{attrs_str}>{text}</{tag}>'
 
     @staticmethod
@@ -218,7 +217,7 @@ class BagXmlSerializer:
             original is None if no sanitization was needed.
         """
         if not tag:
-            return '_none_', ''
+            return '_none_', None
 
         # If tag has a known namespace prefix, keep it as-is
         if ':' in tag:
@@ -226,7 +225,7 @@ class BagXmlSerializer:
             if prefix in namespaces:
                 return tag, None
 
-        sanitized = _INVALID_XML_TAG_CHARS.sub('_', tag).replace('__', '_')
+        sanitized = re.sub(r'_+', '_', _INVALID_XML_TAG_CHARS.sub('_', tag))
 
         if sanitized[0].isdigit():
             sanitized = '_' + sanitized
@@ -278,26 +277,33 @@ class BagXmlParser(sax.handler.ContentHandler):
     def __init__(
         self,
         empty: Callable[[], Any] | None = None,
+        raise_on_error: bool = False,
     ):
         """Initialize the parser.
 
         Args:
             empty: Factory function for empty element values.
+            raise_on_error: If True, raise on TYTX conversion errors.
+                If False (default), use '**INVALID::{type}**' placeholder.
         """
         super().__init__()
         self.empty = empty
+        self.raise_on_error = raise_on_error
 
     @classmethod
     def parse(
         cls,
         source: str | bytes,
         empty: Callable[[], Any] | None = None,
+        raise_on_error: bool = False,
     ) -> Bag:
         """Parse XML to Bag.
 
         Args:
             source: XML string or bytes to parse.
             empty: Factory function for empty element values.
+            raise_on_error: If True, raise on TYTX conversion errors.
+                If False (default), use '**INVALID::{type}**' placeholder.
 
         Returns:
             Deserialized Bag with XML structure.
@@ -312,11 +318,11 @@ class BagXmlParser(sax.handler.ContentHandler):
             if k.startswith('GNR_'):
                 source = source.replace(f'{{{k}}}', os.environ[k])
 
-        handler = cls(empty=empty)
+        handler = cls(empty=empty, raise_on_error=raise_on_error)
         sax.parseString(source, handler)
 
         result = handler.bags[0][0]
-        if handler.format == 'GenRoBag':
+        if handler.legacy_mode:
             result = result['GenRoBag']
         if result is None:
             result = Bag()
@@ -324,10 +330,9 @@ class BagXmlParser(sax.handler.ContentHandler):
 
     def startDocument(self) -> None:
         from .bag import Bag
-        self.bags: list[tuple[Any, dict]] = [(Bag(), None)]
+        self.bags: list[tuple[Any, dict, str | None]] = [(Bag(), None, None)]
         self.value_list: list[str] = []
-        self.format = ''
-        self.curr_type: str | None = None
+        self.legacy_mode: bool = False
 
     def _get_value(self, dtype: str | None = None) -> str:
         """Get accumulated character data as string."""
@@ -341,50 +346,24 @@ class BagXmlParser(sax.handler.ContentHandler):
             value = saxutils.unescape(value)
         return value
 
-    def _decode_attrs(self, attributes: Any) -> dict:
-        """Decode attributes, trying TYTX format."""
-        return {str(k): from_tytx(saxutils.unescape(v)) for k, v in attributes.items()}
-
-    def _decode_value_with_type(self, value: str, type_code: str | None) -> Any:
-        """Decode element value using type code."""
-        if not value:
-            if type_code and type_code != 'T':
-                return from_tytx(f'::{type_code}')
-            return value
-
-        if type_code and type_code != 'T':
-            try:
-                return from_tytx(f'{value}::{type_code}')
-            except Exception:
-                return None
-        return value
-
     def startElement(self, tag_label: str, attributes: Any) -> None:
         from .bag import Bag
-        attrs = self._decode_attrs(attributes)
+        attrs = {str(k): from_tytx(saxutils.unescape(v)) for k, v in attributes.items()}
+        curr_type: str | None = None
 
         if len(self.bags) == 1:
-            # First element - detect format
-            if tag_label.lower() == 'genrobag':
-                self.format = 'GenRoBag'
-            else:
-                self.format = 'xml'
-            self.bags.append((Bag(), attrs))
+            # First element - detect legacy format
+            self.legacy_mode = tag_label.lower() == 'genrobag'
         else:
-            if self.format == 'GenRoBag':
-                self.curr_type = None
-                if '_T' in attrs:
-                    self.curr_type = attrs.pop('_T')
-                elif 'T' in attrs:
-                    self.curr_type = attrs.pop('T')
-                self.bags.append((Bag(), attrs))
-            else:
-                # Plain XML format
-                if ''.join(self.value_list).strip():
-                    value = self._get_value()
-                    if value:
-                        self.bags[-1][0].set_item('_', value)
-                self.bags.append((Bag(), attrs))
+            if self.legacy_mode:
+                curr_type = attrs.pop('_T', None)
+            elif ''.join(self.value_list).strip():
+                # Plain XML - handle mixed content
+                value = self._get_value()
+                if value:
+                    self.bags[-1][0].set_item('_', value)
+
+        self.bags.append((Bag(), attrs, curr_type))
 
         self.value_list = []
 
@@ -392,13 +371,18 @@ class BagXmlParser(sax.handler.ContentHandler):
         self.value_list.append(s)
 
     def endElement(self, tag_label: str) -> None:
-        value = self._get_value(dtype=self.curr_type)
+        curr, attrs, curr_type = self.bags.pop()
+        value = self._get_value(dtype=curr_type)
         self.value_list = []
 
-        if self.format == 'GenRoBag' and value:
-            value = self._decode_value_with_type(value, self.curr_type)
+        if self.legacy_mode and value and curr_type and curr_type != 'T':
+            try:
+                value = from_tytx(f'{value}::{curr_type}')
+            except Exception:
+                if self.raise_on_error:
+                    raise
+                value = f'**INVALID::{curr_type}**'
 
-        curr, attrs = self.bags.pop()
         if value or value == 0 or value == datetime.time(0, 0):
             if curr:
                 if isinstance(value, str):
@@ -409,7 +393,17 @@ class BagXmlParser(sax.handler.ContentHandler):
                 curr = value
 
         if not curr and curr != 0 and curr != datetime.time(0, 0):
-            curr = self.empty() if self.empty else self._decode_value_with_type('', self.curr_type)
+            if self.empty:
+                curr = self.empty()
+            elif curr_type and curr_type != 'T':
+                try:
+                    curr = from_tytx(f'::{curr_type}')
+                except Exception:
+                    if self.raise_on_error:
+                        raise
+                    curr = f'**INVALID::{curr_type}**'
+            else:
+                curr = ''
 
         self._set_into_parent(tag_label, curr, attrs)
 
@@ -418,8 +412,7 @@ class BagXmlParser(sax.handler.ContentHandler):
         dest = self.bags[-1][0]
 
         # Use _tag attribute as label if present
-        if '_tag' in attrs:
-            tag_label = attrs.pop('_tag')
+        tag_label = attrs.pop('_tag', tag_label)
 
         # Handle duplicate labels (always active - Bag doesn't allow duplicates)
         dup_manager = getattr(dest, '__dupmanager', None)
