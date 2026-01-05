@@ -5,16 +5,13 @@ This module provides functions to serialize and deserialize Bag
 hierarchies to/from various formats:
 
 - **TYTX**: Type-preserving format with JSON or MessagePack transport
-- **XML**: Standard XML with optional type preservation (legacy or TYTX suffix)
 - **JSON**: JSON format with optional type preservation
 
 TYTX Transports:
     - 'json': JSON string (.bag.json extension)
     - 'msgpack': Binary MessagePack (.bag.mp extension)
 
-XML Formats:
-    - Legacy mode (legacy=True): Uses _T attribute for types (GenRoBag format)
-    - TYTX mode (legacy=False): Uses ::TYPE suffix in values
+For XML serialization, see bag_xml module or use Bag.to_xml() / Bag.from_xml().
 
 Example:
     >>> from genro_bag import Bag
@@ -31,20 +28,17 @@ Example:
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterator
-from typing import TYPE_CHECKING, Any, Literal
+from collections.abc import Iterator
+from typing import TYPE_CHECKING, Literal
 
 if TYPE_CHECKING:
     from .bag import Bag
-
-# Re-export for backward compatibility
-from .xml_legacy import XmlLegacy, from_xml_legacy, to_xml_legacy  # noqa: E402, F401
 
 
 def node_flattener(
     bag: Bag,
     path_registry: dict[int, str] | None = None,
-) -> Iterator[tuple[str | int | None, str, str | None, Any, dict]]:
+) -> Iterator[tuple[str | int | None, str, str | None, any, dict]]:
     """Expand each node into (parent, label, tag, value, attr) tuples.
 
     Consumes walk() and transforms each node into a flat tuple suitable
@@ -253,120 +247,6 @@ def from_tytx(
                 node.tag = tag
 
     return bag
-
-
-def to_xml(
-    bag: Bag,
-    filename: str | None = None,
-    encoding: str = "UTF-8",
-    # Typing
-    typed: bool = True,
-    legacy: bool = False,
-    # Structure
-    root_tag: str = "GenRoBag",
-    doc_header: bool | str | None = None,
-    # Formatting
-    pretty: bool = False,
-    html: bool = False,
-    # Callbacks
-    translate_cb: Callable[[str], str] | None = None,
-) -> str | None:
-    """Serialize Bag to XML string.
-
-    Converts the Bag hierarchy into an XML document. Tag names are sanitized
-    to be valid XML (invalid chars replaced with '_', original saved in _tag
-    attribute if different).
-
-    Args:
-        bag: The Bag to serialize.
-        filename: Optional file path to write to. If provided, returns None.
-            If filename ends with .html or .htm, html=True is auto-detected.
-        encoding: XML encoding (default UTF-8).
-        typed: Type preservation mode:
-            - True (default, Genropy format): Preserve types on values and
-              attributes, mark Bag nodes with type, wrap in root element.
-            - False (pure XML): No type information, no wrapper root.
-        legacy: Type encoding format (only when typed=True):
-            - True: Use _T attribute for types (GenRoBag legacy format)
-            - False: Use TYTX ::TYPE suffix in values (modern format)
-        root_tag: Root element tag name (default 'GenRoBag', used only if typed=True).
-        doc_header: XML declaration:
-            - None/False: No declaration
-            - True: Auto-generate with encoding
-            - str: Custom declaration string
-        pretty: If True, format with indentation.
-        html: HTML output mode:
-            - True: Use 'tag' attribute as XML tag name, auto-close only
-              HTML void elements (br, img, meta, hr, input, link, etc.).
-              Implies typed=False.
-            - False (default, XML): Use label as tag name, auto-close all
-              empty tags.
-        translate_cb: Optional callback for translating text values.
-
-    Returns:
-        XML string if filename is None, else None (written to file).
-
-    Example:
-        >>> bag = Bag()
-        >>> bag['name'] = 'test'
-        >>> bag['count'] = 42
-        >>>
-        >>> # Default Genropy format (typed=True, TYTX suffix)
-        >>> to_xml(bag)
-        '<GenRoBag><name>test</name><count>42::L</count></GenRoBag>'
-        >>>
-        >>> # Legacy format (typed=True, _T attribute)
-        >>> to_xml(bag, legacy=True)
-        '<GenRoBag><name>test</name><count _T="L">42</count></GenRoBag>'
-        >>>
-        >>> # Pure XML (typed=False)
-        >>> to_xml(bag, typed=False)
-        '<name>test</name><count>42</count>'
-        >>>
-        >>> # HTML mode (auto-detect from filename)
-        >>> to_xml(bag, filename='page.html')  # html=True auto-detected
-    """
-    # TODO: Implement
-    raise NotImplementedError("to_xml not yet implemented")
-
-
-def from_xml(
-    source: str | bytes,
-    # Type decoding
-    typed: bool = True,
-    legacy: bool | None = None,
-    # Parsing options
-    empty: Callable[[], Any] | None = None,
-    attr_in_value: bool = False,
-) -> Bag:
-    """Deserialize XML to Bag.
-
-    Parses XML and reconstructs a Bag hierarchy. Duplicate tag names are
-    automatically handled by appending _1, _2, etc. suffixes.
-
-    Args:
-        source: XML string or bytes to parse.
-        typed: If True, decode type information from values/attributes.
-        legacy: Type decoding mode:
-            - None: Auto-detect (look for _T attributes)
-            - True: Force legacy mode (_T attribute)
-            - False: Force TYTX mode (::TYPE suffix)
-        empty: Factory function for empty element values.
-        attr_in_value: If True, store XML attributes as structured data:
-            - Creates a Bag with '__attributes' (Bag of attrs) and '__content' (value)
-            - If False (default), attributes go to node.attr
-
-    Returns:
-        Deserialized Bag.
-
-    Example:
-        >>> xml = '<root><item>a</item><item>b</item></root>'
-        >>> bag = from_xml(xml)
-        >>> list(bag['root'].keys())
-        ['item', 'item_1']
-    """
-    # TODO: Implement
-    raise NotImplementedError("from_xml not yet implemented")
 
 
 # ==================== JSON Serialization ====================

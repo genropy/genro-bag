@@ -244,23 +244,40 @@ Due famiglie di funzioni:
 | `node_flattener()` | `serialization.py` | ✅ Implementato |
 | `to_tytx(transport='json'\|'msgpack')` | `serialization.py` | ✅ Implementato |
 | `from_tytx(transport='json'\|'msgpack')` | `serialization.py` | ✅ Implementato |
-| `to_xml(...)` | `serialization.py` | ⏳ Stub |
-| `from_xml(...)` | `serialization.py` | ⏳ Stub |
+| `BagXmlSerializer.serialize()` | `bag_xml.py` | ✅ Implementato |
+| `BagXmlParser.parse()` | `bag_xml.py` | ✅ Implementato |
 | `to_json(...)` | `serialization.py` | ⏳ Stub |
 | `from_json(...)` | `serialization.py` | ⏳ Stub |
 
-#### File rimossi
-- `bag_serialization.py` - stub duplicato, rimosso
-- `to_xml_raw` / `from_xml_raw` - logica sarà integrata in `to_xml` / `from_xml`
+#### File
+
+- `bag_xml.py` - Classi `BagXmlSerializer` e `BagXmlParser` per serializzazione XML
+
+#### Decisione: NO serializzazione XML legacy (2026-01-05)
+
+**DECISIONE PRESA**: La serializzazione XML legacy (con `_T` attribute per i tipi) è stata rimossa perché troppo complessa da implementare.
+
+**Architettura finale**:
+
+- `BagXmlSerializer` - serializza Bag in XML **senza informazioni di tipo** (valori convertiti in stringhe)
+- `BagXmlParser` - parsing XML con **auto-detect** del formato legacy (legge `_T` se presente, decode TYTX negli attributi)
+
+**Cosa significa**:
+
+- ✅ **Lettura legacy**: `BagXmlParser` può leggere file XML legacy GenRoBag (con `_T` e `<GenRoBag>` wrapper)
+- ❌ **Scrittura legacy**: NON supportata - `BagXmlSerializer` produce XML semplice senza tipi
+- ✅ **Round-trip con tipi**: Usare TYTX (`.bag.json`, `.bag.mp`) per preservare i tipi
+
+**Modulo rimosso**: `xml_legacy.py` - eliminato completamente
 
 #### Da fare
+
 1. ✅ Rimuovere `transport='xml'` da `to_tytx`/`from_tytx` - COMPLETATO
 2. ✅ Rimuovere `to_xml_raw` / `from_xml_raw` - COMPLETATO
-3. ✅ Definire signature `to_xml` - COMPLETATO (vedi `03-compatibility_layer.md`)
-4. ✅ Definire signature `from_xml` - COMPLETATO (vedi `03-compatibility_layer.md`)
-5. ⏳ Implementare `to_xml` body
-6. ⏳ Implementare `from_xml` body
-7. ⏳ Implementare `to_json` / `from_json` (formato legacy con TYTX interno)
+3. ✅ `BagXmlSerializer` - XML semplice (valori come stringhe) - COMPLETATO
+4. ✅ `BagXmlParser` - Parsing XML con auto-detect legacy - COMPLETATO
+5. ✅ Rimuovere `xml_legacy.py` - COMPLETATO
+6. ⏳ Implementare `to_json` / `from_json` (formato legacy con TYTX interno)
 
 **Estensioni file**:
 - `.bag.json` - TYTX con trasporto JSON

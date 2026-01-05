@@ -1153,6 +1153,86 @@ class Bag:
         from .serialization import from_tytx
         return from_tytx(data, transport=transport)
 
+    def to_xml(
+        self,
+        filename: str | None = None,
+        encoding: str = 'UTF-8',
+        doc_header: bool | str | None = None,
+        pretty: bool = False,
+        self_closed_tags: list[str] | None = None,
+    ) -> str | None:
+        """Serialize to XML format.
+
+        All values are converted to strings without type information.
+        For type-preserving serialization, use to_tytx() instead.
+
+        Args:
+            filename: If provided, write to file. If None, return XML string.
+            encoding: XML encoding (default 'UTF-8').
+            doc_header: XML declaration (True for auto, False/None for none, str for custom).
+            pretty: If True, format with indentation.
+            self_closed_tags: List of tags to self-close when empty.
+
+        Returns:
+            XML string if filename is None, else None.
+
+        Example:
+            >>> bag = Bag()
+            >>> bag['name'] = 'test'
+            >>> bag['count'] = 42
+            >>> bag.to_xml()
+            '<name>test</name><count>42</count>'
+        """
+        from .bag_xml import BagXmlSerializer
+
+        return BagXmlSerializer.serialize(
+            self,
+            filename=filename,
+            encoding=encoding,
+            doc_header=doc_header,
+            pretty=pretty,
+            self_closed_tags=self_closed_tags,
+        )
+
+    @classmethod
+    def from_xml(
+        cls,
+        source: str | bytes,
+        empty: Callable[[], Any] | None = None,
+        attr_in_value: bool = False,
+    ) -> Bag:
+        """Deserialize from XML format.
+
+        Automatically detects and handles legacy GenRoBag format:
+        - Decodes `_T` attribute for value types
+        - Decodes `::TYPE` suffix in attribute values (TYTX encoding)
+        - Handles `<GenRoBag>` root wrapper element
+
+        For plain XML without type markers, values remain as strings.
+
+        Args:
+            source: XML string or bytes to parse.
+            empty: Factory function for empty element values.
+            attr_in_value: If True, store attributes as __attributes sub-bag.
+
+        Returns:
+            Reconstructed Bag.
+
+        Example:
+            >>> # Plain XML
+            >>> bag = Bag.from_xml('<root><name>test</name></root>')
+            >>> bag['root']['name']
+            'test'
+
+            >>> # Legacy GenRoBag format (auto-detected)
+            >>> bag = Bag.from_xml('<GenRoBag><count _T="L">42</count></GenRoBag>')
+            >>> bag['count']
+            42
+        """
+        from .bag_xml import BagXmlParser
+
+        return BagXmlParser.parse(source, empty=empty, attr_in_value=attr_in_value)
+
     # -------------------- __str__ --------------------------------
 
     def __str__(self, _visited: dict | None = None) -> str:
