@@ -4,15 +4,15 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from urllib.parse import urlencode
 
+import httpx
 from genro_toolbox import smartasync
 
+from ..bag import Bag
 from ..resolver import BagResolver
-
-if TYPE_CHECKING:
-    from ..bag import Bag
+from ..serialization import from_json
 
 
 class UrlResolver(BagResolver):
@@ -37,12 +37,11 @@ class UrlResolver(BagResolver):
         'timeout': 30,
         'as_bag': False,
     }
+    class_args = ['url']
 
     @smartasync
     async def load(self) -> Any:
         """Fetch URL content."""
-        import httpx
-
         url = self._kw['url']
         method = self._kw['method']
         qs = self._kw['qs']
@@ -80,15 +79,11 @@ class UrlResolver(BagResolver):
 
     def _qs_to_dict(self, qs) -> dict:
         """Convert qs (Bag or dict) to dict, filtering None values."""
-        from ..bag import Bag
         if isinstance(qs, Bag):
             return {k: qs[k] for k in qs.keys() if qs[k] is not None}
         return {k: v for k, v in qs.items() if v is not None}
 
     def _convert_to_bag(self, response, must_convert: bool = False) -> Any:
-        from ..bag import Bag
-        from ..serialization import from_json
-
         content_type = response.headers.get('content-type', '')
         text = response.text
 

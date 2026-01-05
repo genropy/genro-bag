@@ -28,11 +28,11 @@ Example:
 
 from __future__ import annotations
 
+import json
 from collections.abc import Iterator
-from typing import TYPE_CHECKING, Literal
+from typing import Literal
 
-if TYPE_CHECKING:
-    from .bag import Bag
+from .bag import Bag
 
 
 def node_flattener(
@@ -75,8 +75,6 @@ def node_flattener(
         ('', 'config', None, '::X', {})
         ('config', 'host', None, 'localhost', {})
     """
-    from .bag import Bag
-
     compact = path_registry is not None
     if compact:
         path_to_code: dict[str, int] = {}
@@ -206,8 +204,6 @@ def from_tytx(
     """
     from genro_tytx import from_tytx as tytx_decode
 
-    from .bag import Bag
-
     parsed = tytx_decode(data, transport=transport if transport != "json" else None)
     rows = parsed["rows"]
     paths_raw = parsed.get("paths")
@@ -254,8 +250,6 @@ def from_tytx(
 
 def _node_to_json(node: any, typed: bool) -> dict:
     """Convert a BagNode to JSON-serializable dict."""
-    from .bag import Bag
-
     value = node.value
     if isinstance(value, Bag):
         value = [_node_to_json(n, typed) for n in value.nodes]
@@ -284,8 +278,6 @@ def to_json(
         >>> to_json(bag)
         '[{"label": "name", "value": "test", "attr": {}}]'
     """
-    import json
-
     result = [_node_to_json(node, typed) for node in bag.nodes]
 
     if typed:
@@ -332,8 +324,6 @@ def _from_json_recursive(
     parent_key: str | None = None,
 ) -> Bag | any:
     """Recursively convert JSON data to Bag."""
-    from .bag import Bag
-
     if isinstance(data, list):
         if not data:
             return Bag()

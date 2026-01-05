@@ -32,16 +32,16 @@ Example:
     bag['api'] = OpenApiResolver('https://petstore3.swagger.io/api/v3/openapi.json')
 """
 
-from .callback_resolver import BagCbResolver
-from .directory_resolver import DirectoryResolver
+from ..resolver import BagCbResolver
+from .directory_resolver import DirectoryResolver, SerializedBagResolver, TxtDocResolver
 from .openapi_resolver import OpenApiResolver
-from .txt_doc_resolver import TxtDocResolver
 from .url_resolver import UrlResolver
 
 __all__ = [
     'BagCbResolver',
     'DirectoryResolver',
     'OpenApiResolver',
+    'SerializedBagResolver',
     'TxtDocResolver',
     'UrlResolver',
 ]

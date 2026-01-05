@@ -15,15 +15,13 @@ import datetime
 import os
 import re
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any
+from typing import Any
 from xml import sax
 from xml.sax import saxutils
 
 from genro_tytx import from_tytx
 
-if TYPE_CHECKING:
-    from .bag import Bag
-
+from .bag import Bag
 
 # Regex for sanitizing XML tag names
 _INVALID_XML_TAG_CHARS = re.compile(r'[^\w.]', re.ASCII)
@@ -163,8 +161,6 @@ class BagXmlSerializer:
 
     def _node_to_xml(self, node: Any, namespaces: list[str]) -> str:
         """Convert a BagNode to XML string."""
-        from .bag import Bag
-
         # Extract local namespaces from this node's attributes
         local_namespaces = self._extract_namespaces(node.attr)
         current_namespaces = namespaces + local_namespaces
@@ -308,8 +304,6 @@ class BagXmlParser(sax.handler.ContentHandler):
         Returns:
             Deserialized Bag with XML structure.
         """
-        from .bag import Bag
-
         if isinstance(source, bytes):
             source = source.decode()
 
@@ -329,7 +323,6 @@ class BagXmlParser(sax.handler.ContentHandler):
         return result
 
     def startDocument(self) -> None:
-        from .bag import Bag
         self.bags: list[tuple[Any, dict, str | None]] = [(Bag(), None, None)]
         self.value_list: list[str] = []
         self.legacy_mode: bool = False
@@ -347,7 +340,6 @@ class BagXmlParser(sax.handler.ContentHandler):
         return value
 
     def startElement(self, tag_label: str, attributes: Any) -> None:
-        from .bag import Bag
         attrs = {str(k): from_tytx(saxutils.unescape(v)) for k, v in attributes.items()}
         curr_type: str | None = None
 

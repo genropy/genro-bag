@@ -22,9 +22,11 @@ Example:
 
 from __future__ import annotations
 
+import os
 from collections.abc import Callable, Iterator
 from typing import Any
 
+import httpx
 from genro_toolbox import smartasync, smartawait, smartsplit
 from genro_toolbox.typeutils import safe_is_instance
 
@@ -137,8 +139,6 @@ class Bag:
             FileNotFoundError: If file does not exist.
             ValueError: If file extension is not recognized.
         """
-        import os
-
         if not os.path.isfile(path):
             raise FileNotFoundError(f"File not found: {path}")
 
@@ -229,8 +229,6 @@ class Bag:
             >>> # Async context
             >>> bag = await Bag.from_url('https://example.com/data.xml')
         """
-        import httpx
-
         async with httpx.AsyncClient() as client:
             response = await client.get(url, timeout=timeout)
             response.raise_for_status()

@@ -4,15 +4,15 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from urllib.parse import urljoin, urlparse
 
+import httpx
 from genro_toolbox import smartasync
 
+from ..bag import Bag
 from ..resolver import BagResolver
 from ..serialization import from_json
-
-if TYPE_CHECKING:
-    from ..bag import Bag
+from .url_resolver import UrlResolver
 
 
 class OpenApiResolver(BagResolver):
@@ -36,8 +36,6 @@ class OpenApiResolver(BagResolver):
 
     @smartasync
     async def load(self) -> Bag:
-        import httpx
-
         url = self._kw['url']
         timeout = self._kw['timeout']
 
@@ -49,10 +47,6 @@ class OpenApiResolver(BagResolver):
         return self._build_bag(spec_bag)
 
     def _build_bag(self, spec: Bag) -> Bag:
-        from urllib.parse import urljoin, urlparse
-
-        from ..bag import Bag
-
         result = Bag()
 
         # Info: value=description, attr=title
@@ -149,9 +143,6 @@ class OpenApiResolver(BagResolver):
         return result
 
     def _build_operation_bag(self, operation: Bag, path: str, method: str, base_url: str) -> Bag:
-        from ..bag import Bag
-        from .url_resolver import UrlResolver
-
         op_bag = Bag()
         op_bag['summary'] = operation['summary']
         op_bag['description'] = operation['description']
@@ -236,8 +227,6 @@ class OpenApiResolver(BagResolver):
 
     def _schema_to_bag(self, schema: Bag) -> Bag:
         """Convert OpenAPI schema to Bag with field names (empty values)."""
-        from ..bag import Bag
-
         result = Bag()
 
         # Handle $ref - just note the reference

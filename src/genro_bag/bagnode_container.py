@@ -17,6 +17,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import TYPE_CHECKING, Any
 
 from genro_toolbox import smartsplit
@@ -57,7 +58,6 @@ class BagNodeContainer:
         Returns:
             Index position (0-based), or -1 if not found.
         """
-        import re
         if label in self._dict:
             return next((i for i, node in enumerate(self._list) if node.label == label), -1)
         if m := re.match(r'^#(\d+)$', label):

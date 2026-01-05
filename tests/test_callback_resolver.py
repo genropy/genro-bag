@@ -259,5 +259,5 @@ class TestBagCbResolverSerialization:
         data = resolver.serialize()
 
         assert data['resolver_class'] == 'BagCbResolver'
-        assert 'callback_resolver' in data['resolver_module']
+        assert 'genro_bag.resolver' in data['resolver_module']
         assert data['kwargs']['cache_time'] == 30

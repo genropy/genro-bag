@@ -1,13 +1,65 @@
 # Copyright 2025 Softwell S.r.l. - SPDX-License-Identifier: Apache-2.0
-"""DirectoryResolver - lazily loads directory contents as a Bag."""
+"""Directory and file resolvers - lazily load filesystem content as Bag."""
 
 from __future__ import annotations
 
+import fnmatch
 import os
 import re
 from datetime import datetime
 
 from ..resolver import BagResolver
+
+
+class TxtDocResolver(BagResolver):
+    """Resolver that lazily loads text file content.
+
+    Parameters (class_args):
+        path: Filesystem path to the text file.
+
+    Parameters (class_kwargs):
+        cache_time: Cache duration in seconds. Default 500.
+        read_only: If True, resolver acts as pure getter. Default True.
+    """
+
+    class_kwargs = {'cache_time': 500, 'read_only': True}
+    class_args = ['path']
+
+    def load(self):
+        """Load and return the file content as bytes."""
+        with open(self._kw['path'], mode='rb') as f:
+            return f.read()
+
+
+class SerializedBagResolver(BagResolver):
+    """Resolver that lazily loads a Bag from a serialized file.
+
+    Supports all formats recognized by Bag.fill_from():
+    - .xml: XML format (with auto-detect for legacy GenRoBag)
+    - .bag.json: TYTX JSON format
+    - .bag.mp: TYTX MessagePack format
+
+    Parameters (class_args):
+        path: Filesystem path to the serialized Bag file.
+
+    Parameters (class_kwargs):
+        cache_time: Cache duration in seconds. Default 500.
+        read_only: If True, resolver acts as pure getter. Default True.
+
+    Example:
+        >>> resolver = SerializedBagResolver('/path/to/data.bag.json')
+        >>> bag = resolver()
+        >>> bag['config.host']
+        'localhost'
+    """
+
+    class_kwargs = {'cache_time': 500, 'read_only': True}
+    class_args = ['path']
+
+    def load(self):
+        """Load and return the Bag from the serialized file."""
+        from ..bag import Bag
+        return Bag(self._kw['path'])
 
 
 class DirectoryResolver(BagResolver):
@@ -188,7 +240,6 @@ class DirectoryResolver(BagResolver):
         Returns:
             bool: True if file passes filter, False otherwise.
         """
-        import fnmatch
         if include:
             patterns = include.split(',')
             if not any(fnmatch.fnmatch(name, p.strip()) for p in patterns):
@@ -243,7 +294,6 @@ class DirectoryResolver(BagResolver):
         Returns:
             TxtDocResolver: Resolver that will load the file content as bytes.
         """
-        from .txt_doc_resolver import TxtDocResolver
         kwargs = self._instance_kwargs()
         kwargs['path'] = path
         return TxtDocResolver(**kwargs)
@@ -260,7 +310,6 @@ class DirectoryResolver(BagResolver):
         Returns:
             SerializedBagResolver: Resolver that will parse the XML into a Bag.
         """
-        from .serialized_bag_resolver import SerializedBagResolver
         kwargs = self._instance_kwargs()
         kwargs['path'] = path
         return SerializedBagResolver(**kwargs)

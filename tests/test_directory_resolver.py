@@ -179,7 +179,7 @@ class TestDirectoryResolverProcessors:
 
     def test_processor_txt_creates_resolver(self, tmp_path):
         """TXT files get TxtDocResolver as resolver."""
-        from genro_bag.resolvers.txt_doc_resolver import TxtDocResolver
+        from genro_bag.resolvers import TxtDocResolver
 
         (tmp_path / 'doc.txt').write_text('hello')
 
@@ -202,7 +202,7 @@ class TestDirectoryResolverProcessors:
 
     def test_processor_xml_creates_resolver(self, tmp_path):
         """XML files get SerializedBagResolver as resolver."""
-        from genro_bag.resolvers.serialized_bag_resolver import SerializedBagResolver
+        from genro_bag.resolvers import SerializedBagResolver
 
         (tmp_path / 'data.xml').write_text('<root><item>value</item></root>')
 
