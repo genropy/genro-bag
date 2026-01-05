@@ -287,20 +287,22 @@ class TestBagFromXmlLegacyFormat:
         assert node.attr['count'] == 42
         assert node.attr['price'] == Decimal('3.14')
 
-    def test_array_type(self):
-        """Test array types (A*).
+    def test_nested_elements_in_genrobag(self):
+        """Test nested elements in GenRoBag format.
 
-        Note: The array type AL means array of integers, but the parser
-        currently only parses as array, elements remain strings.
+        Note: Array types (A*) are not supported. Nested elements
+        are parsed as regular Bag children.
         """
-        xml = '''<GenRoBag><numbers _T="AL">
+        xml = '''<GenRoBag><numbers>
             <n>1</n><n>2</n><n>3</n>
         </numbers></GenRoBag>'''
 
         bag = Bag.from_xml(xml)
 
-        # Array elements are parsed as strings (type suffix only affects container)
-        assert bag['numbers'] == ['1', '2', '3']
+        # Nested elements become Bag children with duplicate handling
+        assert bag['numbers.n'] == '1'
+        assert bag['numbers.n_1'] == '2'
+        assert bag['numbers.n_2'] == '3'
 
     def test_empty_with_type(self):
         """Test empty element with type.

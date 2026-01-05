@@ -1199,7 +1199,6 @@ class Bag:
         cls,
         source: str | bytes,
         empty: Callable[[], Any] | None = None,
-        attr_in_value: bool = False,
     ) -> Bag:
         """Deserialize from XML format.
 
@@ -1213,7 +1212,6 @@ class Bag:
         Args:
             source: XML string or bytes to parse.
             empty: Factory function for empty element values.
-            attr_in_value: If True, store attributes as __attributes sub-bag.
 
         Returns:
             Reconstructed Bag.
@@ -1231,7 +1229,7 @@ class Bag:
         """
         from .bag_xml import BagXmlParser
 
-        return BagXmlParser.parse(source, empty=empty, attr_in_value=attr_in_value)
+        return BagXmlParser.parse(source, empty=empty)
 
     # -------------------- __str__ --------------------------------
 

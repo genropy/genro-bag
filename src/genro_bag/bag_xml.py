@@ -256,7 +256,6 @@ class BagXmlParser(sax.handler.ContentHandler):
     - Decodes `_T` attribute for value types
     - Decodes `::TYPE` suffix in attribute values (TYTX encoding)
     - Handles `<GenRoBag>` root wrapper element
-    - Supports array types (A*)
 
     For plain XML without type markers, values remain as strings.
 
@@ -279,31 +278,26 @@ class BagXmlParser(sax.handler.ContentHandler):
     def __init__(
         self,
         empty: Callable[[], Any] | None = None,
-        attr_in_value: bool = False,
     ):
         """Initialize the parser.
 
         Args:
             empty: Factory function for empty element values.
-            attr_in_value: If True, store attributes as __attributes sub-bag.
         """
         super().__init__()
         self.empty = empty
-        self.attr_in_value = attr_in_value
 
     @classmethod
     def parse(
         cls,
         source: str | bytes,
         empty: Callable[[], Any] | None = None,
-        attr_in_value: bool = False,
     ) -> Bag:
         """Parse XML to Bag.
 
         Args:
             source: XML string or bytes to parse.
             empty: Factory function for empty element values.
-            attr_in_value: If True, store attributes as __attributes sub-bag.
 
         Returns:
             Deserialized Bag with XML structure.
@@ -318,10 +312,7 @@ class BagXmlParser(sax.handler.ContentHandler):
             if k.startswith('GNR_'):
                 source = source.replace(f'{{{k}}}', os.environ[k])
 
-        handler = cls(
-            empty=empty,
-            attr_in_value=attr_in_value,
-        )
+        handler = cls(empty=empty)
         sax.parseString(source, handler)
 
         result = handler.bags[0][0]
@@ -337,7 +328,6 @@ class BagXmlParser(sax.handler.ContentHandler):
         self.value_list: list[str] = []
         self.format = ''
         self.curr_type: str | None = None
-        self.curr_array: str | None = None
 
     def _get_value(self, dtype: str | None = None) -> str:
         """Get accumulated character data as string."""
@@ -387,13 +377,7 @@ class BagXmlParser(sax.handler.ContentHandler):
                     self.curr_type = attrs.pop('_T')
                 elif 'T' in attrs:
                     self.curr_type = attrs.pop('T')
-
-                if not self.curr_array:
-                    new_item: Any = Bag()
-                    if self.curr_type and self.curr_type.startswith('A'):
-                        self.curr_array = tag_label
-                        new_item = []
-                    self.bags.append((new_item, attrs))
+                self.bags.append((Bag(), attrs))
             else:
                 # Plain XML format
                 if ''.join(self.value_list).strip():
@@ -410,41 +394,24 @@ class BagXmlParser(sax.handler.ContentHandler):
     def endElement(self, tag_label: str) -> None:
         value = self._get_value(dtype=self.curr_type)
         self.value_list = []
-        dest = self.bags[-1][0]
 
         if self.format == 'GenRoBag' and value:
             value = self._decode_value_with_type(value, self.curr_type)
 
-        if self.curr_array:
-            # Handle array
-            if self.curr_array != tag_label:
-                # Array content
-                if value == '':
-                    value = self._decode_value_with_type('', self.curr_type)
-                dest.append(value)
+        curr, attrs = self.bags.pop()
+        if value or value == 0 or value == datetime.time(0, 0):
+            if curr:
+                if isinstance(value, str):
+                    value = value.strip()
+                if value:
+                    curr.set_item('_', value)
             else:
-                # Array enclosure
-                self.curr_array = None
-                curr, attrs = self.bags.pop()
-                self._set_into_parent(tag_label, curr, attrs)
-        else:
-            curr, attrs = self.bags.pop()
-            if value or value == 0 or value == datetime.time(0, 0):
-                if curr:
-                    if isinstance(value, str):
-                        value = value.strip()
-                    if value:
-                        curr.set_item('_', value)
-                else:
-                    curr = value
+                curr = value
 
-            if not curr and curr != 0 and curr != datetime.time(0, 0):
-                if self.empty:
-                    curr = self.empty()
-                else:
-                    curr = self._decode_value_with_type('', self.curr_type)
+        if not curr and curr != 0 and curr != datetime.time(0, 0):
+            curr = self.empty() if self.empty else self._decode_value_with_type('', self.curr_type)
 
-            self._set_into_parent(tag_label, curr, attrs)
+        self._set_into_parent(tag_label, curr, attrs)
 
     def _set_into_parent(self, tag_label: str, curr: Any, attrs: dict) -> None:
         """Add node to parent bag."""
@@ -465,19 +432,6 @@ class BagXmlParser(sax.handler.ContentHandler):
             tag_label = f'{tag_label}_{cnt}'
 
         if attrs:
-            if self.attr_in_value:
-                from .bag import Bag
-                # Store attributes as structured data
-                if isinstance(curr, Bag):
-                    curr['__attributes'] = Bag(attrs)
-                else:
-                    value = curr
-                    curr = Bag()
-                    curr['__attributes'] = Bag(attrs)
-                    if value:
-                        curr['__content'] = value
-                dest.set_item(tag_label, curr)
-            else:
-                dest.set_item(tag_label, curr, _attributes=attrs)
+            dest.set_item(tag_label, curr, _attributes=attrs)
         else:
             dest.set_item(tag_label, curr)

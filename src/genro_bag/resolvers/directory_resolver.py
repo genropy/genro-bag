@@ -6,6 +6,7 @@ from __future__ import annotations
 import os
 import re
 from datetime import datetime
+
 from ..resolver import BagResolver
 
 
@@ -108,7 +109,7 @@ class DirectoryResolver(BagResolver):
                 Directories have nested DirectoryResolver as value.
         """
         from ..bag import Bag
-        extensions = dict([((ext.split(':') + (ext.split(':'))))[0:2] for ext in self._kw['ext'].split(',')]) if self._kw['ext'] else dict()
+        extensions = dict([(ext.split(':') + ext.split(':'))[0:2] for ext in self._kw['ext'].split(',')]) if self._kw['ext'] else {}
         extensions['directory'] = 'directory'
         result = Bag()
         try:
@@ -140,7 +141,7 @@ class DirectoryResolver(BagResolver):
                 processname = extensions.get(ext.lower(), None)
                 handler = processors.get(processname)
                 if handler is not False:
-                    handler = handler or getattr(self, 'processor_%s' % extensions.get(ext.lower(), 'None'), None)
+                    handler = handler or getattr(self, f'processor_{extensions.get(ext.lower(), "None")}', None)
                 handler = handler or self.processor_default
                 try:
                     stat = os.stat(fullpath)
@@ -155,10 +156,12 @@ class DirectoryResolver(BagResolver):
                     size = None
                 caption = fname.replace('_',' ').strip()
                 m = re.match(r'(\d+) (.*)', caption)
-                caption = '!!%s %s' % (str(int(m.group(1))), m.group(2).capitalize()) if m else caption.capitalize()
-                nodeattr = dict(file_name=fname, file_ext=ext, rel_path=relpath,
-                               abs_path=fullpath, mtime=mtime, atime=atime, ctime=ctime, nodecaption=nodecaption,
-                               caption=caption, size=size)
+                caption = f'!!{int(m.group(1))} {m.group(2).capitalize()}' if m else caption.capitalize()
+                nodeattr = {
+                    'file_name': fname, 'file_ext': ext, 'rel_path': relpath,
+                    'abs_path': fullpath, 'mtime': mtime, 'atime': atime, 'ctime': ctime,
+                    'nodecaption': nodecaption, 'caption': caption, 'size': size
+                }
                 if self._kw['callback']:
                     cbres = self._kw['callback'](nodeattr=nodeattr)
                     if cbres is False:
@@ -206,7 +209,7 @@ class DirectoryResolver(BagResolver):
             str: Label suitable for use as Bag node key.
         """
         if ext != 'directory' and not self._kw['dropext']:
-            name = '%s_%s' % (name, ext)
+            name = f'{name}_{ext}'
         return name.replace('.', '_')
 
     def processor_directory(self, path):
