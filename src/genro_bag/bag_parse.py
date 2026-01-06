@@ -26,7 +26,7 @@ if TYPE_CHECKING:
 
 
 # Regex for empty checks
-_EMPTY_CONTENT_RE = re.compile(r'^\s*$')
+_EMPTY_CONTENT_RE = re.compile(r"^\s*$")
 
 
 class BagParser:
@@ -86,14 +86,14 @@ class BagParser:
 
         # Replace environment variables (GNR_*)
         for k in os.environ:
-            if k.startswith('GNR_'):
-                source = source.replace(f'{{{k}}}', os.environ[k])
+            if k.startswith("GNR_"):
+                source = source.replace(f"{{{k}}}", os.environ[k])
 
         sax.parseString(source, handler)
 
         result = handler.bags[0][0]
         if handler.legacy_mode:
-            result = result['GenRoBag']
+            result = result["GenRoBag"]
         if result is None:
             result = cls()
         return result
@@ -204,12 +204,12 @@ class BagParser:
                 return cls()
 
             # Check if list items have 'label' key (Bag node format)
-            if isinstance(data[0], dict) and 'label' in data[0]:
+            if isinstance(data[0], dict) and "label" in data[0]:
                 result = cls()
                 for item in data:
-                    label = item.get('label')
-                    value = cls._from_json_recursive(item.get('value'), list_joiner)
-                    attr = item.get('attr', {})
+                    label = item.get("label")
+                    value = cls._from_json_recursive(item.get("value"), list_joiner)
+                    attr = item.get("attr", {})
                     result.set_item(label, value, _attributes=attr)
                 return result
 
@@ -219,9 +219,9 @@ class BagParser:
 
             # Generic list -> Bag with prefix from parent key
             result = cls()
-            prefix = parent_key if parent_key else 'r'
+            prefix = parent_key if parent_key else "r"
             for n, v in enumerate(data):
-                result.set_item(f'{prefix}_{n}', cls._from_json_recursive(v, list_joiner))
+                result.set_item(f"{prefix}_{n}", cls._from_json_recursive(v, list_joiner))
             return result
 
         if isinstance(data, dict):
@@ -266,12 +266,12 @@ class _BagXmlHandler(sax.handler.ContentHandler):
     def _get_value(self, dtype: str | None = None) -> str:
         """Get accumulated character data as string."""
         if self.value_list:
-            if self.value_list[0] == '\n':
+            if self.value_list[0] == "\n":
                 self.value_list[:] = self.value_list[1:]
-            if self.value_list and self.value_list[-1] == '\n':
+            if self.value_list and self.value_list[-1] == "\n":
                 self.value_list.pop()
-        value = ''.join(self.value_list)
-        if dtype != 'BAG':
+        value = "".join(self.value_list)
+        if dtype != "BAG":
             value = saxutils.unescape(value)
         return value
 
@@ -281,15 +281,15 @@ class _BagXmlHandler(sax.handler.ContentHandler):
 
         if len(self.bags) == 1:
             # First element - detect legacy format
-            self.legacy_mode = tag_label.lower() == 'genrobag'
+            self.legacy_mode = tag_label.lower() == "genrobag"
         else:
             if self.legacy_mode:
-                curr_type = attrs.pop('_T', None)
-            elif ''.join(self.value_list).strip():
+                curr_type = attrs.pop("_T", None)
+            elif "".join(self.value_list).strip():
                 # Plain XML - handle mixed content
                 value = self._get_value()
                 if value:
-                    self.bags[-1][0].set_item('_', value)
+                    self.bags[-1][0].set_item("_", value)
 
         self.bags.append((self.bag_class(), attrs, curr_type))
 
@@ -303,35 +303,35 @@ class _BagXmlHandler(sax.handler.ContentHandler):
         value = self._get_value(dtype=curr_type)
         self.value_list = []
 
-        if self.legacy_mode and value and curr_type and curr_type != 'T':
+        if self.legacy_mode and value and curr_type and curr_type != "T":
             try:
-                value = tytx_decode(f'{value}::{curr_type}')
+                value = tytx_decode(f"{value}::{curr_type}")
             except Exception:
                 if self.raise_on_error:
                     raise
-                value = f'**INVALID::{curr_type}**'
+                value = f"**INVALID::{curr_type}**"
 
         if value or value == 0 or value == datetime.time(0, 0):
             if curr:
                 if isinstance(value, str):
                     value = value.strip()
                 if value:
-                    curr.set_item('_', value)
+                    curr.set_item("_", value)
             else:
                 curr = value
 
         if not curr and curr != 0 and curr != datetime.time(0, 0):
             if self.empty:
                 curr = self.empty()
-            elif curr_type and curr_type != 'T':
+            elif curr_type and curr_type != "T":
                 try:
-                    curr = tytx_decode(f'::{curr_type}')
+                    curr = tytx_decode(f"::{curr_type}")
                 except Exception:
                     if self.raise_on_error:
                         raise
-                    curr = f'**INVALID::{curr_type}**'
+                    curr = f"**INVALID::{curr_type}**"
             else:
-                curr = ''
+                curr = ""
 
         self._set_into_parent(tag_label, curr, attrs)
 
@@ -340,17 +340,17 @@ class _BagXmlHandler(sax.handler.ContentHandler):
         dest = self.bags[-1][0]
 
         # Use _tag attribute as label if present
-        tag_label = attrs.pop('_tag', tag_label)
+        tag_label = attrs.pop("_tag", tag_label)
 
         # Handle duplicate labels (always active - Bag doesn't allow duplicates)
-        dup_manager = getattr(dest, '__dupmanager', None)
+        dup_manager = getattr(dest, "__dupmanager", None)
         if dup_manager is None:
             dup_manager = {}
-            setattr(dest, '__dupmanager', dup_manager)
+            setattr(dest, "__dupmanager", dup_manager)
         cnt = dup_manager.get(tag_label, 0)
         dup_manager[tag_label] = cnt + 1
         if cnt:
-            tag_label = f'{tag_label}_{cnt}'
+            tag_label = f"{tag_label}_{cnt}"
 
         if attrs:
             dest.set_item(tag_label, curr, _attributes=attrs)

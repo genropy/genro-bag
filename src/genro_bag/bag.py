@@ -163,28 +163,27 @@ class Bag(BagParser, BagSerializer, BagQuery):
             raise FileNotFoundError(f"File not found: {path}")
 
         # Detect format from extension
-        if path.endswith('.bag.json'):
-            with open(path, encoding='utf-8') as f:
+        if path.endswith(".bag.json"):
+            with open(path, encoding="utf-8") as f:
                 data = f.read()
-            loaded = Bag.from_tytx(data, transport='json')
+            loaded = Bag.from_tytx(data, transport="json")
             self._fill_from_bag(loaded)
 
-        elif path.endswith('.bag.mp'):
-            with open(path, 'rb') as f:
+        elif path.endswith(".bag.mp"):
+            with open(path, "rb") as f:
                 data = f.read()
-            loaded = Bag.from_tytx(data, transport='msgpack')
+            loaded = Bag.from_tytx(data, transport="msgpack")
             self._fill_from_bag(loaded)
 
-        elif path.endswith('.xml'):
-            with open(path, encoding='utf-8') as f:
+        elif path.endswith(".xml"):
+            with open(path, encoding="utf-8") as f:
                 data = f.read()
             loaded = Bag.from_xml(data)
             self._fill_from_bag(loaded)
 
         else:
             raise ValueError(
-                f"Unrecognized file extension: {path}. "
-                "Supported: .bag.json, .bag.mp, .xml"
+                f"Unrecognized file extension: {path}. Supported: .bag.json, .bag.mp, .xml"
             )
 
     def _fill_from_bag(self, other: Bag) -> None:
@@ -249,6 +248,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
             >>> bag = await Bag.from_url('https://example.com/data.xml')
         """
         from genro_bag.resolvers import UrlResolver
+
         resolver = UrlResolver(url, timeout=timeout, as_bag=True)
         return await smartawait(resolver())
 
@@ -300,7 +300,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
         if self.parent is not None:
             parent_fullpath = self.parent.fullpath
             if parent_fullpath:
-                return f'{parent_fullpath}.{self.parent_node.label}'
+                return f"{parent_fullpath}.{self.parent_node.label}"
             else:
                 return self.parent_node.label
         return None
@@ -361,15 +361,17 @@ class Bag(BagParser, BagSerializer, BagQuery):
         Raises:
             AttributeError: If no builder is set or builder doesn't have the tag.
         """
-        if name.startswith('_'):
+        if name.startswith("_"):
             raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
         if self._builder is not None:
             try:
                 handler = getattr(self._builder, name)
+
                 # Return callable bound to this Bag
                 def bound_handler(**kwargs):
                     return handler(self, name, **kwargs)
+
                 return bound_handler
             except AttributeError:
                 pass
@@ -395,20 +397,21 @@ class Bag(BagParser, BagSerializer, BagQuery):
         curr = self
 
         if isinstance(path, str):
-            path = path.replace('../', '#parent.')
-            pathlist = [x for x in smartsplit(path, '.') if x]
+            path = path.replace("../", "#parent.")
+            pathlist = [x for x in smartsplit(path, ".") if x]
         else:
             pathlist = list(path)
 
         # handle parent reference #parent at the beginning
-        while pathlist and pathlist[0] == '#parent':
+        while pathlist and pathlist[0] == "#parent":
             pathlist.pop(0)
             curr = curr.parent
 
         return curr, pathlist
 
-    def _htraverse_after(self, curr: Bag, pathlist: list,
-                         write_mode: bool = False) -> tuple[Any, str]:
+    def _htraverse_after(
+        self, curr: Bag, pathlist: list, write_mode: bool = False
+    ) -> tuple[Any, str]:
         """Finalize traversal and handle write_mode autocreate.
 
         Final phase of path traversal: handles empty paths, checks for
@@ -428,7 +431,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
             BagException: If write_mode and path uses '#n' for non-existent index.
         """
         if not pathlist:
-            return curr, ''
+            return curr, ""
 
         # In read mode, if we have more than one segment left, path doesn't exist
         if not write_mode:
@@ -440,8 +443,8 @@ class Bag(BagParser, BagSerializer, BagQuery):
         # Note: _nodes.set handles _on_node_inserted when parent_bag.backref is True
         while len(pathlist) > 1:
             label = pathlist.pop(0)
-            if label.startswith('#'):
-                raise BagException('Not existing index in #n syntax')
+            if label.startswith("#"):
+                raise BagException("Not existing index in #n syntax")
             new_bag = curr.__class__()
             curr._nodes.set(label, new_bag, parent_bag=curr)
             curr = new_bag
@@ -450,8 +453,9 @@ class Bag(BagParser, BagSerializer, BagQuery):
 
     # -------------------- _traverse_until (sync) --------------------------------
 
-    def _traverse_until(self, curr: Bag, pathlist: list,
-                         write_mode: bool = False) -> tuple[Bag, list]:
+    def _traverse_until(
+        self, curr: Bag, pathlist: list, write_mode: bool = False
+    ) -> tuple[Bag, list]:
         """Traverse path segments synchronously (static mode, no resolver trigger).
 
         Walks the path as far as possible without triggering resolvers.
@@ -489,8 +493,9 @@ class Bag(BagParser, BagSerializer, BagQuery):
     # -------------------- _async_traverse_until --------------------------------
 
     @smartasync
-    async def _async_traverse_until(self, curr: Bag, pathlist: list,
-                                    static: bool = False) -> tuple[Bag, list]:
+    async def _async_traverse_until(
+        self, curr: Bag, pathlist: list, static: bool = False
+    ) -> tuple[Bag, list]:
         """Traverse path segments with async support (may trigger resolvers).
 
         Walks the path as far as possible. When static=False, may trigger
@@ -534,15 +539,16 @@ class Bag(BagParser, BagSerializer, BagQuery):
         """
         curr, pathlist = self._htraverse_before(path)
         if not pathlist:
-            return curr, ''
+            return curr, ""
         curr, pathlist = self._traverse_until(curr, pathlist, write_mode)
         return self._htraverse_after(curr, pathlist, write_mode)
 
     # -------------------- _async_htraverse --------------------------------
 
     @smartasync
-    async def _async_htraverse(self, path: str | list, write_mode: bool = False,
-                               static: bool = False) -> tuple[Any, str]:
+    async def _async_htraverse(
+        self, path: str | list, write_mode: bool = False, static: bool = False
+    ) -> tuple[Any, str]:
         """Traverse a hierarchical path with async support.
 
         Async version that may trigger resolvers when static=False.
@@ -560,7 +566,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
         """
         curr, pathlist = self._htraverse_before(path)
         if not pathlist:
-            return curr, ''
+            return curr, ""
         curr, pathlist = await smartawait(self._async_traverse_until(curr, pathlist, static=static))
         return self._htraverse_after(curr, pathlist, write_mode)
 
@@ -593,11 +599,11 @@ class Bag(BagParser, BagSerializer, BagQuery):
         """
         if not label:
             return self
-        if label == '#parent':
+        if label == "#parent":
             return self.parent
         attrname = None
-        if '?' in label:
-            label, attrname = label.split('?')
+        if "?" in label:
+            label, attrname = label.split("?")
         node = self._nodes.get(label)
         if not node:
             return default
@@ -606,8 +612,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
     # -------------------- get_item --------------------------------
 
     @smartasync
-    async def get_item(self, path: str, default: Any = None,
-                       static: bool = False) -> Any:
+    async def get_item(self, path: str, default: Any = None, static: bool = False) -> Any:
         """Get value at a hierarchical path.
 
         Traverses the Bag hierarchy following the dot-separated path and returns
@@ -644,7 +649,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
         if isinstance(obj, Bag):
             return obj.get(label, default)
 
-        if hasattr(obj, 'get'):
+        if hasattr(obj, "get"):
             return obj.get(label, default)
         else:
             return default
@@ -658,18 +663,26 @@ class Bag(BagParser, BagSerializer, BagQuery):
         obj, label = self._htraverse(path)
         if isinstance(obj, Bag):
             return obj.get(label)
-        if hasattr(obj, 'get'):
+        if hasattr(obj, "get"):
             return obj.get(label)
         return None
 
     # -------------------- set_item --------------------------------
 
-    def set_item(self, path: str, value: Any, _attributes: dict | None = None,
-                 _position: str | None = None,
-                 _updattr: bool = False, _remove_null_attributes: bool = True,
-                 _reason: str | None = None, _fired: bool = False,
-                 do_trigger: bool = True,
-                 resolver=None, **kwargs) -> None:
+    def set_item(
+        self,
+        path: str,
+        value: Any,
+        _attributes: dict | None = None,
+        _position: str | None = None,
+        _updattr: bool = False,
+        _remove_null_attributes: bool = True,
+        _reason: str | None = None,
+        _fired: bool = False,
+        do_trigger: bool = True,
+        resolver=None,
+        **kwargs,
+    ) -> None:
         """Set value at a hierarchical path.
 
         Traverses the Bag hierarchy following the dot-separated path, creating
@@ -716,8 +729,8 @@ class Bag(BagParser, BagSerializer, BagQuery):
         """
         # Parse ?attr suffix from path
         attrname = None
-        if '?' in path:
-            path, attrname = path.rsplit('?', 1)
+        if "?" in path:
+            path, attrname = path.rsplit("?", 1)
         if kwargs:
             _attributes = dict(_attributes or {})
             _attributes.update(kwargs)
@@ -728,38 +741,48 @@ class Bag(BagParser, BagSerializer, BagQuery):
             value = None
 
         # Gestisci resolver.attributes se presente
-        if resolver is not None and hasattr(resolver, 'attributes') and resolver.attributes:
+        if resolver is not None and hasattr(resolver, "attributes") and resolver.attributes:
             _attributes = dict(_attributes or ())
             _attributes.update(resolver.attributes)
 
         path = _normalize_path(path)
         obj, label = self._htraverse(path, write_mode=True)
 
-        if label.startswith('#'):
-            raise BagException('Cannot create new node with #n syntax')
+        if label.startswith("#"):
+            raise BagException("Cannot create new node with #n syntax")
 
         if attrname:
             # ?attr syntax: set attribute on node (create if needed)
             node = obj._nodes.get(label)
             if node is None:
                 # Create the node first with None value
-                node = obj._nodes.set(label, None, _position,
-                                      attr=_attributes, parent_bag=obj,
-                                      _reason=_reason, do_trigger=do_trigger)
+                node = obj._nodes.set(
+                    label,
+                    None,
+                    _position,
+                    attr=_attributes,
+                    parent_bag=obj,
+                    _reason=_reason,
+                    do_trigger=do_trigger,
+                )
             node.set_attr({attrname: value}, trigger=do_trigger)
         else:
-            obj._nodes.set(label, value, _position,
-                          attr=_attributes, resolver=resolver,
-                          parent_bag=obj,
-                          _updattr=_updattr,
-                          _remove_null_attributes=_remove_null_attributes,
-                          _reason=_reason,
-                          do_trigger=do_trigger)
+            obj._nodes.set(
+                label,
+                value,
+                _position,
+                attr=_attributes,
+                resolver=resolver,
+                parent_bag=obj,
+                _updattr=_updattr,
+                _remove_null_attributes=_remove_null_attributes,
+                _reason=_reason,
+                do_trigger=do_trigger,
+            )
 
             if _fired:
                 # Reset to None without triggering (event was already fired with the value)
-                obj._nodes.set(label, None, parent_bag=obj, _reason=_reason,
-                              do_trigger=False)
+                obj._nodes.set(label, None, parent_bag=obj, _reason=_reason, do_trigger=False)
 
     def __setitem__(self, path: str, value: Any) -> None:
         self.set_item(path, value)
@@ -873,8 +896,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
         if self.backref:
             self._on_node_deleted(old_nodes, -1)
 
-    def move(self, what: int | list[int], position: int,
-             trigger: bool = True) -> None:
+    def move(self, what: int | list[int], position: int, trigger: bool = True) -> None:
         """Move element(s) to a new position.
 
         Follows the same semantics as JavaScript moveNode:
@@ -929,8 +951,13 @@ class Bag(BagParser, BagSerializer, BagQuery):
         """Property alias for get_nodes()."""
         return self.get_nodes()
 
-    def set_attr(self, path: str | None = None, _attributes: dict | None = None,
-                 _remove_null_attributes: bool = True, **kwargs) -> None:
+    def set_attr(
+        self,
+        path: str | None = None,
+        _attributes: dict | None = None,
+        _remove_null_attributes: bool = True,
+        **kwargs,
+    ) -> None:
         """Set attributes on a node at the given path.
 
         Args:
@@ -943,8 +970,9 @@ class Bag(BagParser, BagSerializer, BagQuery):
             attr=_attributes, _remove_null_attributes=_remove_null_attributes, **kwargs
         )
 
-    def get_attr(self, path: str | None = None, attr: str | None = None,
-                 default: Any = None) -> Any:
+    def get_attr(
+        self, path: str | None = None, attr: str | None = None, default: Any = None
+    ) -> Any:
         """Get an attribute from a node at the given path.
 
         Args:
@@ -1052,33 +1080,33 @@ class Bag(BagParser, BagSerializer, BagQuery):
             value = node.get_value(static=True)
 
             # Format attributes
-            attr = '<' + ' '.join(f"{k}='{v}'" for k, v in node.attr.items()) + '>'
-            if attr == '<>':
-                attr = ''
+            attr = "<" + " ".join(f"{k}='{v}'" for k, v in node.attr.items()) + ">"
+            if attr == "<>":
+                attr = ""
 
             if isinstance(value, Bag):
                 node_id = id(node)
-                backref = '(*)' if value.backref else ''
+                backref = "(*)" if value.backref else ""
                 lines.append(f"{idx} - ({value.__class__.__name__}) {node.label}{backref}: {attr}")
                 if node_id in _visited:
                     lines.append(f"    visited at :{_visited[node_id]}")
                 else:
                     _visited[node_id] = node.label
                     inner = value.__str__(_visited)
-                    lines.extend(f"    {line}" for line in inner.split('\n'))
+                    lines.extend(f"    {line}" for line in inner.split("\n"))
             else:
                 # Format type name
                 type_name = type(value).__name__
-                if type_name == 'NoneType':
-                    type_name = 'None'
-                if '.' in type_name:
-                    type_name = type_name.split('.')[-1]
+                if type_name == "NoneType":
+                    type_name = "None"
+                if "." in type_name:
+                    type_name = type_name.split(".")[-1]
                 # Handle bytes
                 if isinstance(value, bytes):
-                    value = value.decode('UTF-8', 'ignore')
+                    value = value.decode("UTF-8", "ignore")
                 lines.append(f"{idx} - ({type_name}) {node.label}: {value}  {attr}")
 
-        return '\n'.join(lines)
+        return "\n".join(lines)
 
     # -------------------- __iter__, __len__, __contains__, __call__ --------------------------------
 
@@ -1223,7 +1251,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
     def _make_picklable(self) -> None:
         """Prepare Bag for pickling (internal)."""
         if self._backref:
-            self._backref = 'x'
+            self._backref = "x"
         self.parent = None
         self.parent_node = None
         for node in self:
@@ -1234,7 +1262,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
 
     def _restore_from_picklable(self) -> None:
         """Restore Bag from its picklable form (internal)."""
-        if self._backref == 'x':
+        if self._backref == "x":
             self.set_backref()
         else:
             for node in self:
@@ -1266,7 +1294,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
         if isinstance(source, dict):
             items = [(k, v, {}) for k, v in source.items()]
         else:
-            items = source.query(what='#k,#v,#a')
+            items = source.query(what="#k,#v,#a")
 
         for label, value, attr in items:
             if label in self._nodes:
@@ -1283,8 +1311,9 @@ class Bag(BagParser, BagSerializer, BagQuery):
 
     # -------------------- _get_node (single level) --------------------------------
 
-    def _get_node(self, label: str, autocreate: bool = False,
-                  default: Any = None) -> BagNode | None:
+    def _get_node(
+        self, label: str, autocreate: bool = False, default: Any = None
+    ) -> BagNode | None:
         """Internal get node by label at current level.
 
         Args:
@@ -1312,9 +1341,14 @@ class Bag(BagParser, BagSerializer, BagQuery):
     # -------------------- get_node --------------------------------
 
     @smartasync
-    async def get_node(self, path: str | None = None, as_tuple: bool = False,
-                       autocreate: bool = False, default: Any = None,
-                       static: bool = False) -> BagNode | None:
+    async def get_node(
+        self,
+        path: str | None = None,
+        as_tuple: bool = False,
+        autocreate: bool = False,
+        default: Any = None,
+        static: bool = False,
+    ) -> BagNode | None:
         """Get the BagNode at a path.
 
         Unlike get_item which returns the value, this returns the BagNode itself,
@@ -1347,7 +1381,9 @@ class Bag(BagParser, BagSerializer, BagQuery):
         if isinstance(path, int):
             return self._nodes[path]
 
-        obj, label = await smartawait(self._async_htraverse(path, write_mode=autocreate, static=static))
+        obj, label = await smartawait(
+            self._async_htraverse(path, write_mode=autocreate, static=static)
+        )
 
         if isinstance(obj, Bag):
             node = obj._get_node(label, autocreate, default)
@@ -1359,8 +1395,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
 
     # -------------------- backref management --------------------------------
 
-    def set_backref(self, node: BagNode | None = None,
-                    parent: Bag | None = None) -> None:
+    def set_backref(self, node: BagNode | None = None, parent: Bag | None = None) -> None:
         """Force a Bag to a more strict structure (tree-leaf model).
 
         Enables backref mode which maintains parent references and
@@ -1398,51 +1433,67 @@ class Bag(BagParser, BagSerializer, BagQuery):
 
     # -------------------- event triggers --------------------------------
 
-    def _on_node_changed(self, node: BagNode, pathlist: list, evt: str,
-                         oldvalue: Any = None, reason: str | None = None) -> None:
+    def _on_node_changed(
+        self,
+        node: BagNode,
+        pathlist: list,
+        evt: str,
+        oldvalue: Any = None,
+        reason: str | None = None,
+    ) -> None:
         """Trigger for node change events."""
         for s in list(self._upd_subscribers.values()):
             s(node=node, pathlist=pathlist, oldvalue=oldvalue, evt=evt, reason=reason)
         if self.parent:
-            self.parent._on_node_changed(node, [self.parent_node.label] + pathlist,
-                                          evt, oldvalue, reason=reason)
+            self.parent._on_node_changed(
+                node, [self.parent_node.label] + pathlist, evt, oldvalue, reason=reason
+            )
 
-    def _on_node_inserted(self, node: BagNode, ind: int, pathlist: list | None = None,
-                          reason: str | None = None) -> None:
+    def _on_node_inserted(
+        self, node: BagNode, ind: int, pathlist: list | None = None, reason: str | None = None
+    ) -> None:
         """Trigger for node insert events."""
         parent = node.parent_bag
-        if parent is not None and parent.backref and hasattr(node.value, '_htraverse'):
+        if parent is not None and parent.backref and hasattr(node.value, "_htraverse"):
             node.value.set_backref(node=node, parent=parent)
 
         if pathlist is None:
             pathlist = []
         for s in list(self._ins_subscribers.values()):
-            s(node=node, pathlist=pathlist, ind=ind, evt='ins', reason=reason)
+            s(node=node, pathlist=pathlist, ind=ind, evt="ins", reason=reason)
         if self.parent:
-            self.parent._on_node_inserted(node, ind, [self.parent_node.label] + pathlist,
-                                           reason=reason)
+            self.parent._on_node_inserted(
+                node, ind, [self.parent_node.label] + pathlist, reason=reason
+            )
 
-    def _on_node_deleted(self, node: Any, ind: int, pathlist: list | None = None,
-                         reason: str | None = None) -> None:
+    def _on_node_deleted(
+        self, node: Any, ind: int, pathlist: list | None = None, reason: str | None = None
+    ) -> None:
         """Trigger for node delete events."""
         for s in list(self._del_subscribers.values()):
-            s(node=node, pathlist=pathlist, ind=ind, evt='del', reason=reason)
+            s(node=node, pathlist=pathlist, ind=ind, evt="del", reason=reason)
         if self.parent:
             if pathlist is None:
                 pathlist = []
-            self.parent._on_node_deleted(node, ind, [self.parent_node.label] + pathlist,
-                                          reason=reason)
+            self.parent._on_node_deleted(
+                node, ind, [self.parent_node.label] + pathlist, reason=reason
+            )
 
     # -------------------- subscription --------------------------------
 
-    def _subscribe(self, subscriber_id: str, subscribers_dict: dict,
-                   callback: Any) -> None:
+    def _subscribe(self, subscriber_id: str, subscribers_dict: dict, callback: Any) -> None:
         """Internal subscribe helper."""
         if callback is not None:
             subscribers_dict[subscriber_id] = callback
 
-    def subscribe(self, subscriber_id: str, update: Any = None, insert: Any = None,
-                  delete: Any = None, any: Any = None) -> None:
+    def subscribe(
+        self,
+        subscriber_id: str,
+        update: Any = None,
+        insert: Any = None,
+        delete: Any = None,
+        any: Any = None,
+    ) -> None:
         """Provide a subscribing of a function to an event.
 
         Args:
@@ -1459,9 +1510,14 @@ class Bag(BagParser, BagSerializer, BagQuery):
         self._subscribe(subscriber_id, self._ins_subscribers, insert or any)
         self._subscribe(subscriber_id, self._del_subscribers, delete or any)
 
-    def unsubscribe(self, subscriber_id: str, update: bool = False,
-                    insert: bool = False, delete: bool = False,
-                    any: bool = False) -> None:
+    def unsubscribe(
+        self,
+        subscriber_id: str,
+        update: bool = False,
+        insert: bool = False,
+        delete: bool = False,
+        any: bool = False,
+    ) -> None:
         """Delete a subscription of an event.
 
         Args:
@@ -1488,4 +1544,5 @@ class BagException(Exception):
     Example:
         - Attempting to autocreate with '#n' syntax for non-existent index
     """
+
     pass

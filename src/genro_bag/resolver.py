@@ -73,16 +73,16 @@ class BagResolver:
         # resolver._kw['timeout'] = 30 (default)
     """
 
-    class_kwargs: dict[str, Any] = {'cache_time': 0, 'read_only': True}
+    class_kwargs: dict[str, Any] = {"cache_time": 0, "read_only": True}
     class_args: list[str] = []
 
     __slots__ = (
-        '_kw',                  # dict: all parameters from class_kwargs/class_args
-        '_init_args',           # list: original positional args (for serialize)
-        '_init_kwargs',         # dict: original keyword args (for serialize)
-        '_parent_node',         # BagNode | None: bidirectional link to parent
-        '_fingerprint',         # int: hash for __eq__ comparison
-        '_cache_last_update',   # datetime | None: last load() timestamp
+        "_kw",  # dict: all parameters from class_kwargs/class_args
+        "_init_args",  # list: original positional args (for serialize)
+        "_init_kwargs",  # dict: original keyword args (for serialize)
+        "_parent_node",  # BagNode | None: bidirectional link to parent
+        "_fingerprint",  # int: hash for __eq__ comparison
+        "_cache_last_update",  # datetime | None: last load() timestamp
     )
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -143,10 +143,10 @@ class BagResolver:
     def _compute_fingerprint(self) -> int:
         """Compute hash based on class and parameters."""
         data = {
-            'resolver_class': self.__class__.__name__,
-            'resolver_module': self.__class__.__module__,
-            'args': self._init_args,
-            'kwargs': self._kw,
+            "resolver_class": self.__class__.__name__,
+            "resolver_module": self.__class__.__module__,
+            "args": self._init_args,
+            "kwargs": self._kw,
         }
         return hash(json.dumps(data, sort_keys=True, default=str))
 
@@ -171,7 +171,7 @@ class BagResolver:
     @property
     def cache_time(self) -> int:
         """Get cache time in seconds."""
-        return self._kw.get('cache_time', 0)
+        return self._kw.get("cache_time", 0)
 
     # =========================================================================
     # READ ONLY PROPERTY
@@ -180,7 +180,7 @@ class BagResolver:
     @property
     def read_only(self) -> bool:
         """Whether resolver is in read-only mode."""
-        return self._kw.get('read_only', True)
+        return self._kw.get("read_only", True)
 
     # =========================================================================
     # CACHE MANAGEMENT
@@ -299,10 +299,10 @@ class BagResolver:
             - kwargs: All parameters including defaults
         """
         return {
-            'resolver_module': self.__class__.__module__,
-            'resolver_class': self.__class__.__name__,
-            'args': list(self._init_args),
-            'kwargs': dict(self._kw),
+            "resolver_module": self.__class__.__module__,
+            "resolver_class": self.__class__.__name__,
+            "args": list(self._init_args),
+            "kwargs": dict(self._kw),
         }
 
     @classmethod
@@ -315,9 +315,9 @@ class BagResolver:
         Returns:
             New Resolver instance with same parameters.
         """
-        module = importlib.import_module(data['resolver_module'])
-        resolver_cls = getattr(module, data['resolver_class'])
-        return resolver_cls(*data.get('args', ()), **data.get('kwargs', {}))
+        module = importlib.import_module(data["resolver_module"])
+        resolver_cls = getattr(module, data["resolver_class"])
+        return resolver_cls(*data.get("args", ()), **data.get("kwargs", {}))
 
     # =========================================================================
     # PROXY METHODS - DELEGATE TO RESOLVED BAG
@@ -382,8 +382,8 @@ class BagCbResolver(BagResolver):
         True
     """
 
-    class_kwargs = {'cache_time': 0, 'read_only': True}
-    class_args = ['callback']
+    class_kwargs = {"cache_time": 0, "read_only": True}
+    class_args = ["callback"]
 
     @smartasync
     async def load(self) -> Any:
@@ -398,5 +398,5 @@ class BagCbResolver(BagResolver):
         Raises:
             TypeError: If callback is not callable.
         """
-        callback: Callable[[], Any] = self._kw['callback']
+        callback: Callable[[], Any] = self._kw["callback"]
         return await smartawait(callback())

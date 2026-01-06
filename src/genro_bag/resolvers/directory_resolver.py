@@ -34,8 +34,8 @@ class TxtDocResolver(BagResolver):
         >>> text = content.decode('utf-8')  # decode to string
     """
 
-    class_kwargs = {'cache_time': 500, 'read_only': True}
-    class_args = ['path']
+    class_kwargs = {"cache_time": 500, "read_only": True}
+    class_args = ["path"]
 
     def load(self):
         """Load and return the file content as raw bytes.
@@ -43,7 +43,7 @@ class TxtDocResolver(BagResolver):
         Returns:
             bytes: The complete file content in binary form.
         """
-        with open(self._kw['path'], mode='rb') as f:
+        with open(self._kw["path"], mode="rb") as f:
             return f.read()
 
 
@@ -69,13 +69,14 @@ class SerializedBagResolver(BagResolver):
         'localhost'
     """
 
-    class_kwargs = {'cache_time': 500, 'read_only': True}
-    class_args = ['path']
+    class_kwargs = {"cache_time": 500, "read_only": True}
+    class_args = ["path"]
 
     def load(self):
         """Load and return the Bag from the serialized file."""
         from ..bag import Bag
-        return Bag(self._kw['path'])
+
+        return Bag(self._kw["path"])
 
 
 class DirectoryResolver(BagResolver):
@@ -142,19 +143,21 @@ class DirectoryResolver(BagResolver):
         ...     return open(path).read().upper()
         >>> resolver = DirectoryResolver('/data', processors={'txt': my_processor})
     """
-    class_kwargs = {'cache_time': 500,
-                   'read_only': True,
-                   'invisible': False,
-                   'relocate': '',
-                   # FIXME: intercept #file# - emacs' jnl
-                   'ext': 'xml',
-                   'include': '',
-                   'exclude': '',
-                   'callback': None,
-                   'dropext': False,
-                   'processors': None
+
+    class_kwargs = {
+        "cache_time": 500,
+        "read_only": True,
+        "invisible": False,
+        "relocate": "",
+        # FIXME: intercept #file# - emacs' jnl
+        "ext": "xml",
+        "include": "",
+        "exclude": "",
+        "callback": None,
+        "dropext": False,
+        "processors": None,
     }
-    class_args = ['path', 'relocate']
+    class_args = ["path", "relocate"]
 
     def load(self):
         """Load directory contents and return as a Bag.
@@ -177,39 +180,51 @@ class DirectoryResolver(BagResolver):
                 Directories have nested DirectoryResolver as value.
         """
         from ..bag import Bag
-        extensions = dict([(ext.split(':') + ext.split(':'))[0:2] for ext in self._kw['ext'].split(',')]) if self._kw['ext'] else {}
-        extensions['directory'] = 'directory'
+
+        extensions = (
+            dict([(ext.split(":") + ext.split(":"))[0:2] for ext in self._kw["ext"].split(",")])
+            if self._kw["ext"]
+            else {}
+        )
+        extensions["directory"] = "directory"
         result = Bag()
         try:
-            directory = sorted(os.listdir(self._kw['path']))
+            directory = sorted(os.listdir(self._kw["path"]))
         except OSError:
             directory = []
-        if not self._kw['invisible']:
-            directory = [x for x in directory if not x.startswith('.')]
+        if not self._kw["invisible"]:
+            directory = [x for x in directory if not x.startswith(".")]
         for fname in directory:
             # skip journal files
             if fname.startswith("#") or fname.endswith("#") or fname.endswith("~"):
                 continue
             nodecaption = fname
-            fullpath = os.path.join(self._kw['path'], fname)
-            relpath = os.path.join(self._kw['relocate'], fname)
+            fullpath = os.path.join(self._kw["path"], fname)
+            relpath = os.path.join(self._kw["relocate"], fname)
             add_it = True
             if os.path.isdir(fullpath):
-                ext = 'directory'
-                if self._kw['exclude']:
-                    add_it = self._filter(fname, exclude=self._kw['exclude'], wildcard='*')
+                ext = "directory"
+                if self._kw["exclude"]:
+                    add_it = self._filter(fname, exclude=self._kw["exclude"], wildcard="*")
             else:
-                if self._kw['include'] or self._kw['exclude']:
-                    add_it = self._filter(fname, include=self._kw['include'], exclude=self._kw['exclude'], wildcard='*')
+                if self._kw["include"] or self._kw["exclude"]:
+                    add_it = self._filter(
+                        fname,
+                        include=self._kw["include"],
+                        exclude=self._kw["exclude"],
+                        wildcard="*",
+                    )
                 fname, ext = os.path.splitext(fname)
                 ext = ext[1:]
             if add_it:
                 label = self.make_label(fname, ext)
-                processors = self._kw['processors'] or {}
+                processors = self._kw["processors"] or {}
                 processname = extensions.get(ext.lower(), None)
                 handler = processors.get(processname)
                 if handler is not False:
-                    handler = handler or getattr(self, f'processor_{extensions.get(ext.lower(), "None")}', None)
+                    handler = handler or getattr(
+                        self, f"processor_{extensions.get(ext.lower(), 'None')}", None
+                    )
                 handler = handler or self.processor_default
                 try:
                     stat = os.stat(fullpath)
@@ -222,16 +237,25 @@ class DirectoryResolver(BagResolver):
                     ctime = None
                     atime = None
                     size = None
-                caption = fname.replace('_',' ').strip()
-                m = re.match(r'(\d+) (.*)', caption)
-                caption = f'!!{int(m.group(1))} {m.group(2).capitalize()}' if m else caption.capitalize()
+                caption = fname.replace("_", " ").strip()
+                m = re.match(r"(\d+) (.*)", caption)
+                caption = (
+                    f"!!{int(m.group(1))} {m.group(2).capitalize()}" if m else caption.capitalize()
+                )
                 nodeattr = {
-                    'file_name': fname, 'file_ext': ext, 'rel_path': relpath,
-                    'abs_path': fullpath, 'mtime': mtime, 'atime': atime, 'ctime': ctime,
-                    'nodecaption': nodecaption, 'caption': caption, 'size': size
+                    "file_name": fname,
+                    "file_ext": ext,
+                    "rel_path": relpath,
+                    "abs_path": fullpath,
+                    "mtime": mtime,
+                    "atime": atime,
+                    "ctime": ctime,
+                    "nodecaption": nodecaption,
+                    "caption": caption,
+                    "size": size,
                 }
-                if self._kw['callback']:
-                    cbres = self._kw['callback'](nodeattr=nodeattr)
+                if self._kw["callback"]:
+                    cbres = self._kw["callback"](nodeattr=nodeattr)
                     if cbres is False:
                         continue
                 handler_result = handler(fullpath)
@@ -242,7 +266,7 @@ class DirectoryResolver(BagResolver):
                     result.set_item(label, handler_result, **nodeattr)
         return result
 
-    def _filter(self, name, include='', exclude='', wildcard='*'):
+    def _filter(self, name, include="", exclude="", wildcard="*"):
         """Filter filename by include/exclude glob patterns.
 
         Args:
@@ -257,11 +281,11 @@ class DirectoryResolver(BagResolver):
             bool: True if file passes filter, False otherwise.
         """
         if include:
-            patterns = include.split(',')
+            patterns = include.split(",")
             if not any(fnmatch.fnmatch(name, p.strip()) for p in patterns):
                 return False
         if exclude:
-            patterns = exclude.split(',')
+            patterns = exclude.split(",")
             if any(fnmatch.fnmatch(name, p.strip()) for p in patterns):
                 return False
         return True
@@ -280,9 +304,9 @@ class DirectoryResolver(BagResolver):
         Returns:
             str: Label suitable for use as Bag node key.
         """
-        if ext != 'directory' and not self._kw['dropext']:
-            name = f'{name}_{ext}'
-        return name.replace('.', '_')
+        if ext != "directory" and not self._kw["dropext"]:
+            name = f"{name}_{ext}"
+        return name.replace(".", "_")
 
     def processor_directory(self, path):
         """Process a subdirectory entry.
@@ -296,7 +320,11 @@ class DirectoryResolver(BagResolver):
         Returns:
             DirectoryResolver: Resolver for the subdirectory with inherited kwargs.
         """
-        return DirectoryResolver(path, os.path.join(self._kw['relocate'], os.path.basename(path)), **self._instance_kwargs())
+        return DirectoryResolver(
+            path,
+            os.path.join(self._kw["relocate"], os.path.basename(path)),
+            **self._instance_kwargs(),
+        )
 
     def processor_txt(self, path):
         """Process a text file entry.
@@ -311,7 +339,7 @@ class DirectoryResolver(BagResolver):
             TxtDocResolver: Resolver that will load the file content as bytes.
         """
         kwargs = self._instance_kwargs()
-        kwargs['path'] = path
+        kwargs["path"] = path
         return TxtDocResolver(**kwargs)
 
     def processor_xml(self, path):
@@ -327,7 +355,7 @@ class DirectoryResolver(BagResolver):
             SerializedBagResolver: Resolver that will parse the XML into a Bag.
         """
         kwargs = self._instance_kwargs()
-        kwargs['path'] = path
+        kwargs["path"] = path
         return SerializedBagResolver(**kwargs)
 
     # Alias for XSD and HTML - same as XML

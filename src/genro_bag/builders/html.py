@@ -55,8 +55,7 @@ def _load_html5_schema() -> dict:
 
     if not schema_file.exists():
         raise FileNotFoundError(
-            f"HTML5 schema not found: {schema_file}\n"
-            "Run: python scripts/build_html5_schema.py"
+            f"HTML5 schema not found: {schema_file}\nRun: python scripts/build_html5_schema.py"
         )
 
     schema_bag = Bag.from_tytx(
@@ -192,9 +191,7 @@ class HtmlPage:
         from ..bag import Bag
 
         tag = node.tag or node.label
-        attrs = " ".join(
-            f'{k}="{v}"' for k, v in node.attr.items() if not k.startswith("_")
-        )
+        attrs = " ".join(f'{k}="{v}"' for k, v in node.attr.items() if not k.startswith("_"))
         attrs_str = f" {attrs}" if attrs else ""
         spaces = "  " * indent
 
@@ -273,9 +270,9 @@ class HtmlPage:
             indent_level = "  " * path.count(".")
             tag = node.tag or node.label
             node_value = node.get_value(static=True)
-            value_str = f': "{node_value}"' if not isinstance(node_value, Bag) and node_value else ""
-            attrs = " ".join(
-                f'{k}="{v}"' for k, v in node.attr.items() if not k.startswith("_")
+            value_str = (
+                f': "{node_value}"' if not isinstance(node_value, Bag) and node_value else ""
             )
+            attrs = " ".join(f'{k}="{v}"' for k, v in node.attr.items() if not k.startswith("_"))
             attrs_str = f" [{attrs}]" if attrs else ""
             print(f"{indent_level}<{tag}{attrs_str}>{value_str}")

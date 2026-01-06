@@ -158,14 +158,15 @@ class BagQuery:
                 continue
             if zero_is_none and v == 0:
                 continue
-            if blank_is_none and v == '':
+            if blank_is_none and v == "":
                 continue
             return False
 
         return True
 
-    def walk(self, callback: Callable[[BagNode], Any] | None = None,
-             _mode: str = 'static', **kwargs) -> Iterator[tuple[str, BagNode]] | Any:
+    def walk(
+        self, callback: Callable[[BagNode], Any] | None = None, _mode: str = "static", **kwargs
+    ) -> Iterator[tuple[str, BagNode]] | Any:
         """Walk the tree depth-first.
 
         Two modes of operation:
@@ -217,16 +218,16 @@ class BagQuery:
             # Legacy callback mode
             for idx, node in enumerate(self._nodes):
                 kw = dict(kwargs)
-                if '_pathlist' in kwargs:
-                    kw['_pathlist'] = kwargs['_pathlist'] + [node.label]
-                if '_indexlist' in kwargs:
-                    kw['_indexlist'] = kwargs['_indexlist'] + [idx]
+                if "_pathlist" in kwargs:
+                    kw["_pathlist"] = kwargs["_pathlist"] + [node.label]
+                if "_indexlist" in kwargs:
+                    kw["_indexlist"] = kwargs["_indexlist"] + [idx]
 
                 result = callback(node, **kw)
                 if result:
                     return result
 
-                value = node.get_value(static=(_mode == 'static'))
+                value = node.get_value(static=(_mode == "static"))
                 if isinstance(value, Bag):
                     result = value.walk(callback, _mode=_mode, **kw)
                     if result:
@@ -243,10 +244,16 @@ class BagQuery:
 
         return _walk_gen(self, "")
 
-    def query(self, what: str | list | None = None, condition: Callable[[BagNode], bool] | None = None,
-              iter: bool = False, deep: bool = False,
-              leaf: bool = True, branch: bool = True,
-              limit: int | None = None) -> list | Iterator:
+    def query(
+        self,
+        what: str | list | None = None,
+        condition: Callable[[BagNode], bool] | None = None,
+        iter: bool = False,
+        deep: bool = False,
+        leaf: bool = True,
+        branch: bool = True,
+        limit: int | None = None,
+    ) -> list | Iterator:
         """Query Bag elements, extracting specified data.
 
         Args:
@@ -296,42 +303,42 @@ class BagQuery:
         from .bag import Bag
 
         if not what:
-            what = '#k,#v,#a'
+            what = "#k,#v,#a"
         if isinstance(what, str):
-            if ':' in what:
-                where, what = what.split(':')
+            if ":" in what:
+                where, what = what.split(":")
                 obj = self[where]
             else:
                 obj = self
-            whatsplit = [x.strip() for x in what.split(',')]
+            whatsplit = [x.strip() for x in what.split(",")]
         else:
             whatsplit = what
             obj = self
 
         def _extract_value(node: BagNode, w: str, path: str, is_deep: bool) -> Any:
             """Extract a single value from a node based on what specifier."""
-            if w == '#k':
+            if w == "#k":
                 return node.label
-            elif w == '#p':
+            elif w == "#p":
                 return path
-            elif w == '#n':
+            elif w == "#n":
                 return node
             elif callable(w):
                 return w(node)
-            elif w == '#v':
+            elif w == "#v":
                 v = node.static_value
                 # With deep=True, Bag values return None (content comes in later iterations)
                 return None if is_deep and isinstance(v, Bag) else v
-            elif w.startswith('#v.'):
-                inner_path = w.split('.', 1)[1]
-                return node.value[inner_path] if hasattr(node.value, 'get_item') else None
-            elif w == '#__v':
+            elif w.startswith("#v."):
+                inner_path = w.split(".", 1)[1]
+                return node.value[inner_path] if hasattr(node.value, "get_item") else None
+            elif w == "#__v":
                 return node.static_value
-            elif w.startswith('#a'):
-                attr = w.split('.', 1)[1] if '.' in w else None
+            elif w.startswith("#a"):
+                attr = w.split(".", 1)[1] if "." in w else None
                 return node.get_attr(attr)
             else:
-                return node.value[w] if hasattr(node.value, '__getitem__') else None
+                return node.value[w] if hasattr(node.value, "__getitem__") else None
 
         def _should_include(node: BagNode) -> bool:
             """Check if node should be included based on leaf/branch filters."""
@@ -374,8 +381,12 @@ class BagQuery:
 
         return list(_iter_digest())
 
-    def digest(self, what: str | list | None = None, condition: Callable[[BagNode], bool] | None = None,
-               as_columns: bool = False) -> list:
+    def digest(
+        self,
+        what: str | list | None = None,
+        condition: Callable[[BagNode], bool] | None = None,
+        as_columns: bool = False,
+    ) -> list:
         """Return a list of tuples with keys/values/attributes (backward compatible).
 
         This is an alias for query() with iter=False, deep=False for backward
@@ -392,7 +403,7 @@ class BagQuery:
         result = self.query(what, condition, iter=False, deep=False)
         if as_columns:
             if not result:
-                whatsplit = [x.strip() for x in (what or '#k,#v,#a').split(',')]
+                whatsplit = [x.strip() for x in (what or "#k,#v,#a").split(",")]
                 return [[] for _ in whatsplit]
             if isinstance(result[0], tuple):
                 return [list(col) for col in zip(*result, strict=False)]
@@ -410,14 +421,14 @@ class BagQuery:
             List of lists (columns).
         """
         if isinstance(cols, str):
-            cols = cols.split(',')
-        mode = ''
+            cols = cols.split(",")
+        mode = ""
         if attr_mode:
-            mode = '#a.'
-        what = ','.join([f'{mode}{col}' for col in cols])
+            mode = "#a."
+        what = ",".join([f"{mode}{col}" for col in cols])
         return self.digest(what, as_columns=True)
 
-    def sort(self, key: str | Callable = '#k:a') -> Any:
+    def sort(self, key: str | Callable = "#k:a") -> Any:
         """Sort nodes in place.
 
         Args:
@@ -449,10 +460,11 @@ class BagQuery:
             >>> bag.sort('#k:a,#v:d')    # multi-level sort
             >>> bag.sort(lambda n: n.value)  # custom key function
         """
+
         def sort_key(value: Any, case_insensitive: bool) -> tuple:
             """Create sort key handling None and case sensitivity."""
             if value is None:
-                return (1, '')  # None values sort last
+                return (1, "")  # None values sort last
             if case_insensitive and isinstance(value, str):
                 return (0, value.lower())
             return (0, value)
@@ -460,37 +472,33 @@ class BagQuery:
         if callable(key):
             self._nodes._list.sort(key=key)
         else:
-            levels = key.split(',')
+            levels = key.split(",")
             levels.reverse()  # process in reverse for stable multi-level sort
             for level in levels:
-                if ':' in level:
-                    what, mode = level.split(':', 1)
+                if ":" in level:
+                    what, mode = level.split(":", 1)
                 else:
                     what = level
-                    mode = 'a'
+                    mode = "a"
                 what = what.strip()
                 mode = mode.strip()
 
-                reverse = mode in ('d', 'D')
-                case_insensitive = mode in ('a', 'd')
+                reverse = mode in ("d", "D")
+                case_insensitive = mode in ("a", "d")
 
-                if what.lower() == '#k':
+                if what.lower() == "#k":
                     self._nodes._list.sort(
-                        key=lambda n: sort_key(n.label, case_insensitive),
-                        reverse=reverse
+                        key=lambda n: sort_key(n.label, case_insensitive), reverse=reverse
                     )
-                elif what.lower() == '#v':
+                elif what.lower() == "#v":
                     self._nodes._list.sort(
-                        key=lambda n: sort_key(n.value, case_insensitive),
-                        reverse=reverse
+                        key=lambda n: sort_key(n.value, case_insensitive), reverse=reverse
                     )
-                elif what.lower().startswith('#a.'):
+                elif what.lower().startswith("#a."):
                     attrname = what[3:]
                     self._nodes._list.sort(
-                        key=lambda n, attr=attrname: sort_key(
-                            n.get_attr(attr), case_insensitive
-                        ),
-                        reverse=reverse
+                        key=lambda n, attr=attrname: sort_key(n.get_attr(attr), case_insensitive),
+                        reverse=reverse,
                     )
                 else:
                     # Sort by field in value
@@ -498,12 +506,16 @@ class BagQuery:
                         key=lambda n, field=what: sort_key(
                             n.value[field] if n.value else None, case_insensitive
                         ),
-                        reverse=reverse
+                        reverse=reverse,
                     )
         return self
 
-    def sum(self, what: str = '#v', condition: Callable[[BagNode], bool] | None = None,
-            deep: bool = False) -> float | list[float]:
+    def sum(
+        self,
+        what: str = "#v",
+        condition: Callable[[BagNode], bool] | None = None,
+        deep: bool = False,
+    ) -> float | list[float]:
         """Sum values or attributes.
 
         Args:
@@ -524,9 +536,9 @@ class BagQuery:
             >>> bag.sum('#v', condition=lambda n: n.get_attr('active'))  # filtered sum
             >>> bag.sum('#a.qty', deep=True)  # recursive sum (replaces summarizeAttributes)
         """
-        if ',' in what:
+        if "," in what:
             return [
                 sum(v or 0 for v in self.query(w.strip(), condition, deep=deep))
-                for w in what.split(',')
+                for w in what.split(",")
             ]
         return sum(v or 0 for v in self.query(what, condition, deep=deep))

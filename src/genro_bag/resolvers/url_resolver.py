@@ -54,16 +54,16 @@ class UrlResolver(BagResolver):
     """
 
     class_kwargs = {
-        'cache_time': 300,
-        'read_only': True,
-        'url': None,
-        'method': 'get',
-        'qs': None,
-        'body': None,
-        'timeout': 30,
-        'as_bag': False,
+        "cache_time": 300,
+        "read_only": True,
+        "url": None,
+        "method": "get",
+        "qs": None,
+        "body": None,
+        "timeout": 30,
+        "as_bag": False,
     }
-    class_args = ['url']
+    class_args = ["url"]
 
     @smartasync
     async def load(self) -> Any:
@@ -81,31 +81,31 @@ class UrlResolver(BagResolver):
             httpx.HTTPStatusError: If response status is 4xx or 5xx.
             ValueError: If read_only=False and response cannot be converted to Bag.
         """
-        url = self._kw['url']
-        method = self._kw['method']
-        qs = self._kw['qs']
-        body: Bag | None = self._kw['body']
-        timeout = self._kw['timeout']
-        as_bag = self._kw['as_bag']
+        url = self._kw["url"]
+        method = self._kw["method"]
+        qs = self._kw["qs"]
+        body: Bag | None = self._kw["body"]
+        timeout = self._kw["timeout"]
+        as_bag = self._kw["as_bag"]
 
         # Build URL with query string (filter None values)
         if qs:
             qs_dict = self._qs_to_dict(qs)
             if qs_dict:
-                separator = '&' if '?' in url else '?'
+                separator = "&" if "?" in url else "?"
                 url = f"{url}{separator}{urlencode(qs_dict)}"
 
         async with httpx.AsyncClient() as client:
             request_method = getattr(client, method)
-            kwargs = {'timeout': timeout}
+            kwargs = {"timeout": timeout}
 
             if body is not None:
-                kwargs['json'] = body.as_dict()
+                kwargs["json"] = body.as_dict()
 
             response = await request_method(url, **kwargs)
             response.raise_for_status()
 
-            read_only = self._kw['read_only']
+            read_only = self._kw["read_only"]
 
             if not read_only:
                 # Must store as Bag - convert or raise
@@ -143,12 +143,12 @@ class UrlResolver(BagResolver):
         Raises:
             ValueError: If must_convert=True and content-type is unsupported.
         """
-        content_type = response.headers.get('content-type', '')
+        content_type = response.headers.get("content-type", "")
         text = response.text
 
-        if 'application/json' in content_type:
+        if "application/json" in content_type:
             return Bag.from_json(text)
-        elif 'application/xml' in content_type or 'text/xml' in content_type:
+        elif "application/xml" in content_type or "text/xml" in content_type:
             return Bag.from_xml(text)
         elif must_convert:
             raise ValueError(

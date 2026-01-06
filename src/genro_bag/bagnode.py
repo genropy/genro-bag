@@ -32,6 +32,7 @@ NodeSubscriberCallback = Callable[..., None]
 
 class BagNodeException(Exception):
     """Exception raised by BagNode operations."""
+
     pass
 
 
@@ -59,14 +60,14 @@ class BagNode:
     """
 
     __slots__ = (
-        'label',
-        '_value',
-        '_attr',
-        '_parent_bag',
-        '_resolver',
-        '_node_subscribers',
-        'tag',
-        '_invalid_reasons',
+        "label",
+        "_value",
+        "_attr",
+        "_parent_bag",
+        "_resolver",
+        "_node_subscribers",
+        "tag",
+        "_invalid_reasons",
     )
 
     def __init__(
@@ -118,7 +119,11 @@ class BagNode:
     def __eq__(self, other: object) -> bool:
         """One BagNode is equal to another if label, attr and value/resolver match."""
         try:
-            if isinstance(other, BagNode) and (self.label == other.label) and (self._attr == other._attr):
+            if (
+                isinstance(other, BagNode)
+                and (self.label == other.label)
+                and (self._attr == other._attr)
+            ):
                 if self._resolver is None:
                     return self._value == other._value
                 else:
@@ -131,10 +136,10 @@ class BagNode:
         return not self.__eq__(other)
 
     def __str__(self) -> str:
-        return f'BagNode : {self.label}'
+        return f"BagNode : {self.label}"
 
     def __repr__(self) -> str:
-        return f'BagNode : {self.label} at {id(self)}'
+        return f"BagNode : {self.label} at {id(self)}"
 
     # -------------------------------------------------------------------------
     # Parent Bag Property
@@ -155,7 +160,7 @@ class BagNode:
         self._parent_bag = None
         if parent_bag is not None:
             self._parent_bag = parent_bag
-            if hasattr(self._value, '_htraverse') and parent_bag.backref:
+            if hasattr(self._value, "_htraverse") and parent_bag.backref:
                 self._value.set_backref(node=self, parent=parent_bag)
 
     @property
@@ -242,7 +247,7 @@ class BagNode:
             value = value._value
 
         # Handle objects with rootattributes
-        if hasattr(value, 'rootattributes'):
+        if hasattr(value, "rootattributes"):
             rootattributes = value.rootattributes
             if rootattributes:
                 _attributes = dict(_attributes or {})
@@ -262,23 +267,27 @@ class BagNode:
 
         # Event type: 'upd_value' for value-only, 'upd_value_attr' for combined
         # Note: evt is used ONLY for parent notification, not for node subscribers
-        evt = 'upd_value'
+        evt = "upd_value"
 
         if _attributes is not None:
-            evt = 'upd_value_attr'
+            evt = "upd_value_attr"
             # Call set_attr with trigger=False: node subscribers receive only
             # 'upd_value' from here, not a separate 'upd_attrs' event
-            self.set_attr(_attributes, trigger=False, _updattr=_updattr,
-                          _remove_null_attributes=_remove_null_attributes)
+            self.set_attr(
+                _attributes,
+                trigger=False,
+                _updattr=_updattr,
+                _remove_null_attributes=_remove_null_attributes,
+            )
 
         # Node subscribers always receive 'upd_value' (not 'upd_value_attr')
         # They don't need to know if attributes also changed
         if trigger:
             for subscriber in self._node_subscribers.values():
-                subscriber(node=self, info=oldvalue, evt='upd_value')
+                subscriber(node=self, info=oldvalue, evt="upd_value")
 
         if self._parent_bag is not None and self._parent_bag.backref:
-            if hasattr(value, '_htraverse'):
+            if hasattr(value, "_htraverse"):
                 value.set_backref(node=self, parent=self._parent_bag)
             if trigger:
                 self._parent_bag._on_node_changed(
@@ -339,7 +348,7 @@ class BagNode:
         Returns:
             Attribute value, default, or dict of all attributes.
         """
-        if not label or label == '#':
+        if not label or label == "#":
             return self._attr
         return self._attr.get(label, default)
 
@@ -381,11 +390,11 @@ class BagNode:
             if oldattr is not None:
                 upd_attrs = [k for k, _ in self._attr.items() - oldattr.items()]
                 for subscriber in self._node_subscribers.values():
-                    subscriber(node=self, info=upd_attrs, evt='upd_attrs')
+                    subscriber(node=self, info=upd_attrs, evt="upd_attrs")
 
             if self._parent_bag is not None and self._parent_bag.backref:
                 self._parent_bag._on_node_changed(
-                    self, [self.label], evt='upd_attrs', reason=trigger
+                    self, [self.label], evt="upd_attrs", reason=trigger
                 )
 
     def del_attr(self, *attrs_to_delete: str) -> None:
@@ -396,9 +405,9 @@ class BagNode:
                 label or a comma-separated string of labels (e.g., 'a,b,c').
         """
         for attr in attrs_to_delete:
-            if isinstance(attr, str) and ',' in attr:
+            if isinstance(attr, str) and "," in attr:
                 # Handle comma-separated string
-                for a in attr.split(','):
+                for a in attr.split(","):
                     self._attr.pop(a.strip(), None)
             else:
                 self._attr.pop(attr, None)
@@ -441,7 +450,7 @@ class BagNode:
         if self.parent_bag is not None:
             fullpath = self.parent_bag.fullpath
             if fullpath is not None:
-                return f'{fullpath}.{self.label}'
+                return f"{fullpath}.{self.label}"
         return None
 
     @property
@@ -548,14 +557,14 @@ class BagNode:
             Description of differences, or None if equal.
         """
         if self.label != other.label:
-            return f'Other label: {other.label}'
+            return f"Other label: {other.label}"
         if self._attr != other._attr:
-            return f'attributes self:{self._attr} --- other:{other._attr}'
+            return f"attributes self:{self._attr} --- other:{other._attr}"
         if self._value != other._value:
-            if hasattr(self._value, 'diff'):
-                return f'value:{self._value.diff(other._value)}'
+            if hasattr(self._value, "diff"):
+                return f"value:{self._value.diff(other._value)}"
             else:
-                return f'value self:{self._value} --- other:{other._value}'
+                return f"value self:{self._value} --- other:{other._value}"
         return None
 
     def as_tuple(self) -> tuple[str, Any, dict[str, Any], BagResolver | None]:
@@ -576,7 +585,7 @@ class BagNode:
             Dict with keys 'label', 'value', and 'attr'.
         """
         value = self.value
-        if hasattr(value, 'to_json'):
+        if hasattr(value, "to_json"):
             value = value.to_json(typed=typed, nested=True)
         return {"label": self.label, "value": value, "attr": self._attr}
 
@@ -613,13 +622,15 @@ class BagNodeContainer:
         """
         if label in self._dict:
             return next((i for i, node in enumerate(self._list) if node.label == label), -1)
-        if m := re.match(r'^#(\d+)$', label):
+        if m := re.match(r"^#(\d+)$", label):
             idx = int(m.group(1))
             return idx if idx < len(self._list) else -1
-        if '=' in label:
-            attr, value = label[1:].split('=', 1)
+        if "=" in label:
+            attr, value = label[1:].split("=", 1)
             if attr:
-                return next((i for i, node in enumerate(self._list) if node.attr.get(attr) == value), -1)
+                return next(
+                    (i for i, node in enumerate(self._list) if node.attr.get(attr) == value), -1
+                )
             else:
                 return next((i for i, node in enumerate(self._list) if node._value == value), -1)
         return -1
@@ -641,24 +652,24 @@ class BagNodeContainer:
         Returns:
             Index where to insert (always valid for list.insert).
         """
-        if position is None or position == '>':
+        if position is None or position == ">":
             return len(self._list)
 
         if isinstance(position, int):
             return max(0, min(position, len(self._list)))
 
-        if position == '<':
+        if position == "<":
             return 0
 
-        if position.startswith('#'):
+        if position.startswith("#"):
             try:
                 return max(0, min(int(position[1:]), len(self._list)))
             except ValueError:
                 return len(self._list)
 
-        if position.startswith('<'):
+        if position.startswith("<"):
             ref = position[1:]
-            if ref.startswith('#'):
+            if ref.startswith("#"):
                 try:
                     return max(0, min(int(ref[1:]), len(self._list)))
                 except ValueError:
@@ -666,9 +677,9 @@ class BagNodeContainer:
             idx = self.index(ref)
             return idx if idx >= 0 else len(self._list)
 
-        if position.startswith('>'):
+        if position.startswith(">"):
             ref = position[1:]
-            if ref.startswith('#'):
+            if ref.startswith("#"):
                 try:
                     return max(0, min(int(ref[1:]) + 1, len(self._list)))
                 except ValueError:
@@ -695,7 +706,7 @@ class BagNodeContainer:
         """
         if isinstance(key, int):
             return self._list[key] if 0 <= key < len(self._list) else None
-        if key.startswith('#'):
+        if key.startswith("#"):
             try:
                 idx = int(key[1:])
                 return self._list[idx] if 0 <= idx < len(self._list) else None
@@ -717,7 +728,7 @@ class BagNodeContainer:
         if isinstance(key, int):
             idx_to_delete = [key]
         else:
-            idx_to_delete = [self.index(block) for block in smartsplit(key, ',')]
+            idx_to_delete = [self.index(block) for block in smartsplit(key, ",")]
 
         for idx in sorted(idx_to_delete, reverse=True):
             if 0 <= idx < len(self._list):
@@ -736,13 +747,19 @@ class BagNodeContainer:
         """Iterate over nodes in order."""
         return iter(self._list)
 
-    def set(self, label: str, value: Any, _position: str | int | None = '>',
-            attr: dict | None = None, resolver: Any = None,
-            parent_bag: Bag | None = None,
-            _updattr: bool = False,
-            _remove_null_attributes: bool = True,
-            _reason: str | None = None,
-            do_trigger: bool = True) -> BagNode:
+    def set(
+        self,
+        label: str,
+        value: Any,
+        _position: str | int | None = ">",
+        attr: dict | None = None,
+        resolver: Any = None,
+        parent_bag: Bag | None = None,
+        _updattr: bool = False,
+        _remove_null_attributes: bool = True,
+        _reason: str | None = None,
+        do_trigger: bool = True,
+    ) -> BagNode:
         """Set or create a BagNode with optional position.
 
         If label exists, updates the existing node's value.
@@ -765,13 +782,23 @@ class BagNodeContainer:
         """
         if label in self._dict:
             node = self._dict[label]
-            node.set_value(value or resolver, _attributes=attr, _updattr=_updattr,
-                          _remove_null_attributes=_remove_null_attributes,
-                          _reason=_reason, trigger=do_trigger)
+            node.set_value(
+                value or resolver,
+                _attributes=attr,
+                _updattr=_updattr,
+                _remove_null_attributes=_remove_null_attributes,
+                _reason=_reason,
+                trigger=do_trigger,
+            )
         else:
-            node = BagNode(parent_bag, label=label, value=value, attr=attr,
-                          resolver=resolver,
-                          _remove_null_attributes=_remove_null_attributes)
+            node = BagNode(
+                parent_bag,
+                label=label,
+                value=value,
+                attr=attr,
+                resolver=resolver,
+                _remove_null_attributes=_remove_null_attributes,
+            )
             idx = self._parse_position(_position)
             self._dict[label] = node
             self._list.insert(idx, node)
@@ -797,8 +824,7 @@ class BagNodeContainer:
 
         return None
 
-    def move(self, what: int | list[int], position: int,
-             trigger: bool = True) -> None:
+    def move(self, what: int | list[int], position: int, trigger: bool = True) -> None:
         """Move element(s) to a new position.
 
         Follows the same semantics as JavaScript moveNode:

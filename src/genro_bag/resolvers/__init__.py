@@ -38,10 +38,10 @@ from .openapi_resolver import OpenApiResolver
 from .url_resolver import UrlResolver
 
 __all__ = [
-    'BagCbResolver',
-    'DirectoryResolver',
-    'OpenApiResolver',
-    'SerializedBagResolver',
-    'TxtDocResolver',
-    'UrlResolver',
+    "BagCbResolver",
+    "DirectoryResolver",
+    "OpenApiResolver",
+    "SerializedBagResolver",
+    "TxtDocResolver",
+    "UrlResolver",
 ]

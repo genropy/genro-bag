@@ -18,7 +18,7 @@ from xml.sax import saxutils
 from genro_tytx import to_tytx as tytx_encode
 
 # Regex for sanitizing XML tag names
-_INVALID_XML_TAG_CHARS = re.compile(r'[^\w.]', re.ASCII)
+_INVALID_XML_TAG_CHARS = re.compile(r"[^\w.]", re.ASCII)
 
 
 class BagSerializer:
@@ -35,7 +35,7 @@ class BagSerializer:
     def to_xml(
         self,
         filename: str | None = None,
-        encoding: str = 'UTF-8',
+        encoding: str = "UTF-8",
         doc_header: bool | str | None = None,
         pretty: bool = False,
         self_closed_tags: list[str] | None = None,
@@ -72,11 +72,11 @@ class BagSerializer:
         if doc_header is True:
             content = f"<?xml version='1.0' encoding='{encoding}'?>\n{content}"
         elif isinstance(doc_header, str):
-            content = f'{doc_header}\n{content}'
+            content = f"{doc_header}\n{content}"
 
         if filename:
             result_bytes = content.encode(encoding)
-            with open(filename, 'wb') as f:
+            with open(filename, "wb") as f:
                 f.write(result_bytes)
             return None
 
@@ -87,28 +87,28 @@ class BagSerializer:
         try:
             result = parseString(xml_str).toprettyxml(indent="  ")
             # Remove the xml declaration added by toprettyxml
-            if result.startswith('<?xml'):
-                result = result.split('\n', 1)[1] if '\n' in result else ''
+            if result.startswith("<?xml"):
+                result = result.split("\n", 1)[1] if "\n" in result else ""
             return result
         except Exception:
             # If parsing fails (e.g., multiple roots), wrap temporarily
             wrapped = f"<_root_>{xml_str}</_root_>"
             pretty_xml = parseString(wrapped).toprettyxml(indent="  ")
             # Extract content between _root_ tags
-            start = pretty_xml.find('<_root_>') + 8
-            end = pretty_xml.rfind('</_root_>')
+            start = pretty_xml.find("<_root_>") + 8
+            end = pretty_xml.rfind("</_root_>")
             return pretty_xml[start:end].strip()
 
-    def _bag_to_xml(self, namespaces: list[str],
-                    self_closed_tags: list[str] | None = None) -> str:
+    def _bag_to_xml(self, namespaces: list[str], self_closed_tags: list[str] | None = None) -> str:
         """Convert Bag to XML string."""
         parts = []
         for node in self:
             parts.append(self._node_to_xml(node, namespaces, self_closed_tags))
-        return ''.join(parts)
+        return "".join(parts)
 
-    def _node_to_xml(self, node: Any, namespaces: list[str],
-                     self_closed_tags: list[str] | None = None) -> str:
+    def _node_to_xml(
+        self, node: Any, namespaces: list[str], self_closed_tags: list[str] | None = None
+    ) -> str:
         """Convert a BagNode to XML string."""
         # Extract local namespaces from this node's attributes
         local_namespaces = self._extract_namespaces(node.attr)
@@ -119,36 +119,36 @@ class BagSerializer:
         # Build attributes string
         attrs_parts = []
         if original_tag is not None:
-            attrs_parts.append(f'_tag={saxutils.quoteattr(original_tag)}')
+            attrs_parts.append(f"_tag={saxutils.quoteattr(original_tag)}")
 
         if node.attr:
             for k, v in node.attr.items():
                 if v is not None and v is not False:
-                    attrs_parts.append(f'{k}={saxutils.quoteattr(str(v))}')
+                    attrs_parts.append(f"{k}={saxutils.quoteattr(str(v))}")
 
-        attrs_str = ' ' + ' '.join(attrs_parts) if attrs_parts else ''
+        attrs_str = " " + " ".join(attrs_parts) if attrs_parts else ""
 
         # Handle value
         value = node.value
 
         # Check if value is a Bag (using duck typing to avoid import)
-        if hasattr(value, '_bag_to_xml'):
+        if hasattr(value, "_bag_to_xml"):
             inner = value._bag_to_xml(current_namespaces, self_closed_tags)
             if inner:
-                return f'<{tag}{attrs_str}>{inner}</{tag}>'
+                return f"<{tag}{attrs_str}>{inner}</{tag}>"
             # Empty Bag
             if self_closed_tags is None or tag in self_closed_tags:
-                return f'<{tag}{attrs_str}/>'
-            return f'<{tag}{attrs_str}></{tag}>'
+                return f"<{tag}{attrs_str}/>"
+            return f"<{tag}{attrs_str}></{tag}>"
 
         # Scalar value
-        if value is None or value == '':
+        if value is None or value == "":
             if self_closed_tags is None or tag in self_closed_tags:
-                return f'<{tag}{attrs_str}/>'
-            return f'<{tag}{attrs_str}></{tag}>'
+                return f"<{tag}{attrs_str}/>"
+            return f"<{tag}{attrs_str}></{tag}>"
 
         text = saxutils.escape(str(value))
-        return f'<{tag}{attrs_str}>{text}</{tag}>'
+        return f"<{tag}{attrs_str}>{text}</{tag}>"
 
     @staticmethod
     def _sanitize_tag(tag: str, namespaces: list[str]) -> tuple[str, str | None]:
@@ -163,18 +163,18 @@ class BagSerializer:
             original is None if no sanitization was needed.
         """
         if not tag:
-            return '_none_', None
+            return "_none_", None
 
         # If tag has a known namespace prefix, keep it as-is
-        if ':' in tag:
-            prefix = tag.split(':')[0]
+        if ":" in tag:
+            prefix = tag.split(":")[0]
             if prefix in namespaces:
                 return tag, None
 
-        sanitized = re.sub(r'_+', '_', _INVALID_XML_TAG_CHARS.sub('_', tag))
+        sanitized = re.sub(r"_+", "_", _INVALID_XML_TAG_CHARS.sub("_", tag))
 
         if sanitized[0].isdigit():
-            sanitized = '_' + sanitized
+            sanitized = "_" + sanitized
 
         if sanitized != tag:
             return sanitized, tag
@@ -185,7 +185,7 @@ class BagSerializer:
         """Extract namespace prefixes from attributes (xmlns:prefix)."""
         if not attrs:
             return []
-        return [k[6:] for k in attrs if k.startswith('xmlns:')]
+        return [k[6:] for k in attrs if k.startswith("xmlns:")]
 
     # ==================== to_tytx ====================
 
@@ -286,7 +286,7 @@ class BagSerializer:
             parent_path = path.rsplit(".", 1)[0] if "." in path else ""
 
             # Value encoding - use duck typing to check for Bag
-            if hasattr(node.value, 'walk') and hasattr(node.value, '_nodes'):
+            if hasattr(node.value, "walk") and hasattr(node.value, "_nodes"):
                 value = "::X"
             elif node.value is None:
                 value = "::NN"
@@ -299,7 +299,7 @@ class BagSerializer:
                 parent_ref = path_to_code.get(parent_path) if parent_path else None
                 yield (parent_ref, node.label, node.tag, value, attr)
 
-                if hasattr(node.value, 'walk') and hasattr(node.value, '_nodes'):
+                if hasattr(node.value, "walk") and hasattr(node.value, "_nodes"):
                     path_to_code[path] = code_counter
                     path_registry[code_counter] = path
                     code_counter += 1
@@ -333,6 +333,6 @@ class BagSerializer:
         """Convert a BagNode to JSON-serializable dict."""
         value = node.value
         # Check if value is a Bag using duck typing
-        if hasattr(value, '_nodes') and hasattr(value, 'walk'):
+        if hasattr(value, "_nodes") and hasattr(value, "walk"):
             value = [value._node_to_json_dict(n, typed) for n in value]
         return {"label": node.label, "value": value, "attr": dict(node.attr) if node.attr else {}}

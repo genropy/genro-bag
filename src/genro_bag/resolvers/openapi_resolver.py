@@ -27,16 +27,16 @@ class OpenApiResolver(BagResolver):
     """
 
     class_kwargs = {
-        'cache_time': -1,
-        'read_only': True,
-        'timeout': 30,
+        "cache_time": -1,
+        "read_only": True,
+        "timeout": 30,
     }
-    class_args = ['url']
+    class_args = ["url"]
 
     @smartasync
     async def load(self) -> Bag:
-        url = self._kw['url']
-        timeout = self._kw['timeout']
+        url = self._kw["url"]
+        timeout = self._kw["timeout"]
 
         async with httpx.AsyncClient() as client:
             response = await client.get(url, timeout=timeout)
@@ -49,34 +49,38 @@ class OpenApiResolver(BagResolver):
         result = Bag()
 
         # Info: value=description, attr=title
-        info = spec['info']
+        info = spec["info"]
         if info:
-            result.set_item('info', info['description'], _attributes={
-                'title': info['title'],
-                'version': info['version'],
-            })
+            result.set_item(
+                "info",
+                info["description"],
+                _attributes={
+                    "title": info["title"],
+                    "version": info["version"],
+                },
+            )
 
         # externalDocs
-        if spec['externalDocs']:
-            result['externalDocs'] = spec['externalDocs']
+        if spec["externalDocs"]:
+            result["externalDocs"] = spec["externalDocs"]
 
         # servers
-        if spec['servers']:
-            result['servers'] = spec['servers']
+        if spec["servers"]:
+            result["servers"] = spec["servers"]
 
         # Get base URL - resolve relative server URLs against the spec URL
-        spec_url = self._kw['url']
-        servers = spec['servers']
-        base_url = ''
+        spec_url = self._kw["url"]
+        servers = spec["servers"]
+        base_url = ""
         if servers:
             first_server = servers[servers.keys()[0]]
             if first_server:
-                server_url = (first_server['url'] or '').rstrip('/')
+                server_url = (first_server["url"] or "").rstrip("/")
                 # If server URL is relative, resolve against spec URL
-                if server_url.startswith('/'):
+                if server_url.startswith("/"):
                     parsed = urlparse(spec_url)
                     base_url = f"{parsed.scheme}://{parsed.netloc}{server_url}"
-                elif not server_url.startswith('http'):
+                elif not server_url.startswith("http"):
                     base_url = urljoin(spec_url, server_url)
                 else:
                     base_url = server_url
@@ -86,27 +90,31 @@ class OpenApiResolver(BagResolver):
 
         # Create tag nodes from tags array
         tags_info = {}
-        tags_bag = spec['tags']
+        tags_bag = spec["tags"]
         if tags_bag:
             for tag_key in tags_bag.keys():
                 tag_item = tags_bag[tag_key]
-                tag_name = tag_item['name']
+                tag_name = tag_item["name"]
                 tags_info[tag_name] = {
-                    'description': tag_item['description'],
-                    'externalDocs': tag_item['externalDocs'],
+                    "description": tag_item["description"],
+                    "externalDocs": tag_item["externalDocs"],
                 }
                 # Create tag node with attributes
-                api_bag.set_item(tag_name, Bag(), _attributes={
-                    'name': tag_name,
-                    'description': tag_item['description'],
-                })
+                api_bag.set_item(
+                    tag_name,
+                    Bag(),
+                    _attributes={
+                        "name": tag_name,
+                        "description": tag_item["description"],
+                    },
+                )
 
         # Process paths and add operations to tags
-        paths = spec['paths']
+        paths = spec["paths"]
         if paths:
             for path_key in paths.keys():
                 path_item = paths[path_key]
-                for method in ('get', 'post', 'put', 'delete', 'patch', 'options', 'head'):
+                for method in ("get", "post", "put", "delete", "patch", "options", "head"):
                     operation = path_item[method]
                     if not operation:
                         continue
@@ -115,57 +123,59 @@ class OpenApiResolver(BagResolver):
                     op_bag = self._build_operation_bag(operation, path_key, method, base_url)
 
                     # Get operation label
-                    op_id = operation['operationId']
+                    op_id = operation["operationId"]
                     if not op_id:
-                        sanitized = path_key.lstrip('/').replace('/', '_').replace('{', '').replace('}', '')
+                        sanitized = (
+                            path_key.lstrip("/").replace("/", "_").replace("{", "").replace("}", "")
+                        )
                         op_id = f"{sanitized}_{method}"
 
                     # Add to all tags
-                    op_tags = operation['tags']
+                    op_tags = operation["tags"]
                     if op_tags:
                         for tag_key in op_tags.keys():
                             tag_name = op_tags[tag_key]
                             if tag_name not in api_bag.keys():
-                                api_bag.set_item(tag_name, Bag(), _attributes={'name': tag_name})
+                                api_bag.set_item(tag_name, Bag(), _attributes={"name": tag_name})
                             api_bag[tag_name][op_id] = op_bag
                     else:
-                        if 'untagged' not in api_bag.keys():
-                            api_bag.set_item('untagged', Bag())
-                        api_bag['untagged'][op_id] = op_bag
+                        if "untagged" not in api_bag.keys():
+                            api_bag.set_item("untagged", Bag())
+                        api_bag["untagged"][op_id] = op_bag
 
-        result['api'] = api_bag
+        result["api"] = api_bag
 
         # components (schemas, etc.)
-        if spec['components']:
-            result['components'] = spec['components']
+        if spec["components"]:
+            result["components"] = spec["components"]
 
         return result
 
     def _build_operation_bag(self, operation: Bag, path: str, method: str, base_url: str) -> Bag:
         op_bag = Bag()
-        op_bag['summary'] = operation['summary']
-        op_bag['description'] = operation['description']
-        op_bag['operationId'] = operation['operationId']
-        op_bag['path'] = path
-        op_bag['method'] = method
-        op_bag['url'] = f"{base_url}{path}"
+        op_bag["summary"] = operation["summary"]
+        op_bag["description"] = operation["description"]
+        op_bag["operationId"] = operation["operationId"]
+        op_bag["path"] = path
+        op_bag["method"] = method
+        op_bag["url"] = f"{base_url}{path}"
 
         # Collect query parameters as empty Bag (user fills values)
         qs_bag = Bag()
-        params = operation['parameters']
+        params = operation["parameters"]
         if params:
             for param_key in params.keys():
                 param = params[param_key]
-                param_name = param['name']
-                if param_name and param['in'] == 'query':
+                param_name = param["name"]
+                if param_name and param["in"] == "query":
                     qs_bag[param_name] = None
         if qs_bag.keys():
-            op_bag['qs'] = qs_bag
+            op_bag["qs"] = qs_bag
 
         # Create UrlResolver as 'value'
         full_url = f"{base_url}{path}"
-        cache_time = 20 if method == 'get' else 0
-        op_bag['value'] = UrlResolver(
+        cache_time = 20 if method == "get" else 0
+        op_bag["value"] = UrlResolver(
             url=full_url,
             method=method,
             qs=qs_bag if qs_bag.keys() else None,
@@ -175,13 +185,13 @@ class OpenApiResolver(BagResolver):
 
         # For POST/PUT/PATCH: extract body structure and add to resolver
         body_bag = None
-        request_body = operation['requestBody']
-        if request_body and method in ('post', 'put', 'patch'):
+        request_body = operation["requestBody"]
+        if request_body and method in ("post", "put", "patch"):
             body_bag = self._extract_body_structure(request_body)
             if body_bag:
-                op_bag['body'] = body_bag
+                op_bag["body"] = body_bag
                 # Update resolver with body
-                op_bag['value'] = UrlResolver(
+                op_bag["value"] = UrlResolver(
                     url=full_url,
                     method=method,
                     qs=qs_bag if qs_bag.keys() else None,
@@ -191,24 +201,24 @@ class OpenApiResolver(BagResolver):
                 )
 
         # Responses
-        if operation['responses']:
-            op_bag['responses'] = operation['responses']
+        if operation["responses"]:
+            op_bag["responses"] = operation["responses"]
 
         # Security
-        if operation['security']:
-            op_bag['security'] = operation['security']
+        if operation["security"]:
+            op_bag["security"] = operation["security"]
 
         return op_bag
 
     def _extract_body_structure(self, request_body: Bag) -> Bag | None:
         """Extract body structure from requestBody, returning Bag with field names."""
 
-        content = request_body['content']
+        content = request_body["content"]
         if not content:
             return None
 
         # Try JSON content first
-        json_content = content['application/json']
+        json_content = content["application/json"]
         if not json_content:
             # Try first available content type
             for key in content.keys():
@@ -218,7 +228,7 @@ class OpenApiResolver(BagResolver):
         if not json_content:
             return None
 
-        schema = json_content['schema']
+        schema = json_content["schema"]
         if not schema:
             return None
 
@@ -229,49 +239,48 @@ class OpenApiResolver(BagResolver):
         result = Bag()
 
         # Handle $ref - just note the reference
-        ref = schema['$ref']
+        ref = schema["$ref"]
         if ref:
             # Extract schema name from #/components/schemas/Pet
-            ref_name = ref.split('/')[-1] if ref else 'unknown'
-            result.set_item('_ref', ref_name)
+            ref_name = ref.split("/")[-1] if ref else "unknown"
+            result.set_item("_ref", ref_name)
             return result
 
-        schema_type = schema['type']
+        schema_type = schema["type"]
 
-        if schema_type == 'object':
-            properties = schema['properties']
+        if schema_type == "object":
+            properties = schema["properties"]
             if properties:
                 for prop_key in properties.keys():
                     prop_schema = properties[prop_key]
-                    prop_type = prop_schema['type']
-                    prop_ref = prop_schema['$ref']
+                    prop_type = prop_schema["type"]
+                    prop_ref = prop_schema["$ref"]
 
                     if prop_ref:
-                        ref_name = prop_ref.split('/')[-1] if prop_ref else 'unknown'
-                        result.set_item(prop_key, None, _attributes={'_ref': ref_name})
-                    elif prop_type == 'object':
+                        ref_name = prop_ref.split("/")[-1] if prop_ref else "unknown"
+                        result.set_item(prop_key, None, _attributes={"_ref": ref_name})
+                    elif prop_type == "object":
                         result[prop_key] = self._schema_to_bag(prop_schema)
-                    elif prop_type == 'array':
-                        items = prop_schema['items']
+                    elif prop_type == "array":
+                        items = prop_schema["items"]
                         if items:
-                            item_ref = items['$ref']
+                            item_ref = items["$ref"]
                             if item_ref:
-                                ref_name = item_ref.split('/')[-1]
-                                result.set_item(prop_key, Bag(), _attributes={
-                                    'type': 'array',
-                                    '_ref': ref_name
-                                })
+                                ref_name = item_ref.split("/")[-1]
+                                result.set_item(
+                                    prop_key, Bag(), _attributes={"type": "array", "_ref": ref_name}
+                                )
                             else:
-                                result.set_item(prop_key, Bag(), _attributes={'type': 'array'})
+                                result.set_item(prop_key, Bag(), _attributes={"type": "array"})
                         else:
-                            result.set_item(prop_key, Bag(), _attributes={'type': 'array'})
+                            result.set_item(prop_key, Bag(), _attributes={"type": "array"})
                     else:
                         # Scalar: empty value with type as attribute
-                        result.set_item(prop_key, None, _attributes={'type': prop_type})
+                        result.set_item(prop_key, None, _attributes={"type": prop_type})
 
-        elif schema_type == 'array':
-            items = schema['items']
+        elif schema_type == "array":
+            items = schema["items"]
             if items:
-                result['_items'] = self._schema_to_bag(items)
+                result["_items"] = self._schema_to_bag(items)
 
         return result
