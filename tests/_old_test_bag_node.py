@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import pytest
 
-from genro_bag.bag_node import BagNode, BagNodeException
+from genro_bag.bagnode import BagNode, BagNodeException
 
 
 # =============================================================================

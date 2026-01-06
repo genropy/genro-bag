@@ -28,7 +28,7 @@ from typing import TYPE_CHECKING, Any
 from genro_toolbox import smartasync, smartawait
 
 if TYPE_CHECKING:
-    from .bag_node import BagNode
+    from .bagnode import BagNode
 
 
 class BagResolver:

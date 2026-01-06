@@ -735,6 +735,86 @@ class TestBagDigest:
         result = bag.digest([lambda n: n.value * 2])
         assert result == [20, 40]
 
+    def test_query_iter(self):
+        """query with iter=True returns generator."""
+        bag = Bag()
+        bag['a'] = 1
+        bag['b'] = 2
+        bag['c'] = 3
+        result = bag.query('#k', iter=True)
+        # Should be a generator, not a list
+        assert hasattr(result, '__next__')
+        assert list(result) == ['a', 'b', 'c']
+
+    def test_query_deep(self):
+        """query with deep=True traverses recursively."""
+        bag = Bag()
+        bag['a'] = 1
+        bag['b.c'] = 2
+        bag['b.d'] = 3
+        result = bag.query('#p', deep=True)
+        assert 'a' in result
+        assert 'b' in result
+        assert 'b.c' in result
+        assert 'b.d' in result
+
+    def test_query_deep_with_values(self):
+        """query deep with path and value."""
+        bag = Bag()
+        bag['a'] = 1
+        bag['b.c'] = 2
+        result = bag.query('#p,#v', deep=True)
+        # Should have tuples of (path, value)
+        result_dict = dict(result)
+        assert result_dict['a'] == 1
+        assert result_dict['b.c'] == 2
+        # 'b' is a Bag, not a leaf value
+        assert 'b' in result_dict
+
+    def test_query_deep_with_condition(self):
+        """query deep with condition filters nodes."""
+        bag = Bag()
+        bag['a'] = 1
+        bag['b.c'] = 2
+        bag['b.d'] = 3
+        # Only leaf nodes (not Bag values)
+        result = bag.query('#p,#v', deep=True,
+                          condition=lambda n: not isinstance(n.value, Bag))
+        result_dict = dict(result)
+        assert 'a' in result_dict
+        assert 'b.c' in result_dict
+        assert 'b.d' in result_dict
+        assert 'b' not in result_dict  # 'b' is a Bag, filtered out
+
+    def test_query_deep_iter(self):
+        """query deep with iter returns generator."""
+        bag = Bag()
+        bag['a'] = 1
+        bag['b.c'] = 2
+        result = bag.query('#p', deep=True, iter=True)
+        assert hasattr(result, '__next__')
+        paths = list(result)
+        assert 'a' in paths
+        assert 'b.c' in paths
+
+    def test_query_path_specifier(self):
+        """query with #p returns path."""
+        bag = Bag()
+        bag['x'] = 1
+        bag['y'] = 2
+        result = bag.query('#p')
+        assert result == ['x', 'y']
+
+    def test_query_node_specifier(self):
+        """query with #n returns the node itself."""
+        bag = Bag()
+        bag['a'] = 1
+        bag['b'] = 2
+        result = bag.query('#n')
+        assert len(result) == 2
+        assert result[0].label == 'a'
+        assert result[1].label == 'b'
+
 
 class TestBagColumns:
     """Test columns method."""
@@ -1260,3 +1340,371 @@ class TestBagSubscriberLog:
 
         # No new events after unsubscribe
         assert len(log) == 1
+
+
+class TestBagMove:
+    """Test move method - reordering nodes."""
+
+    def test_move_single_node_forward(self):
+        """Move single node forward."""
+        bag = Bag()
+        bag['a'] = 1
+        bag['b'] = 2
+        bag['c'] = 3
+        bag['d'] = 4
+
+        # Move 'a' (index 0) to position 2
+        bag.move(0, 2)
+
+        assert list(bag.keys()) == ['b', 'c', 'a', 'd']
+
+    def test_move_single_node_backward(self):
+        """Move single node backward."""
+        bag = Bag()
+        bag['a'] = 1
+        bag['b'] = 2
+        bag['c'] = 3
+        bag['d'] = 4
+
+        # Move 'd' (index 3) to position 1
+        bag.move(3, 1)
+
+        assert list(bag.keys()) == ['a', 'd', 'b', 'c']
+
+    def test_move_same_position_noop(self):
+        """Moving to same position does nothing."""
+        bag = Bag()
+        bag['a'] = 1
+        bag['b'] = 2
+        bag['c'] = 3
+
+        bag.move(1, 1)
+
+        assert list(bag.keys()) == ['a', 'b', 'c']
+
+    def test_move_negative_position_noop(self):
+        """Negative position does nothing."""
+        bag = Bag()
+        bag['a'] = 1
+        bag['b'] = 2
+
+        bag.move(0, -1)
+
+        assert list(bag.keys()) == ['a', 'b']
+
+    def test_move_invalid_index_noop(self):
+        """Invalid from index does nothing."""
+        bag = Bag()
+        bag['a'] = 1
+        bag['b'] = 2
+
+        bag.move(10, 0)
+
+        assert list(bag.keys()) == ['a', 'b']
+
+    def test_move_out_of_bounds_position_noop(self):
+        """Out of bounds target position does nothing."""
+        bag = Bag()
+        bag['a'] = 1
+        bag['b'] = 2
+
+        bag.move(0, 10)
+
+        assert list(bag.keys()) == ['a', 'b']
+
+    def test_move_multiple_nodes_forward(self):
+        """Move multiple non-consecutive nodes forward."""
+        bag = Bag()
+        bag['a'] = 1  # 0
+        bag['b'] = 2  # 1
+        bag['c'] = 3  # 2
+        bag['d'] = 4  # 3
+        bag['e'] = 5  # 4
+
+        # Move indices 0, 2 (a, c) to position 3 (d)
+        # JS behavior: pop in reverse order (c then a), insert in pop order
+        bag.move([0, 2], 3)
+
+        # After pop: [b, d, e] - c popped first, then a
+        # popped = [c, a] (reverse order of sorted indices)
+        # dest_label = 'd', delta = 1 (indices[0]=0 < position=3)
+        # new_pos = index('d') + 1 = 1 + 1 = 2
+        # Insert c at 2: [b, d, c, e]
+        # Insert a at 2: [b, d, a, c, e]
+        assert list(bag.keys()) == ['b', 'd', 'a', 'c', 'e']
+
+    def test_move_multiple_nodes_backward(self):
+        """Move multiple non-consecutive nodes backward."""
+        bag = Bag()
+        bag['a'] = 1  # 0
+        bag['b'] = 2  # 1
+        bag['c'] = 3  # 2
+        bag['d'] = 4  # 3
+        bag['e'] = 5  # 4
+
+        # Move indices 3, 4 (d, e) to position 1 (b)
+        # JS behavior: pop in reverse order (e then d), insert in pop order
+        bag.move([3, 4], 1)
+
+        # After pop: [a, b, c] - e popped first, then d
+        # popped = [e, d] (reverse order of sorted indices)
+        # dest_label = 'b', delta = 0 (indices[0]=3 >= position=1)
+        # new_pos = index('b') + 0 = 1
+        # Insert e at 1: [a, e, b, c]
+        # Insert d at 1: [a, d, e, b, c]
+        assert list(bag.keys()) == ['a', 'd', 'e', 'b', 'c']
+
+    def test_move_with_trigger_fires_events(self):
+        """Move fires del and ins events when trigger=True."""
+        bag = Bag()
+        bag['a'] = 1
+        bag['b'] = 2
+        bag['c'] = 3
+
+        events = []
+        bag.subscribe('logger', any=lambda **kw: events.append(kw['evt']))
+
+        bag.move(0, 2, trigger=True)
+
+        # Should have del and ins events
+        assert 'del' in events
+        assert 'ins' in events
+
+    def test_move_without_trigger_no_events(self):
+        """Move with trigger=False fires no events."""
+        bag = Bag()
+
+        events = []
+        bag.subscribe('logger', any=lambda **kw: events.append(kw['evt']))
+
+        # Subscribe BEFORE inserting to capture insert events
+        bag['a'] = 1
+        bag['b'] = 2
+        bag['c'] = 3
+
+        # Clear events from inserts
+        events.clear()
+
+        bag.move(0, 2, trigger=False)
+
+        # No events should be fired for move
+        assert events == []
+
+    def test_move_preserves_values_and_attributes(self):
+        """Move preserves node values and attributes."""
+        bag = Bag()
+        bag.set_item('a', 1, color='red')
+        bag.set_item('b', 2, color='blue')
+        bag.set_item('c', 3, color='green')
+
+        bag.move(0, 2)
+
+        # Check 'a' is now at position 2 with preserved value and attr
+        node = bag.get_node('#2')
+        assert node.label == 'a'
+        assert node.value == 1
+        assert node.attr['color'] == 'red'
+
+    def test_move_single_element_list(self):
+        """Single-element list behaves like single int."""
+        bag = Bag()
+        bag['a'] = 1
+        bag['b'] = 2
+        bag['c'] = 3
+
+        bag.move([0], 2)
+
+        assert list(bag.keys()) == ['b', 'c', 'a']
+
+
+class TestBagRoot:
+    """Test root property for navigating to root Bag."""
+
+    def test_root_on_standalone_bag(self):
+        """Root of a standalone bag is itself."""
+        bag = Bag()
+        bag['a'] = 1
+        assert bag.root is bag
+
+    def test_root_without_backref(self):
+        """Without backref, root is always self (no parent chain)."""
+        bag = Bag()
+        bag['a.b.c'] = 'deep'
+        inner = bag['a.b']
+        # Without backref, inner.parent is None
+        assert inner.root is inner
+
+    def test_root_with_backref(self):
+        """With backref, root traverses to the top."""
+        bag = Bag()
+        bag['a.b.c'] = 'deep'
+        bag.set_backref()
+
+        inner_b = bag['a.b']
+        inner_a = bag['a']
+
+        # All should resolve to the root bag
+        assert inner_b.root is bag
+        assert inner_a.root is bag
+        assert bag.root is bag
+
+    def test_root_deeply_nested(self):
+        """Root works for deeply nested bags."""
+        bag = Bag()
+        bag['level1.level2.level3.level4.leaf'] = 'value'
+        bag.set_backref()
+
+        level4 = bag['level1.level2.level3.level4']
+        level3 = bag['level1.level2.level3']
+        level2 = bag['level1.level2']
+        level1 = bag['level1']
+
+        assert level4.root is bag
+        assert level3.root is bag
+        assert level2.root is bag
+        assert level1.root is bag
+
+
+class TestBagFired:
+    """Test _fired parameter for event-like signals."""
+
+    def test_fired_sets_then_resets_to_none(self):
+        """_fired=True sets value then immediately resets to None."""
+        bag = Bag()
+        bag.set_item('event', 'click', _fired=True)
+        assert bag['event'] is None
+
+    def test_fired_creates_node_if_not_exists(self):
+        """_fired creates node even if it didn't exist."""
+        bag = Bag()
+        bag.set_item('new_event', 'trigger', _fired=True)
+        assert 'new_event' in bag
+        assert bag['new_event'] is None
+
+    def test_fired_triggers_single_event(self):
+        """_fired triggers only one event (the set), reset to None is silent."""
+        bag = Bag()
+        events = []
+        bag.subscribe('test', any=lambda **kw: events.append(
+            (kw['evt'], kw['node'].label, kw['node'].value)
+        ))
+
+        bag.set_item('signal', 'data', _fired=True)
+
+        # Should have only: ins (with value 'data')
+        # The reset to None is silent (do_trigger=False)
+        assert len(events) == 1
+        assert events[0][0] == 'ins'
+        assert events[0][1] == 'signal'
+        assert events[0][2] == 'data'  # Value at event time
+        # But after the call, value is None
+        assert bag['signal'] is None
+
+    def test_fired_on_existing_node(self):
+        """_fired works on existing nodes too."""
+        bag = Bag()
+        bag['existing'] = 'old_value'
+
+        events = []
+        bag.subscribe('test', any=lambda **kw: events.append(kw['evt']))
+
+        bag.set_item('existing', 'fired_value', _fired=True)
+
+        assert bag['existing'] is None
+        # Only one update: for 'fired_value' (reset to None is silent)
+        assert events.count('upd_value') == 1
+
+    def test_fired_preserves_attributes(self):
+        """_fired preserves node attributes."""
+        bag = Bag()
+        bag.set_item('event', 'click', _fired=True, _attributes={'type': 'mouse'})
+
+        node = bag.get_node('event')
+        assert node.value is None
+        assert node.attr['type'] == 'mouse'
+
+
+class TestBagSetItemAttrSyntax:
+    """Test ?attr syntax in set_item for setting node attributes."""
+
+    def test_set_attr_on_existing_node(self):
+        """?attr sets attribute on existing node."""
+        bag = Bag()
+        bag['node'] = 'value'
+        bag.set_item('node?myattr', 'attr_value')
+
+        node = bag.get_node('node')
+        assert node.value == 'value'  # Value unchanged
+        assert node.attr['myattr'] == 'attr_value'
+
+    def test_set_attr_nested_path(self):
+        """?attr works with nested paths."""
+        bag = Bag()
+        bag['a.b.c'] = 42
+        bag.set_item('a.b.c?type', 'integer')
+
+        assert bag['a.b.c'] == 42
+        assert bag['a.b.c?type'] == 'integer'
+
+    def test_set_attr_using_bracket_syntax(self):
+        """?attr works via __setitem__ (bag[path] = value)."""
+        bag = Bag()
+        bag['x'] = 100
+        bag['x?unit'] = 'meters'
+
+        assert bag['x'] == 100
+        node = bag.get_node('x')
+        assert node.attr['unit'] == 'meters'
+
+    def test_set_attr_creates_node_if_missing(self):
+        """?attr creates node with None value if it doesn't exist."""
+        bag = Bag()
+        bag.set_item('missing?attr', 'value')
+        # Node is created with None value and the attribute set
+        assert 'missing' in bag
+        assert bag['missing'] is None
+        assert bag['missing?attr'] == 'value'
+
+    def test_set_attr_overwrites_existing_attr(self):
+        """?attr overwrites existing attribute."""
+        bag = Bag()
+        bag.set_item('node', 'val', _attributes={'myattr': 'old'})
+        bag.set_item('node?myattr', 'new')
+
+        assert bag.get_node('node').attr['myattr'] == 'new'
+
+    def test_set_attr_triggers_event(self):
+        """?attr triggers update event when do_trigger=True."""
+        bag = Bag()
+        bag['node'] = 'value'
+
+        events = []
+        bag.subscribe('test', any=lambda **kw: events.append(kw['evt']))
+
+        bag.set_item('node?myattr', 'attr_value')
+
+        assert 'upd_attrs' in events
+
+    def test_set_attr_no_trigger(self):
+        """?attr respects do_trigger=False."""
+        bag = Bag()
+        bag['node'] = 'value'
+
+        events = []
+        bag.subscribe('test', any=lambda **kw: events.append(kw['evt']))
+
+        bag.set_item('node?myattr', 'attr_value', do_trigger=False)
+
+        assert len(events) == 0
+
+    def test_set_attr_replaces_non_bag_with_bag(self):
+        """?attr on nested path replaces non-Bag values with Bags."""
+        bag = Bag()
+        bag['a'] = 'string_value'  # a is a string, not a Bag
+        bag.set_item('a.b.c?color', 'red')
+
+        # a was replaced with a Bag
+        assert isinstance(bag['a'], Bag)
+        # nested structure was created
+        assert bag['a.b.c'] is None
+        assert bag['a.b.c?color'] == 'red'

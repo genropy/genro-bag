@@ -23,18 +23,18 @@ Example:
 from __future__ import annotations
 
 import os
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from typing import Any
 
 import httpx
 from genro_toolbox import smartasync, smartawait, smartsplit
 from genro_toolbox.typeutils import safe_is_instance
 
-from .bag_node import BagNode
-from .bagnode_container import BagNodeContainer
-from .parser import BagParser
+from .bag_parse import BagParser
+from .bag_query import BagQuery
+from .bag_serialize import BagSerializer
+from .bagnode import BagNode, BagNodeContainer
 from .resolver import BagCbResolver
-from .serializer import BagSerializer
 
 
 def _normalize_path(path: str | list | Any) -> str | list:
@@ -48,7 +48,7 @@ def _normalize_path(path: str | list | Any) -> str | list:
     return str(path).replace('.', '_')
 
 
-class Bag(BagParser, BagSerializer):
+class Bag(BagParser, BagSerializer, BagQuery):
     """Hierarchical data container with path-based access.
 
     A Bag is an ordered container of BagNodes, accessible by label, numeric index,
@@ -333,6 +333,18 @@ class Bag(BagParser, BagSerializer):
         return None
 
     @property
+    def root(self) -> Bag:
+        """Get the root Bag of the hierarchy.
+
+        Traverses parent chain until reaching a Bag with no parent.
+        Returns self if this is already the root.
+        """
+        curr = self
+        while curr.parent is not None:
+            curr = curr.parent
+        return curr
+
+    @property
     def attributes(self) -> dict:
         """Attributes of the parent node containing this Bag.
 
@@ -444,7 +456,8 @@ class Bag(BagParser, BagSerializer):
 
     # -------------------- _traverse_until (sync) --------------------------------
 
-    def _traverse_until(self, curr: Bag, pathlist: list) -> tuple[Bag, list]:
+    def _traverse_until(self, curr: Bag, pathlist: list,
+                         write_mode: bool = False) -> tuple[Bag, list]:
         """Traverse path segments synchronously (static mode, no resolver trigger).
 
         Walks the path as far as possible without triggering resolvers.
@@ -453,6 +466,7 @@ class Bag(BagParser, BagSerializer):
         Args:
             curr: Starting Bag position.
             pathlist: Path segments to traverse.
+            write_mode: If True, replace non-Bag values with Bags during traversal.
 
         Returns:
             Tuple of (container, remaining_path) where:
@@ -462,8 +476,17 @@ class Bag(BagParser, BagSerializer):
         while len(pathlist) > 1 and isinstance(curr, Bag):
             node = curr._nodes[pathlist[0]]
             if node:
+                value = node.get_value(static=True)
+                if not isinstance(value, Bag):
+                    if write_mode:
+                        # Replace non-Bag with new Bag
+                        new_bag = curr.__class__()
+                        node.set_value(new_bag)
+                        value = new_bag
+                    else:
+                        break
                 pathlist.pop(0)
-                curr = node.get_value(static=True)
+                curr = value
             else:
                 break
 
@@ -518,7 +541,7 @@ class Bag(BagParser, BagSerializer):
         curr, pathlist = self._htraverse_before(path)
         if not pathlist:
             return curr, ''
-        curr, pathlist = self._traverse_until(curr, pathlist)
+        curr, pathlist = self._traverse_until(curr, pathlist, write_mode)
         return self._htraverse_after(curr, pathlist, write_mode)
 
     # -------------------- _async_htraverse --------------------------------
@@ -650,7 +673,9 @@ class Bag(BagParser, BagSerializer):
     def set_item(self, path: str, value: Any, _attributes: dict | None = None,
                  _position: str | None = None,
                  _updattr: bool = False, _remove_null_attributes: bool = True,
-                 _reason: str | None = None, resolver=None, **kwargs) -> None:
+                 _reason: str | None = None, _fired: bool = False,
+                 do_trigger: bool = True,
+                 resolver=None, **kwargs) -> None:
         """Set value at a hierarchical path.
 
         Traverses the Bag hierarchy following the dot-separated path, creating
@@ -664,7 +689,8 @@ class Bag(BagParser, BagSerializer):
 
         Args:
             path: Hierarchical path like 'a.b.c'. Empty path is ignored.
-            value: Value to set at the path.
+                Supports '?attr' suffix to set a node attribute instead of value.
+            value: Value to set at the path (or attribute value if ?attr syntax).
             _attributes: Optional dict of attributes to set on the node.
             _position: Position for new nodes. Supports:
                 - '>': Append at end (default)
@@ -675,6 +701,10 @@ class Bag(BagParser, BagSerializer):
             _updattr: If True, update attributes instead of replacing.
             _remove_null_attributes: If True, remove None attributes.
             _reason: Reason for the change (for events).
+            _fired: If True, immediately reset value to None after setting.
+                Used for event-like signals (like JavaScript fireItem).
+            do_trigger: If True (default), fire events on change.
+                Set to False to suppress ins/upd events.
             **kwargs: Additional attributes to set on the node.
 
         Example:
@@ -683,7 +713,17 @@ class Bag(BagParser, BagSerializer):
             >>> bag['a.b.c']
             42
             >>> bag.set_item('a.b.d', 'hello', _attributes={'type': 'greeting'})
+            >>> # Set a single attribute using ?attr syntax
+            >>> bag.set_item('a.b.c?myattr', 'attr_value')
+            >>> bag.get('a.b.c?myattr')  # 'attr_value'
+            >>> # Fire an event (set then immediately reset to None)
+            >>> bag.set_item('event', 'click', _fired=True)
+            >>> bag['event']  # None
         """
+        # Parse ?attr suffix from path
+        attrname = None
+        if '?' in path:
+            path, attrname = path.rsplit('?', 1)
         if kwargs:
             _attributes = dict(_attributes or {})
             _attributes.update(kwargs)
@@ -704,12 +744,28 @@ class Bag(BagParser, BagSerializer):
         if label.startswith('#'):
             raise BagException('Cannot create new node with #n syntax')
 
-        obj._nodes.set(label, value, _position,
-                      attr=_attributes, resolver=resolver,
-                      parent_bag=obj,
-                      _updattr=_updattr,
-                      _remove_null_attributes=_remove_null_attributes,
-                      _reason=_reason)
+        if attrname:
+            # ?attr syntax: set attribute on node (create if needed)
+            node = obj._nodes.get(label)
+            if node is None:
+                # Create the node first with None value
+                node = obj._nodes.set(label, None, _position,
+                                      attr=_attributes, parent_bag=obj,
+                                      _reason=_reason, do_trigger=do_trigger)
+            node.set_attr({attrname: value}, trigger=do_trigger)
+        else:
+            obj._nodes.set(label, value, _position,
+                          attr=_attributes, resolver=resolver,
+                          parent_bag=obj,
+                          _updattr=_updattr,
+                          _remove_null_attributes=_remove_null_attributes,
+                          _reason=_reason,
+                          do_trigger=do_trigger)
+
+            if _fired:
+                # Reset to None without triggering (event was already fired with the value)
+                obj._nodes.set(label, None, parent_bag=obj, _reason=_reason,
+                              do_trigger=False)
 
     def __setitem__(self, path: str, value: Any) -> None:
         self.set_item(path, value)
@@ -823,40 +879,32 @@ class Bag(BagParser, BagSerializer):
         if self.backref:
             self._on_node_deleted(old_nodes, -1)
 
-    # -------------------- keys, values, items --------------------------------
+    def move(self, what: int | list[int], position: int,
+             trigger: bool = True) -> None:
+        """Move element(s) to a new position.
 
-    def keys(self, iter: bool = False) -> list[str]:
-        """Return node labels in order.
-
-        Args:
-            iter: If True, return a generator instead of a list.
-
-        Note:
-            Replaces iterkeys() from Python 2 - use keys(iter=True) instead.
-        """
-        return self._nodes.keys(iter=iter)
-
-    def values(self, iter: bool = False) -> list[Any]:
-        """Return node values in order.
+        Follows the same semantics as JavaScript moveNode:
+        - If what is a list, all nodes at those indices are moved together
+        - Nodes are removed in reverse order to preserve indices
+        - All removed nodes are inserted at the target position
+        - Events (del/ins) are fired for each node if trigger=True
 
         Args:
-            iter: If True, return a generator instead of a list.
+            what: Index or list of indices to move.
+            position: Target index position.
+            trigger: If True, fire del/ins events (default True).
 
-        Note:
-            Replaces itervalues() from Python 2 - use values(iter=True) instead.
+        Example:
+            >>> bag = Bag()
+            >>> bag['a'] = 1
+            >>> bag['b'] = 2
+            >>> bag['c'] = 3
+            >>> bag.move(0, 2)  # move 'a' to position 2
+            >>> list(bag.keys())
+            ['b', 'c', 'a']
+            >>> bag.move([0, 2], 1)  # move indices 0 and 2 to position 1
         """
-        return self._nodes.values(iter=iter)
-
-    def items(self, iter: bool = False) -> list[tuple[str, Any]]:
-        """Return (label, value) tuples in order.
-
-        Args:
-            iter: If True, return a generator instead of a list.
-
-        Note:
-            Replaces iteritems() from Python 2 - use items(iter=True) instead.
-        """
-        return self._nodes.items(iter=iter)
+        self._nodes.move(what, position, trigger=trigger)
 
     def as_dict(self, ascii: bool = False, lower: bool = False) -> dict[str, Any]:
         """Convert Bag to dict (first level only).
@@ -882,73 +930,10 @@ class Bag(BagParser, BagSerializer):
             return default
         return node.value
 
-    # -------------------- get_nodes, digest --------------------------------
-
-    def get_nodes(self, condition: Any = None) -> list[BagNode]:
-        """Get the actual list of nodes contained in the Bag.
-
-        The get_nodes method works as the filter of a list.
-
-        Args:
-            condition: Optional callable that takes a BagNode and returns bool.
-
-        Returns:
-            List of BagNodes, optionally filtered by condition.
-        """
-        if not condition:
-            return list(self._nodes)
-        else:
-            return [n for n in self._nodes if condition(n)]
-
     @property
     def nodes(self) -> list[BagNode]:
         """Property alias for get_nodes()."""
         return self.get_nodes()
-
-    def get_node_by_attr(self, attr: str, value: Any) -> BagNode | None:
-        """Return the first BagNode with the requested attribute value.
-
-        Searches recursively through the Bag hierarchy (breadth-first at each level).
-
-        Args:
-            attr: Attribute name to search.
-            value: Attribute value to match.
-
-        Returns:
-            BagNode if found, None otherwise.
-        """
-        sub_bags = []
-        for node in self._nodes:
-            if node.has_attr(attr, value):
-                return node
-            if isinstance(node.value, Bag):
-                sub_bags.append(node)
-
-        for node in sub_bags:
-            found = node.value.get_node_by_attr(attr, value)
-            if found:
-                return found
-
-        return None
-
-    def get_node_by_value(self, key: str, value: Any) -> BagNode | None:
-        """Return the first BagNode whose value contains key=value.
-
-        Searches only direct children (not recursive).
-        The node's value must be dict-like (Bag or dict).
-
-        Args:
-            key: Key to look for in node.value.
-            value: Value to match.
-
-        Returns:
-            BagNode if found, None otherwise.
-        """
-        for node in self._nodes:
-            node_value = node.value
-            if node_value and node_value[key] == value:
-                return node
-        return None
 
     def set_attr(self, path: str | None = None, _attributes: dict | None = None,
                  _remove_null_attributes: bool = True, **kwargs) -> None:
@@ -1041,272 +1026,6 @@ class Bag(BagParser, BagSerializer):
         """
         resolver = BagCbResolver(callback, **kwargs)
         self.set_item(path, resolver, **kwargs)
-
-    def sort(self, key: str | Callable = '#k:a') -> Bag:
-        """Sort nodes in place.
-
-        Args:
-            key: Sort specification string or callable.
-                If callable, used directly as key function for sort.
-                If string, format is 'criterion:mode' or multiple 'c1:m1,c2:m2'.
-
-                Criteria:
-                - '#k': sort by label
-                - '#v': sort by value
-                - '#a.attrname': sort by attribute
-                - 'fieldname': sort by field in value (if value is dict/Bag)
-
-                Modes:
-                - 'a': ascending, case-insensitive (default)
-                - 'A': ascending, case-sensitive
-                - 'd': descending, case-insensitive
-                - 'D': descending, case-sensitive
-
-        Returns:
-            Self (for chaining).
-
-        Examples:
-            >>> bag.sort('#k')           # by label ascending
-            >>> bag.sort('#k:d')         # by label descending
-            >>> bag.sort('#v:A')         # by value ascending, case-sensitive
-            >>> bag.sort('#a.name:a')    # by attribute 'name'
-            >>> bag.sort('field:d')      # by field in value
-            >>> bag.sort('#k:a,#v:d')    # multi-level sort
-            >>> bag.sort(lambda n: n.value)  # custom key function
-        """
-        def sort_key(value: Any, case_insensitive: bool) -> tuple:
-            """Create sort key handling None and case sensitivity."""
-            if value is None:
-                return (1, '')  # None values sort last
-            if case_insensitive and isinstance(value, str):
-                return (0, value.lower())
-            return (0, value)
-
-        if callable(key):
-            self._nodes.sort(key=key)
-        else:
-            levels = key.split(',')
-            levels.reverse()  # process in reverse for stable multi-level sort
-            for level in levels:
-                if ':' in level:
-                    what, mode = level.split(':', 1)
-                else:
-                    what = level
-                    mode = 'a'
-                what = what.strip()
-                mode = mode.strip()
-
-                reverse = mode in ('d', 'D')
-                case_insensitive = mode in ('a', 'd')
-
-                if what.lower() == '#k':
-                    self._nodes.sort(
-                        key=lambda n: sort_key(n.label, case_insensitive),
-                        reverse=reverse
-                    )
-                elif what.lower() == '#v':
-                    self._nodes.sort(
-                        key=lambda n: sort_key(n.value, case_insensitive),
-                        reverse=reverse
-                    )
-                elif what.lower().startswith('#a.'):
-                    attrname = what[3:]
-                    self._nodes.sort(
-                        key=lambda n, attr=attrname: sort_key(
-                            n.get_attr(attr), case_insensitive
-                        ),
-                        reverse=reverse
-                    )
-                else:
-                    # Sort by field in value
-                    self._nodes.sort(
-                        key=lambda n, field=what: sort_key(
-                            n.value[field] if n.value else None, case_insensitive
-                        ),
-                        reverse=reverse
-                    )
-        return self
-
-    def sum(self, what: str = '#v', condition: Callable[[BagNode], bool] | None = None
-            ) -> float | list[float]:
-        """Sum values or attributes.
-
-        Args:
-            what: What to sum (same syntax as digest).
-                - '#v': sum values
-                - '#a.attrname': sum attribute
-                - '#v,#a.price': multiple sums (returns list)
-            condition: Optional callable filter (receives BagNode, returns bool).
-
-        Returns:
-            Sum as float, or list of floats if multiple what specs.
-
-        Examples:
-            >>> bag.sum()                    # sum all values
-            >>> bag.sum('#a.price')          # sum 'price' attribute
-            >>> bag.sum('#v,#a.qty')         # [sum_values, sum_qty]
-            >>> bag.sum('#v', lambda n: n.get_attr('active'))  # filtered sum
-        """
-        if ',' in what:
-            return [
-                sum(v or 0 for v in self.digest(w.strip(), condition))
-                for w in what.split(',')
-            ]
-        return sum(v or 0 for v in self.digest(what, condition))
-
-    def digest(self, what: str | list | None = None, condition: Any = None,
-               as_columns: bool = False) -> list:
-        """Return a list of tuples with keys/values/attributes of Bag elements.
-
-        Args:
-            what: String of special keys separated by comma, or list of keys.
-                Special keys:
-                - '#k': label of each item
-                - '#v': value of each item
-                - '#v.path': inner values of each item
-                - '#__v': static value (bypassing resolver)
-                - '#a': all attributes of each item
-                - '#a.attrname': specific attribute for each item
-                - callable: custom function applied to each node
-            condition: Optional callable filter (receives BagNode, returns bool).
-            as_columns: If True, return list of lists. If False, return list of tuples.
-
-        Returns:
-            List of tuples (or list of lists if as_columns=True).
-
-        Example:
-            >>> bag.digest('#k,#a.createdOn,#a.createdBy')
-            [('letter_to_mark', '10-7-2003', 'Jack'), ...]
-        """
-        if not what:
-            what = '#k,#v,#a'
-        if isinstance(what, str):
-            if ':' in what:
-                where, what = what.split(':')
-                obj = self[where]
-            else:
-                obj = self
-            whatsplit = [x.strip() for x in what.split(',')]
-        else:
-            whatsplit = what
-            obj = self
-        result = []
-        nodes = obj.get_nodes(condition)
-        for w in whatsplit:
-            if w == '#k':
-                result.append([x.label for x in nodes])
-            elif callable(w):
-                result.append([w(x) for x in nodes])
-            elif w == '#v':
-                result.append([x.value for x in nodes])
-            elif w.startswith('#v.'):
-                w, path = w.split('.', 1)
-                result.append([x.value[path] for x in nodes if hasattr(x.value, 'get_item')])
-            elif w == '#__v':
-                result.append([x.static_value for x in nodes])
-            elif w.startswith('#a'):
-                attr = None
-                if '.' in w:
-                    w, attr = w.split('.', 1)
-                if w == '#a':
-                    result.append([x.get_attr(attr) for x in nodes])
-            else:
-                result.append([x.value[w] for x in nodes])
-        if as_columns:
-            return result
-        if len(result) == 1:
-            return result.pop()
-        return list(zip(*result, strict=False))
-
-    def columns(self, cols: str | list, attr_mode: bool = False) -> list:
-        """Return digest result as columns.
-
-        Args:
-            cols: Column names as comma-separated string or list.
-            attr_mode: If True, prefix columns with '#a.' for attribute access.
-
-        Returns:
-            List of lists (columns).
-        """
-        if isinstance(cols, str):
-            cols = cols.split(',')
-        mode = ''
-        if attr_mode:
-            mode = '#a.'
-        what = ','.join([f'{mode}{col}' for col in cols])
-        return self.digest(what, as_columns=True)
-
-    # -------------------- walk --------------------------------
-
-    def walk(self, callback: Callable[[BagNode], Any] | None = None,
-             _mode: str = 'static', **kwargs) -> Iterator[tuple[str, BagNode]] | Any:
-        """Walk the tree depth-first.
-
-        Two modes of operation:
-
-        1. **Generator mode** (no callback): Returns a generator yielding
-           (path, node) tuples for all nodes in the tree.
-
-        2. **Legacy callback mode**: Calls callback(node, **kwargs) for each
-           node. Supports early exit (if callback returns truthy value),
-           _pathlist and _indexlist kwargs for path tracking.
-
-        Args:
-            callback: If None, return generator of (path, node) tuples.
-                If provided, call callback(node, **kwargs) for each node.
-            _mode: For callback mode only. 'static' (default) doesn't trigger
-                resolvers, other values ('deep', '') trigger resolvers.
-            **kwargs: Passed to callback. Special keys:
-                - _pathlist: list of labels from root (auto-updated)
-                - _indexlist: list of indices from root (auto-updated)
-
-        Returns:
-            Generator of (path, node) if callback is None.
-            If callback provided: value returned by callback if truthy, else None.
-
-        Examples:
-            >>> # Generator mode (modern)
-            >>> for path, node in bag.walk():
-            ...     print(f"{path}: {node.value}")
-
-            >>> # Early exit with generator
-            >>> for path, node in bag.walk():
-            ...     if node.get_attr('id') == 'target':
-            ...         found = node
-            ...         break
-
-            >>> # Legacy callback mode
-            >>> bag.walk(my_callback, _pathlist=[])
-        """
-        if callback is not None:
-            # Legacy callback mode
-            for idx, node in enumerate(self._nodes):
-                kw = dict(kwargs)
-                if '_pathlist' in kwargs:
-                    kw['_pathlist'] = kwargs['_pathlist'] + [node.label]
-                if '_indexlist' in kwargs:
-                    kw['_indexlist'] = kwargs['_indexlist'] + [idx]
-
-                result = callback(node, **kw)
-                if result:
-                    return result
-
-                value = node.get_value(static=(_mode == 'static'))
-                if isinstance(value, Bag):
-                    result = value.walk(callback, _mode=_mode, **kw)
-                    if result:
-                        return result
-            return None
-
-        # Generator mode
-        def _walk_gen(bag: Bag, prefix: str) -> Iterator[tuple[str, BagNode]]:
-            for node in bag._nodes:
-                path = f"{prefix}.{node.label}" if prefix else node.label
-                yield path, node
-                if isinstance(node.value, Bag):
-                    yield from _walk_gen(node.value, path)
-
-        return _walk_gen(self, "")
 
     # -------------------- __str__ --------------------------------
 
@@ -1655,6 +1374,7 @@ class Bag(BagParser, BagSerializer):
             self._backref = True
             self._parent = parent
             self._parent_node = node
+            self._nodes._parent_bag = self
             for node in self:
                 node.parent_bag = self
 
@@ -1669,6 +1389,7 @@ class Bag(BagParser, BagSerializer):
             self._backref = False
             self._parent = None
             self._parent_node = None
+            self._nodes._parent_bag = None
             for node in self:
                 node.parent_bag = None
                 value = node.get_value(static=True)

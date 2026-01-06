@@ -3,7 +3,7 @@
 Elenco completo dei metodi della classe `Bag` originale (gnrbag.py).
 
 **Legenda priorità**:
-- `P1` = Priority 1 (core, subito)
+- `✓` = Implementato
 - `P2` = Priority 2 (dopo il core)
 - `P3` = Priority 3 (nice to have)
 - `NO` = Non implementare (deprecated/legacy)
@@ -15,16 +15,16 @@ Elenco completo dei metodi della classe `Bag` originale (gnrbag.py).
 
 | Method | Priority | Notes |
 |--------|----------|-------|
-| `__init__(source, **kwargs)` | ? | Costruttore |
-| `parent` (property) | ? | Riferimento al parent Bag |
-| `fullpath` (property) | ? | Path completo dalla root |
-| `node` (property) | ? | DEPRECATED - usa parentNode |
-| `parentNode` (property) | ? | Nodo parent |
-| `attributes` (property) | ? | Attributi del parentNode |
-| `rootattributes` (property) | ? | Attributi root |
-| `modified` (property) | ? | Flag modificato |
-| `backref` (property) | ? | Modalità backref |
-| `nodes` (property) | ? | Lista nodi |
+| `__init__(source, **kwargs)` | ✓ | Costruttore |
+| `parent` (property) | ✓ | Riferimento al parent Bag |
+| `fullpath` (property) | ✓ | Path completo dalla root |
+| `node` (property) | NO | DEPRECATED - usa `parent_node` |
+| `parentNode` (property) | ✓ | `parent_node` - Nodo parent |
+| `attributes` (property) | ✓ | Attributi del parentNode |
+| `rootattributes` (property) | ✓ | `root_attributes` - Attributi root |
+| `modified` (property) | ✓ | Flag modificato |
+| `backref` (property) | ✓ | Modalità backref |
+| `nodes` (property) | ✓ | Lista nodi (via `_nodes`) |
 
 ---
 
@@ -32,27 +32,27 @@ Elenco completo dei metodi della classe `Bag` originale (gnrbag.py).
 
 | Method | Priority | Notes |
 |--------|----------|-------|
-| `__getitem__(path)` | ? | `bag['a.b.c']` |
-| `__setitem__(path, value)` | ? | `bag['a.b.c'] = v` |
-| `__delitem__(path)` | ? | `del bag['a.b.c']` |
-| `__contains__(what)` | ? | `'a.b' in bag` |
-| `__iter__()` | ? | `for node in bag` |
-| `__len__()` | ? | `len(bag)` |
-| `__call__(what)` | ? | `bag()` returns keys |
-| `getItem(path, default, mode)` | ? | Get con default |
-| `setItem(path, value, **kw)` | ? | Set con attributi |
-| `get(label, default, mode)` | ? | Get singolo livello |
-| `setdefault(path, default)` | ? | Come dict.setdefault |
-| `pop(path, dflt)` | ? | Rimuove e ritorna |
-| `popNode(path)` | ? | Rimuove e ritorna nodo |
-| `clear()` | ? | Svuota la bag |
-| `keys()` | ? | Lista labels |
-| `values()` | ? | Lista valori |
-| `items()` | ? | Lista (label, value) |
-| `iteritems()` | ? | Generatore items |
-| `iterkeys()` | ? | Generatore keys |
-| `itervalues()` | ? | Generatore values |
-| `has_key(path)` | ? | Esiste path? |
+| `__getitem__(path)` | ✓ | `bag['a.b.c']` |
+| `__setitem__(path, value)` | ✓ | `bag['a.b.c'] = v` |
+| `__delitem__(path)` | ✓ | `del bag['a.b.c']` |
+| `__contains__(what)` | ✓ | `'a.b' in bag` |
+| `__iter__()` | ✓ | `for node in bag` |
+| `__len__()` | ✓ | `len(bag)` |
+| `__call__(what)` | ✓ | `bag()` returns keys |
+| `getItem(path, default, mode)` | ✓ | `get_item` - Get con default |
+| `setItem(path, value, **kw)` | ✓ | `set_item` - Set con attributi |
+| `get(label, default, mode)` | ✓ | Get singolo livello |
+| `setdefault(path, default)` | ✓ | Come dict.setdefault |
+| `pop(path, dflt)` | ✓ | Rimuove e ritorna |
+| `popNode(path)` | ✓ | `pop_node` - Rimuove e ritorna nodo |
+| `clear()` | ✓ | Svuota la bag |
+| `keys()` | ✓ | Lista labels (con `iter=True` per generatore) |
+| `values()` | ✓ | Lista valori (con `iter=True` per generatore) |
+| `items()` | ✓ | Lista (label, value) (con `iter=True` per generatore) |
+| `iteritems()` | NO | Usa `items(iter=True)` |
+| `iterkeys()` | NO | Usa `keys(iter=True)` |
+| `itervalues()` | NO | Usa `values(iter=True)` |
+| `has_key(path)` | NO | Usa `path in bag` |
 
 ---
 
@@ -60,13 +60,13 @@ Elenco completo dei metodi della classe `Bag` originale (gnrbag.py).
 
 | Method | Priority | Notes |
 |--------|----------|-------|
-| `getNode(path, asTuple, autocreate, default)` | ? | Ritorna BagNode |
-| `getNodes(condition)` | ? | Lista nodi filtrati |
-| `getNodeByAttr(attr, value, path)` | ? | Cerca nodo per attributo |
-| `getNodeByValue(label, value)` | ? | Cerca nodo per valore |
-| `getDeepestNode(path)` | ? | Nodo più profondo esistente |
-| `appendNode(label, value, **kw)` | ? | Aggiunge nodo in coda |
-| `addItem(path, value, **kw)` | ? | Aggiunge (duplicati ok) |
+| `getNode(path, asTuple, autocreate, default)` | ✓ | `get_node` |
+| `getNodes(condition)` | ✓ | `get_nodes` - Lista nodi filtrati |
+| `getNodeByAttr(attr, value, path)` | ✓ | `get_node_by_attr` |
+| `getNodeByValue(label, value)` | ✓ | `get_node_by_value` |
+| `getDeepestNode(path)` | NO | Non usato. Usa `_traverse_until()` se serve |
+| `appendNode(label, value, **kw)` | NO | Usa `set_item()` |
+| `addItem(path, value, **kw)` | NO | Usa `set_item()` (no duplicati) |
 
 ---
 
@@ -74,10 +74,10 @@ Elenco completo dei metodi della classe `Bag` originale (gnrbag.py).
 
 | Method | Priority | Notes |
 |--------|----------|-------|
-| `setAttr(path, _attributes, **kw)` | ? | Setta attributi |
-| `getAttr(path, attr, default)` | ? | Legge attributo |
-| `delAttr(path, attr)` | ? | Elimina attributo |
-| `getInheritedAttributes()` | ? | Attributi ereditati |
+| `setAttr(path, _attributes, **kw)` | ✓ | `set_attr` |
+| `getAttr(path, attr, default)` | ✓ | `get_attr` |
+| `delAttr(path, attr)` | ✓ | `del_attr` |
+| `getInheritedAttributes()` | ✓ | `get_inherited_attributes` |
 
 ---
 
@@ -87,7 +87,7 @@ Elenco completo dei metodi della classe `Bag` originale (gnrbag.py).
 
 | Method | Priority | Notes |
 |--------|----------|-------|
-| `_htraverse(...)` | -- | Interno, non considerare |
+| `_htraverse(...)` | -- | Interno, implementato |
 | `_index(label)` | -- | Interno, non considerare |
 | `_pathSplit(path)` | -- | Interno, non considerare |
 | `_set(label, value, **kw)` | -- | Interno, non considerare |
@@ -101,14 +101,14 @@ Elenco completo dei metodi della classe `Bag` originale (gnrbag.py).
 
 | Method | Priority | Notes |
 |--------|----------|-------|
-| `setBackRef(node, parent)` | ? | Attiva modalità backref |
-| `clearBackRef()` | ? | Disattiva backref |
-| `delParentRef()` | ? | Rimuove riferimento parent |
-| `subscribe(id, update, insert, delete, any)` | ? | Sottoscrivi eventi |
-| `unsubscribe(id, **kw)` | ? | Rimuovi sottoscrizione |
-| `_onNodeChanged(...)` | -- | Interno, non considerare |
-| `_onNodeInserted(...)` | -- | Interno, non considerare |
-| `_onNodeDeleted(...)` | -- | Interno, non considerare |
+| `setBackRef(node, parent)` | ✓ | `set_backref` |
+| `clearBackRef()` | ✓ | `clear_backref` |
+| `delParentRef()` | ✓ | `del_parent_ref` |
+| `subscribe(id, update, insert, delete, any)` | ✓ | `subscribe` |
+| `unsubscribe(id, **kw)` | ✓ | `unsubscribe` |
+| `_onNodeChanged(...)` | -- | Interno `_on_node_changed` |
+| `_onNodeInserted(...)` | -- | Interno `_on_node_inserted` |
+| `_onNodeDeleted(...)` | -- | Interno `_on_node_deleted` |
 | `_subscribe(...)` | -- | Interno, non considerare |
 
 ---
@@ -117,14 +117,14 @@ Elenco completo dei metodi della classe `Bag` originale (gnrbag.py).
 
 | Method | Priority | Notes |
 |--------|----------|-------|
-| `toXml(filename, encoding, **kw)` | ? | Bag → XML |
-| `fromXml(source, **kw)` | ? | XML → Bag |
-| `toJson(typed, nested)` | ? | Bag → JSON |
-| `fromJson(json, listJoiner)` | ? | JSON → Bag |
-| `fromYaml(y, listJoiner)` | ? | YAML → Bag |
-| `pickle(destination, bin)` | ? | Bag → pickle |
-| `unpickle(source)` | ? | pickle → Bag |
-| `fillFrom(source, **kw)` | ? | Riempie da sorgente |
+| `toXml(filename, encoding, **kw)` | ✓ | `to_xml` (via BagSerializer mixin) |
+| `fromXml(source, **kw)` | ✓ | `from_xml` (via BagParser mixin) |
+| `toJson(typed, nested)` | ✓ | `to_json` |
+| `fromJson(json, listJoiner)` | ✓ | `from_json` |
+| `fromYaml(y, listJoiner)` | ? | Da valutare |
+| `pickle(destination, bin)` | ✓ | Supporto pickle nativo |
+| `unpickle(source)` | ✓ | Supporto pickle nativo |
+| `fillFrom(source, **kw)` | ✓ | `fill_from` |
 | `_fromSource(...)` | -- | Interno, non considerare |
 | `_sourcePrepare(...)` | -- | Interno, non considerare |
 | `_fromXml(...)` | -- | Interno, non considerare |
@@ -138,10 +138,10 @@ Elenco completo dei metodi della classe `Bag` originale (gnrbag.py).
 
 | Method | Priority | Notes |
 |--------|----------|-------|
-| `asDict(ascii, lower)` | P2 | Da implementare - Bag → dict (1 livello). `dict(bag)` non funziona perché `__iter__` itera sui nodi |
-| `asDictDeeply(ascii, lower)` | ? | Bag → dict (ricorsivo) |
-| `asString(encoding, mode)` | ? | Bag → string |
-| `__str__(exploredNodes, mode)` | ? | Rappresentazione string |
+| `asDict(ascii, lower)` | ✓ | `as_dict` - Bag → dict (1 livello) |
+| `asDictDeeply(ascii, lower)` | NO | Usa `to_json(serialize=False)` |
+| `asString(encoding, mode)` | NO | Usa `str(bag)` |
+| `__str__(exploredNodes, mode)` | ✓ | Rappresentazione string |
 
 ---
 
@@ -149,18 +149,19 @@ Elenco completo dei metodi della classe `Bag` originale (gnrbag.py).
 
 | Method | Priority | Notes |
 |--------|----------|-------|
-| `digest(what, condition, asColumns)` | ? | Estrae liste di valori/attr |
-| `columns(cols, attrMode)` | ? | Digest come colonne |
-| `filter(cb, _mode)` | ? | Filtra nodi |
-| `walk(callback, _mode)` | ? | Visita tutti i nodi |
-| `traverse()` | ? | Generatore depth-first |
-| `cbtraverse(pathlist, callback, result)` | ? | Walk con callback per step |
-| `getIndex()` | ? | Indice completo |
-| `getIndexList(asText)` | ? | Lista path |
-| `getLeaves()` | ? | Solo foglie |
-| `nodesByAttr(attr, _mode, **kw)` | ? | Nodi con attributo |
-| `findNodeByAttr(attr, value, _mode)` | ? | Primo nodo con attr=value |
-| `isEmpty(zeroIsNone, blankIsNone)` | ? | Bag vuota? |
+| `digest(what, condition, asColumns)` | ✓ | Alias retrocompatibile per `query()` |
+| `query(what, condition, iter, deep, leaf, branch, limit)` | ✓ | **NUOVO** - Sostituisce digest con più funzionalità |
+| `columns(cols, attrMode)` | ✓ | `columns` (usa digest) |
+| `filter(cb, _mode)` | NO | Usa `get_nodes(condition)` o `query(condition=...)` |
+| `walk(callback, _mode)` | ✓ | Generatore o callback mode |
+| `traverse()` | NO | Usa `walk()` senza callback |
+| `cbtraverse(pathlist, callback, result)` | NO | Uso raro. Usa loop su `get_node` |
+| `getIndex()` | NO | Usa `query('#p', deep=True)` |
+| `getIndexList(asText)` | NO | Usa `query('#p', deep=True)` |
+| `getLeaves()` | NO | Usa `query('#p,#v', deep=True, branch=False)` |
+| `nodesByAttr(attr, _mode, **kw)` | NO | Usa `query('#n', condition=lambda n: n.get_attr('x') == v)` |
+| `findNodeByAttr(attr, value, _mode)` | NO | Usa `get_node_by_attr` o `query('#n', condition=...)` |
+| `isEmpty(zeroIsNone, blankIsNone)` | ✓ | `is_empty` |
 
 ---
 
@@ -168,10 +169,10 @@ Elenco completo dei metodi della classe `Bag` originale (gnrbag.py).
 
 | Method | Priority | Notes |
 |--------|----------|-------|
-| `copy()` | ? | Copia shallow |
-| `deepcopy()` | ? | Copia deep |
-| `update(otherbag, resolved, ignoreNone)` | ? | Merge in place |
-| `merge(otherbag, **options)` | ? | DEPRECATED - merge con opzioni |
+| `copy()` | NO | Bug: shallow copy. Usa `deepcopy()` |
+| `deepcopy()` | ✓ | Copia deep |
+| `update(otherbag, resolved, ignoreNone)` | ✓ | Merge in place |
+| `merge(otherbag, **options)` | NO | DEPRECATED - usa `update()` |
 
 ---
 
@@ -179,9 +180,9 @@ Elenco completo dei metodi della classe `Bag` originale (gnrbag.py).
 
 | Method | Priority | Notes |
 |--------|----------|-------|
-| `__eq__(other)` | ? | `bag1 == bag2` |
-| `__ne__(other)` | ? | `bag1 != bag2` |
-| `diff(other)` | ? | Differenze tra bag |
+| `__eq__(other)` | ✓ | `bag1 == bag2` |
+| `__ne__(other)` | ✓ | `bag1 != bag2` |
+| `diff(other)` | NO | Design problematico. Da rivalutare se serve |
 
 ---
 
@@ -189,9 +190,9 @@ Elenco completo dei metodi della classe `Bag` originale (gnrbag.py).
 
 | Method | Priority | Notes |
 |--------|----------|-------|
-| `sort(pars)` | ? | Ordina nodi |
-| `sum(what)` | ? | Somma valori |
-| `summarizeAttributes(attrnames)` | ? | Somma attributi |
+| `sort(pars)` | ✓ | `sort(key)` - Ordina nodi |
+| `sum(what)` | ✓ | `sum(what, condition, deep)` - Somma valori (usa `query`) |
+| `summarizeAttributes(attrnames)` | NO | Usa `sum('#a.attr1,#a.attr2', deep=True)` |
 
 ---
 
@@ -199,9 +200,9 @@ Elenco completo dei metodi della classe `Bag` originale (gnrbag.py).
 
 | Method | Priority | Notes |
 |--------|----------|-------|
-| `getResolver(path)` | ? | Ritorna resolver |
-| `setResolver(path, resolver)` | ? | Setta resolver |
-| `setCallBackItem(path, callback)` | ? | BagCbResolver |
+| `getResolver(path)` | ✓ | `get_resolver` |
+| `setResolver(path, resolver)` | ✓ | `set_resolver` |
+| `setCallBackItem(path, callback)` | ✓ | `set_callback_item` |
 
 ---
 
@@ -232,9 +233,9 @@ Elenco completo dei metodi della classe `Bag` originale (gnrbag.py).
 
 | Method | Priority | Notes |
 |--------|----------|-------|
-| `__getstate__()` | P2 | Da implementare - Per pickle |
-| `makePicklable()` | P2 | Da implementare - Prepara per pickle |
-| `restoreFromPicklable()` | P2 | Da implementare - Ripristina da pickle |
+| `__getstate__()` | ✓ | Per pickle |
+| `makePicklable()` | ✓ | `_make_picklable` (interno) |
+| `restoreFromPicklable()` | ✓ | `_restore_from_picklable` (interno) |
 
 ---
 
@@ -253,9 +254,31 @@ Elenco completo dei metodi della classe `Bag` originale (gnrbag.py).
 
 | Method | Priority | Notes |
 |--------|----------|-------|
-| `toTree(group_by, caption, attributes)` | ? | Flat → Tree |
-| `popAttributesFromNodes(blacklist)` | ? | Rimuove attr da tutti |
-| `getFormattedValue(joiner, omitEmpty)` | ? | Valore formattato |
+| `toTree(group_by, caption, attributes)` | NO | Uso raro |
+| `popAttributesFromNodes(blacklist)` | NO | Uso raro |
+| `getFormattedValue(joiner, omitEmpty)` | NO | Uso raro |
 | `__pow__(kwargs)` | ? | Da valutare - `bag ** {'attr': v}` setta attr |
 | `_setModified(...)` | -- | Interno, non considerare |
 | `_deepIndex(...)` | -- | Interno, non considerare |
+
+---
+
+## Riepilogo
+
+### Metodi Implementati (✓)
+La maggior parte dei metodi core sono stati implementati con naming snake_case.
+
+### Nuovi Metodi
+- `query(what, condition, iter, deep, leaf, branch)` - Estende `digest` con iteratori, traversal ricorsivo e filtri leaf/branch
+
+### Metodi Deprecati (NO)
+- Metodi Python 2 (`iteritems`, `iterkeys`, `itervalues`, `has_key`)
+- Metodi con bug (`copy`)
+- Metodi legacy (`merge`, `filter`, `traverse`, `cbtraverse`)
+- Metodi coperti da `query`: `nodesByAttr`, `findNodeByAttr`, `getLeaves`, `summarizeAttributes`
+- Sistema Formula e Validation
+
+### Da Valutare (?)
+- `getNodeByValue`
+- `fromYaml`
+- `__pow__`

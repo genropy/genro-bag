@@ -75,6 +75,11 @@ Documento che traccia le differenze tra l'implementazione originale (gnrbag) e l
 | `filter()` | Non portato. Nessun uso trovato nel codebase. Per filtrare usare `get_nodes(condition)` o `digest(condition=...)` |
 | `asDictDeeply()` | Non portato. Usa `to_json(serialize=False)` che ritorna dict/list Python invece di stringa JSON |
 | `asString()` | Non portato. Ridondante in Python 3: usa `str(bag)` o `str(bag).encode('utf-8')` |
+| `toTree()` | Non portato. Uso raro, funzionalità specifica da valutare se necessaria |
+| `popAttributesFromNodes()` | Non portato. Uso raro |
+| `getFormattedValue()` | Non portato. Uso raro |
+| `cbtraverse()` | Non portato. Uso raro. Raccoglie risultati callback lungo un path. Per casi simili usare loop su `get_node` |
+| `summarizeAttributes(attrnames)` | Non portato. Usa `sum('#a.attr1,#a.attr2', deep=True)` per sommare ricorsivamente attributi |
 
 ---
 
