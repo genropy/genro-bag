@@ -26,7 +26,6 @@ import os
 from collections.abc import Callable
 from typing import Any
 
-import httpx
 from genro_toolbox import smartasync, smartawait, smartsplit
 from genro_toolbox.typeutils import safe_is_instance
 
@@ -37,15 +36,21 @@ from .bagnode import BagNode, BagNodeContainer
 from .resolver import BagCbResolver
 
 
-def _normalize_path(path: str | list | Any) -> str | list:
+def _normalize_path(path: str | list) -> str | list:
     """Normalize a path for Bag access.
 
-    If path is already a string or list, return it unchanged.
-    Otherwise convert to string and replace '.' with '_'.
+    Args:
+        path: Path as dot-separated string or list of segments.
+
+    Returns:
+        The path unchanged (validation only).
+
+    Note:
+        Legacy genropy supported non-string paths (int, etc.) with automatic
+        conversion. This is now handled by the compatibility layer.
+        See: genro-bag-compat.normalizeItemPath()
     """
-    if isinstance(path, (str, list)):
-        return path
-    return str(path).replace('.', '_')
+    return path
 
 
 class Bag(BagParser, BagSerializer, BagQuery):
@@ -71,7 +76,6 @@ class Bag(BagParser, BagSerializer, BagQuery):
         _upd_subscribers: Callbacks for update events.
         _ins_subscribers: Callbacks for insert events.
         _del_subscribers: Callbacks for delete events.
-        _modified: Tracks modification state.
         _root_attributes: Attributes for the root bag.
     """
 
@@ -94,7 +98,6 @@ class Bag(BagParser, BagSerializer, BagQuery):
         self._upd_subscribers: dict = {}
         self._ins_subscribers: dict = {}
         self._del_subscribers: dict = {}
-        self._modified: bool | None = None
         self._root_attributes: dict | None = None
 
         if source:
@@ -131,6 +134,8 @@ class Bag(BagParser, BagSerializer, BagQuery):
             self._fill_from_bag(source)
         elif isinstance(source, dict):
             self._fill_from_dict(source)
+        else:
+            raise TypeError(f"fill_from expects str, Bag, or dict, got {type(source).__name__}")
 
     def _fill_from_file(self, path: str) -> None:
         """Load bag contents from a file.
@@ -213,21 +218,21 @@ class Bag(BagParser, BagSerializer, BagQuery):
     async def from_url(cls, url: str, timeout: int = 30) -> Bag:
         """Load Bag from URL (classmethod, async-capable).
 
-        Fetches content from URL and parses based on content type or URL extension.
-        Decorated with @classmethod and @smartasync for dual sync/async usage.
+        Fetches content from URL and parses based on HTTP content-type header.
+        Uses UrlResolver internally for DRY implementation.
 
         Args:
             url: HTTP/HTTPS URL to fetch.
             timeout: Request timeout in seconds. Default 30.
 
         Returns:
-            Bag: Parsed content as Bag. Format auto-detected from:
-                - URL extension (.xml, .json, .bag.json, .bag.mp)
-                - Content inspection (XML tags, JSON structure)
+            Bag: Parsed content as Bag. Format auto-detected from content-type:
+                - application/json, text/json → from_json
+                - application/xml, text/xml → from_xml
 
         Raises:
             httpx.HTTPError: If HTTP request fails.
-            ValueError: If content format cannot be detected or parsed.
+            ValueError: If content-type is not supported.
 
         Example:
             >>> # Sync context (smartasync handles the event loop)
@@ -236,51 +241,9 @@ class Bag(BagParser, BagSerializer, BagQuery):
             >>> # Async context
             >>> bag = await Bag.from_url('https://example.com/data.xml')
         """
-        async with httpx.AsyncClient() as client:
-            response = await client.get(url, timeout=timeout)
-            response.raise_for_status()
-            content = response.content
-
-        return cls._parse_content(content, url)
-
-    @classmethod
-    def _parse_content(cls, content: bytes, source_hint: str) -> Bag:
-        """Parse content bytes into a Bag based on format detection.
-
-        Args:
-            content: Raw bytes to parse.
-            source_hint: URL or filename for format detection.
-
-        Returns:
-            Bag: Parsed content.
-
-        Raises:
-            ValueError: If format cannot be detected or parsed.
-        """
-        source_lower = source_hint.lower().split('?')[0]  # Remove query string
-
-        # Try based on extension/hint
-        if source_lower.endswith('.xml') or content.strip().startswith(b'<?xml') or content.strip().startswith(b'<'):
-            return cls.from_xml(content)
-
-        if source_lower.endswith('.json') or source_lower.endswith('.bag.json'):
-            return cls.from_tytx(content, transport='json')
-
-        if source_lower.endswith('.bag.mp'):
-            return cls.from_tytx(content, transport='msgpack')
-
-        # Auto-detect from content
-        try:
-            return cls.from_xml(content)
-        except Exception:
-            pass
-
-        try:
-            return cls.from_tytx(content, transport='json')
-        except Exception:
-            pass
-
-        raise ValueError(f"Cannot parse content from {source_hint}. Unknown format.")
+        from genro_bag.resolvers import UrlResolver
+        resolver = UrlResolver(url, timeout=timeout, as_bag=True)
+        return await smartawait(resolver())
 
     # -------------------- properties --------------------------------
 
@@ -366,24 +329,6 @@ class Bag(BagParser, BagSerializer, BagQuery):
     @root_attributes.setter
     def root_attributes(self, attrs: dict) -> None:
         self._root_attributes = dict(attrs)
-
-    @property
-    def modified(self) -> bool | None:
-        """Modification tracking flag (None=disabled, False=clean, True=modified)."""
-        return self._modified
-
-    @modified.setter
-    def modified(self, value: bool | None) -> None:
-        if value is None:
-            self._modified = None
-            self.unsubscribe('_modified_tracker_', any=True)
-        else:
-            if self._modified is None:
-                self.subscribe('_modified_tracker_', any=self._on_modified)
-            self._modified = value
-
-    def _on_modified(self, **kwargs) -> None:
-        self._modified = True
 
     # -------------------- _htraverse helpers --------------------------------
 
@@ -1233,8 +1178,8 @@ class Bag(BagParser, BagSerializer, BagQuery):
         """Prepare Bag for pickling (internal)."""
         if self._backref:
             self._backref = 'x'
-        self._parent = None
-        self._parent_node = None
+        self.parent = None
+        self.parent_node = None
         for node in self:
             node._parent_bag = None
             value = node.static_value
@@ -1275,8 +1220,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
         if isinstance(source, dict):
             items = [(k, v, {}) for k, v in source.items()]
         else:
-            keys, values, attrs = source.digest('#k', '#v', '#a')
-            items = list(zip(keys, values, attrs, strict=True))
+            items = source.query(what='#k,#v,#a')
 
         for label, value, attr in items:
             if label in self._nodes:
@@ -1352,7 +1296,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
             'int'
         """
         if not path:
-            return self._parent_node
+            return self.parent_node
 
         if isinstance(path, int):
             return self._nodes[path]
@@ -1380,25 +1324,25 @@ class Bag(BagParser, BagSerializer, BagQuery):
             node: The BagNode that contains this Bag.
             parent: The parent Bag.
         """
-        if not self.backref:
+        if self._backref is not True:
             self._backref = True
-            self._parent = parent
-            self._parent_node = node
+            self.parent = parent
+            self.parent_node = node
             self._nodes._parent_bag = self
             for node in self:
                 node.parent_bag = self
 
     def del_parent_ref(self) -> None:
         """Set False in the parent Bag reference of the relative Bag."""
-        self._parent = None
+        self.parent = None
         self._backref = False
 
     def clear_backref(self) -> None:
         """Clear all the set_backref() assumption."""
         if self._backref:
             self._backref = False
-            self._parent = None
-            self._parent_node = None
+            self.parent = None
+            self.parent_node = None
             self._nodes._parent_bag = None
             for node in self:
                 node.parent_bag = None

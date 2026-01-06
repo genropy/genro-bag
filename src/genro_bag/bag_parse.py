@@ -45,6 +45,7 @@ class BagParser:
         cls,
         source: str | bytes,
         empty: Callable[[], Any] | None = None,
+        raise_on_error: bool = False,
     ) -> Bag:
         """Deserialize from XML format.
 
@@ -60,6 +61,8 @@ class BagParser:
             source: XML string or bytes to parse.
             empty: Factory function for empty element values. Called when an
                 element has no content and no type marker.
+            raise_on_error: If True, raise exceptions for type conversion errors.
+                If False (default), invalid values become '**INVALID::TYPE**' markers.
 
         Returns:
             Bag: Reconstructed Bag hierarchy.
@@ -77,7 +80,7 @@ class BagParser:
             >>> type(bag['count'])  # _T="L" converts to int
             <class 'int'>
         """
-        handler = _BagXmlHandler(cls, empty=empty)
+        handler = _BagXmlHandler(cls, empty=empty, raise_on_error=raise_on_error)
         if isinstance(source, bytes):
             source = source.decode()
 

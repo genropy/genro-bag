@@ -50,6 +50,34 @@ Documento che traccia le differenze tra l'implementazione originale (gnrbag) e l
 
 ---
 
+## Funzioni Helper Rimosse
+
+### normalizeItemPath
+
+**Originale:**
+
+```python
+def normalizeItemPath(item_path):
+    if isinstance(item_path, str) or isinstance(item_path, list):
+        return item_path
+    return str(item_path).replace('.', '_')
+```
+
+**Nuovo:** La funzione `_normalize_path` accetta solo `str | list`. Il branch per tipi non-string (int, float, etc.) è stato rimosso.
+
+**Motivo:** Nessun caso d'uso documentato. Era codice difensivo legacy.
+
+**Layer compatibilità:**
+```python
+def normalizeItemPath(item_path):
+    """Legacy path normalization for compatibility."""
+    if isinstance(item_path, (str, list)):
+        return item_path
+    return str(item_path).replace('.', '_')
+```
+
+---
+
 ## Metodi Eliminati (Python 2 → Python 3)
 
 | Eliminato | Sostituzione | Note |
@@ -80,6 +108,7 @@ Documento che traccia le differenze tra l'implementazione originale (gnrbag) e l
 | `getFormattedValue()` | Non portato. Uso raro |
 | `cbtraverse()` | Non portato. Uso raro. Raccoglie risultati callback lungo un path. Per casi simili usare loop su `get_node` |
 | `summarizeAttributes(attrnames)` | Non portato. Usa `sum('#a.attr1,#a.attr2', deep=True)` per sommare ricorsivamente attributi |
+| `modified` (property) | Non portato. Tracking modifiche tramite subscribe. Nessun uso trovato nel codebase. Se necessario, usare direttamente `subscribe()` con callback custom |
 
 ---
 

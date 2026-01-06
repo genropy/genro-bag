@@ -30,11 +30,15 @@ pytest.importorskip('httpx')
 @pytest.fixture(autouse=True)
 def reset_smartasync_cache():
     """Reset smartasync cache before each test."""
-    yield
+    # Reset before test - BagResolver.__call__ also uses @smartasync
+    from genro_bag.resolver import BagResolver
     if hasattr(Bag.from_url, '_smartasync_reset_cache'):
         Bag.from_url._smartasync_reset_cache()
     if hasattr(UrlResolver.load, '_smartasync_reset_cache'):
         UrlResolver.load._smartasync_reset_cache()
+    if hasattr(BagResolver.__call__, '_smartasync_reset_cache'):
+        BagResolver.__call__._smartasync_reset_cache()
+    yield
 
 
 # =============================================================================

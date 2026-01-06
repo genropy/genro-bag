@@ -207,7 +207,8 @@ class BagResolver:
     # __call__ - MAIN ENTRY POINT
     # =========================================================================
 
-    def __call__(self, **kwargs: Any) -> Any:
+    @smartasync
+    async def __call__(self, **kwargs: Any) -> Any:
         """Resolve and return the value.
 
         Behavior depends on read_only mode:
@@ -229,13 +230,13 @@ class BagResolver:
                 original_kw = self._kw
                 self._kw = {**original_kw, **kwargs}
                 try:
-                    return self.load()
+                    return await smartawait(self.load())
                 finally:
                     self._kw = original_kw
-            return self.load()
+            return await smartawait(self.load())
 
         # Cached mode (read_only=False)
-        return self._resolve_cached()
+        return await smartawait(self._resolve_cached())
 
     @smartasync
     async def _resolve_cached(self) -> Any:

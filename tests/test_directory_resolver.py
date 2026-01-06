@@ -5,8 +5,21 @@
 
 import os
 
+import pytest
+
 from genro_bag import Bag
 from genro_bag.resolvers.directory_resolver import DirectoryResolver
+
+
+@pytest.fixture(autouse=True)
+def reset_smartasync_cache():
+    """Reset smartasync cache before each test."""
+    from genro_bag.resolver import BagResolver
+    if hasattr(DirectoryResolver.load, '_smartasync_reset_cache'):
+        DirectoryResolver.load._smartasync_reset_cache()
+    if hasattr(BagResolver.__call__, '_smartasync_reset_cache'):
+        BagResolver.__call__._smartasync_reset_cache()
+    yield
 
 
 class TestDirectoryResolverBasic:

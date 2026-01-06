@@ -21,9 +21,12 @@ def reset_smartasync_cache():
     it's cached forever. This can cause sync tests to fail if run after
     async tests. Reset the cache to ensure clean state.
     """
-    # Reset before test
+    # Reset before test - both load() and __call__() use @smartasync
+    from genro_bag.resolver import BagResolver
     if hasattr(BagCbResolver.load, '_smartasync_reset_cache'):
         BagCbResolver.load._smartasync_reset_cache()
+    if hasattr(BagResolver.__call__, '_smartasync_reset_cache'):
+        BagResolver.__call__._smartasync_reset_cache()
     yield
 
 
