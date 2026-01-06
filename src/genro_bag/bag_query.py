@@ -88,7 +88,13 @@ class BagQuery:
     def get_node_by_attr(self, attr: str, value: Any) -> BagNode | None:
         """Return the first BagNode with the requested attribute value.
 
-        Searches recursively through the Bag hierarchy (breadth-first at each level).
+        Search strategy (hybrid depth-first with level priority):
+        1. First checks all direct children of current Bag
+        2. Then recursively searches into sub-Bags (depth-first)
+
+        This means a match at the current level is always found before
+        descending into nested Bags, but once descent begins, it proceeds
+        depth-first through the subtree before checking siblings.
 
         Args:
             attr: Attribute name to search.
@@ -165,7 +171,8 @@ class BagQuery:
         Two modes of operation:
 
         1. **Generator mode** (no callback): Returns a generator yielding
-           (path, node) tuples for all nodes in the tree.
+           (path, node) tuples for all nodes in the tree. Always uses static
+           mode (no resolver triggering). This is the recommended approach.
 
         2. **Legacy callback mode**: Calls callback(node, **kwargs) for each
            node. Supports early exit (if callback returns truthy value),
@@ -174,18 +181,21 @@ class BagQuery:
         Args:
             callback: If None, return generator of (path, node) tuples.
                 If provided, call callback(node, **kwargs) for each node.
-            _mode: For callback mode only. 'static' (default) doesn't trigger
-                resolvers, other values ('deep', '') trigger resolvers.
+            _mode: Controls resolver behavior in callback mode only.
+                - 'static' (default): Use node.get_value(static=True), no resolver trigger.
+                - Any other value (e.g., 'deep', ''): Use node.get_value(static=False),
+                  which may trigger resolvers to compute nested Bag values.
+                Ignored in generator mode (always static).
             **kwargs: Passed to callback. Special keys:
-                - _pathlist: list of labels from root (auto-updated)
-                - _indexlist: list of indices from root (auto-updated)
+                - _pathlist: list of labels from root (auto-updated by walk)
+                - _indexlist: list of indices from root (auto-updated by walk)
 
         Returns:
             Generator of (path, node) if callback is None.
             If callback provided: value returned by callback if truthy, else None.
 
         Examples:
-            >>> # Generator mode (modern)
+            >>> # Generator mode (modern, recommended)
             >>> for path, node in bag.walk():
             ...     print(f"{path}: {node.value}")
 
@@ -195,8 +205,10 @@ class BagQuery:
             ...         found = node
             ...         break
 
-            >>> # Legacy callback mode
-            >>> bag.walk(my_callback, _pathlist=[])
+            >>> # Legacy callback mode with path tracking
+            >>> def my_cb(node, _pathlist=None, **kw):
+            ...     print('.'.join(_pathlist))
+            >>> bag.walk(my_cb, _pathlist=[])
         """
         # Import here to avoid circular import
         from .bag import Bag

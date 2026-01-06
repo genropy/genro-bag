@@ -38,6 +38,17 @@ class BagResolver:
     instead of being stored statically. The result can be cached for a
     configurable duration.
 
+    read_only Mode (how BagNode.get_value interacts with resolver):
+        - read_only=True (default): Each call to get_value() invokes resolver(),
+          which calls load(). The result is returned directly, NOT stored in
+          node._value. Good for computed/dynamic values that shouldn't be cached
+          in the node itself.
+
+        - read_only=False: When cache expires, get_value() calls resolver() which
+          calls load(), then stores the result in node._value. Subsequent calls
+          return node._value until cache expires again. Good for expensive
+          operations where you want the node to hold the cached result.
+
     Class Attributes:
         class_kwargs: dict of {param_name: default_value}
             Parameters with defaults, passable as keyword args.
@@ -199,11 +210,18 @@ class BagResolver:
     def __call__(self, **kwargs: Any) -> Any:
         """Resolve and return the value.
 
-        For read_only=True: kwargs are merged temporarily for this call only.
-        For read_only=False: kwargs ignored, uses concurrency control.
+        Behavior depends on read_only mode:
+        - read_only=True: Always calls load(). If kwargs provided, they are
+          merged temporarily into _kw for this call only, then restored.
+        - read_only=False: Uses caching. If cache not expired, returns None
+          (signaling BagNode.get_value to use node._value). If expired, calls
+          load() and returns the result for BagNode to store.
+
+        Args:
+            **kwargs: Temporary parameter overrides (only for read_only=True).
 
         Returns:
-            The resolved value from load().
+            The resolved value from load(), or None if cached (read_only=False).
         """
         if self.read_only:
             # Pure getter mode: always call load(), no concurrency control
@@ -216,15 +234,20 @@ class BagResolver:
                     self._kw = original_kw
             return self.load()
 
-        # Cached mode: use concurrency control
+        # Cached mode (read_only=False)
         return self._resolve_cached()
 
     @smartasync
     async def _resolve_cached(self) -> Any:
-        """Resolve with caching for read_only=False.
+        """Resolve with caching for read_only=False mode.
+
+        Called when read_only=False. Checks cache expiration and either:
+        - Returns None if cache valid (BagNode.get_value uses node._value)
+        - Calls load() if expired, updates timestamp, returns result
 
         Returns:
-            The resolved value, or None to signal Node to use _value.
+            The resolved value if cache expired, or None to signal
+            BagNode.get_value to use the cached node._value.
         """
         if not self.expired:
             return None  # Signal Node to use cached _value

@@ -59,8 +59,9 @@ class Bag(BagParser, BagSerializer, BagQuery):
     Each label at a given level must be unique.
 
     Inherits from:
-        BagParser: Provides from_xml, from_tytx, from_json classmethods
-        BagSerializer: Provides to_xml, to_tytx, to_json instance methods
+        BagParser: Provides from_xml, from_tytx, from_json classmethods.
+        BagSerializer: Provides to_xml, to_tytx, to_json instance methods.
+        BagQuery: Provides query, digest, walk, keys, values, items, sum, sort methods.
 
     Attributes:
         _nodes: BagNodeContainer holding the BagNodes.
@@ -210,24 +211,26 @@ class Bag(BagParser, BagSerializer, BagQuery):
     @classmethod
     @smartasync
     async def from_url(cls, url: str, timeout: int = 30) -> Bag:
-        """Load Bag from URL (async-capable).
+        """Load Bag from URL (classmethod, async-capable).
 
         Fetches content from URL and parses based on content type or URL extension.
-        Works in both sync and async contexts via @smartasync.
+        Decorated with @classmethod and @smartasync for dual sync/async usage.
 
         Args:
             url: HTTP/HTTPS URL to fetch.
             timeout: Request timeout in seconds. Default 30.
 
         Returns:
-            Bag: Parsed content as Bag.
+            Bag: Parsed content as Bag. Format auto-detected from:
+                - URL extension (.xml, .json, .bag.json, .bag.mp)
+                - Content inspection (XML tags, JSON structure)
 
         Raises:
-            httpx.HTTPError: If request fails.
-            ValueError: If content format is not recognized.
+            httpx.HTTPError: If HTTP request fails.
+            ValueError: If content format cannot be detected or parsed.
 
         Example:
-            >>> # Sync context
+            >>> # Sync context (smartasync handles the event loop)
             >>> bag = Bag.from_url('https://example.com/data.xml')
             >>>
             >>> # Async context
@@ -1017,15 +1020,22 @@ class Bag(BagParser, BagSerializer, BagQuery):
     def set_callback_item(self, path: str, callback: Callable, **kwargs) -> None:
         """Set a callback resolver at the given path.
 
-        Shortcut for creating a BagCbResolver.
+        Shortcut for creating a BagCbResolver and setting it on a node.
 
         Args:
             path: Path to the node.
-            callback: Callable that returns the value.
-            **kwargs: Additional arguments passed to BagCbResolver.
+            callback: Callable that returns the value. Can be sync or async.
+            **kwargs: Arguments passed to BagCbResolver constructor.
+                Common kwargs:
+                - cache_time: Cache duration in seconds (default 0, no cache).
+                - read_only: If True, value not saved in node (default True).
+
+        Note:
+            The resolver is passed directly to set_item, which handles it
+            via the resolver parameter (not as value).
         """
         resolver = BagCbResolver(callback, **kwargs)
-        self.set_item(path, resolver, **kwargs)
+        self.set_item(path, resolver)
 
     # -------------------- __str__ --------------------------------
 
@@ -1187,7 +1197,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
 
         Creates a new Bag with copies of all nodes. Nested Bags are
         recursively deep copied. Values are copied by reference unless
-        they are Bags.
+        they are Bags. Node attributes are copied as a new dict.
 
         Returns:
             A new Bag with copied nodes.
@@ -1204,7 +1214,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
             value = node.static_value
             if isinstance(value, Bag):
                 value = value.deepcopy()
-            result.set_item(node.label, value, attr=dict(node.attr))
+            result.set_item(node.label, value, _attributes=dict(node.attr))
         return result
 
     # -------------------- pickle support --------------------------------

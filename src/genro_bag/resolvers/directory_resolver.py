@@ -12,21 +12,37 @@ from ..resolver import BagResolver
 
 
 class TxtDocResolver(BagResolver):
-    """Resolver that lazily loads text file content.
+    """Resolver that lazily loads file content as raw bytes.
+
+    Despite the name "TxtDoc", this resolver reads files in binary mode
+    and returns bytes, not decoded text. This preserves the original
+    encoding and allows handling of any file type.
 
     Parameters (class_args):
-        path: Filesystem path to the text file.
+        path: Filesystem path to the file.
 
     Parameters (class_kwargs):
         cache_time: Cache duration in seconds. Default 500.
         read_only: If True, resolver acts as pure getter. Default True.
+
+    Returns:
+        bytes: Raw file content. Caller must decode if text is needed.
+
+    Example:
+        >>> resolver = TxtDocResolver('/path/to/file.txt')
+        >>> content = resolver()  # returns bytes
+        >>> text = content.decode('utf-8')  # decode to string
     """
 
     class_kwargs = {'cache_time': 500, 'read_only': True}
     class_args = ['path']
 
     def load(self):
-        """Load and return the file content as bytes."""
+        """Load and return the file content as raw bytes.
+
+        Returns:
+            bytes: The complete file content in binary form.
+        """
         with open(self._kw['path'], mode='rb') as f:
             return f.read()
 

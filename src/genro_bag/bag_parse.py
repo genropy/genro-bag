@@ -5,7 +5,8 @@ This module provides the BagParser mixin class containing from_xml, from_tytx,
 and from_json classmethods. The Bag class inherits from this mixin to get
 deserialization capabilities without circular imports.
 
-When called as Bag.from_json(data), cls is Bag, so cls() creates a Bag instance.
+All methods are classmethods. When called as Bag.from_json(data), cls is the Bag
+class, so cls() creates a new Bag instance.
 """
 
 from __future__ import annotations
@@ -48,29 +49,33 @@ class BagParser:
         """Deserialize from XML format.
 
         Automatically detects and handles legacy GenRoBag format:
-        - Decodes `_T` attribute for value types
+        - Decodes `_T` attribute for value types (L=int, R=float, D=date, etc.)
         - Decodes `::TYPE` suffix in attribute values (TYTX encoding)
-        - Handles `<GenRoBag>` root wrapper element
+        - Handles `<GenRoBag>` root wrapper element (unwraps automatically)
 
         For plain XML without type markers, values remain as strings.
+        Supports environment variable substitution for {GNR_*} placeholders.
 
         Args:
             source: XML string or bytes to parse.
-            empty: Factory function for empty element values.
+            empty: Factory function for empty element values. Called when an
+                element has no content and no type marker.
 
         Returns:
-            Reconstructed Bag.
+            Bag: Reconstructed Bag hierarchy.
 
         Example:
-            >>> # Plain XML
+            >>> # Plain XML - each element becomes a node
             >>> bag = Bag.from_xml('<root><name>test</name></root>')
-            >>> bag['root']['name']
+            >>> bag['root.name']
             'test'
 
-            >>> # Legacy GenRoBag format (auto-detected)
+            >>> # Legacy GenRoBag format (auto-detected by root element name)
             >>> bag = Bag.from_xml('<GenRoBag><count _T="L">42</count></GenRoBag>')
-            >>> bag['count']
+            >>> bag['count']  # GenRoBag wrapper is unwrapped automatically
             42
+            >>> type(bag['count'])  # _T="L" converts to int
+            <class 'int'>
         """
         handler = _BagXmlHandler(cls, empty=empty)
         if isinstance(source, bytes):

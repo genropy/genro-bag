@@ -53,7 +53,9 @@ class BagNode:
         _parent_bag: Reference to the parent Bag containing this node.
         _resolver: Optional BagResolver for lazy/dynamic value computation.
         _node_subscribers: Dict mapping subscriber_id to callback for change notifications.
-        _invalid_reasons: List of validation error messages (empty if valid).
+        _invalid_reasons: List of validation error messages. Empty list means valid.
+            This attribute is reserved for external validation systems (e.g., TreeStore
+            builders) to populate. The BagNode itself does not set validation errors.
     """
 
     __slots__ = (
@@ -423,10 +425,15 @@ class BagNode:
 
     @property
     def position(self) -> int | None:
-        """Get this node's index in parent's nodes list."""
+        """Get this node's index position within parent Bag.
+
+        Returns:
+            The 0-based index of this node in the parent's node list,
+            or None if this node has no parent.
+        """
         if self.parent_bag is None:
             return None
-        return self.parent_bag.nodes.keys().index(self.label)
+        return self.parent_bag._nodes.index(self.label)
 
     @property
     def fullpath(self) -> str | None:
@@ -511,12 +518,20 @@ class BagNode:
         self._node_subscribers.pop(subscriber_id, None)
 
     # -------------------------------------------------------------------------
-    # Validation (from TreeStore)
+    # Validation (for external validation systems)
     # -------------------------------------------------------------------------
 
     @property
     def is_valid(self) -> bool:
-        """True if this node has no validation errors."""
+        """Check if this node has no validation errors.
+
+        The _invalid_reasons list is populated by external validation systems
+        (e.g., TreeStore builders). BagNode provides the storage and this
+        property for checking validity, but does not perform validation itself.
+
+        Returns:
+            True if _invalid_reasons is empty, False otherwise.
+        """
         return len(self._invalid_reasons) == 0
 
     # -------------------------------------------------------------------------
