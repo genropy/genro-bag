@@ -73,6 +73,8 @@ Documento che traccia le differenze tra l'implementazione originale (gnrbag) e l
 | `diff()` | Non portato. L'originale aveva problemi: ritorno misto (None/str), solo prima differenza, non gestiva tutti i casi. Da rivalutare se serve con design migliore (ritorno strutturato) |
 | `copy()` | Deprecato. L'originale delegava a `copy.copy()` che faceva shallow copy (bug: nodi condivisi). Usa `deepcopy()` |
 | `filter()` | Non portato. Nessun uso trovato nel codebase. Per filtrare usare `get_nodes(condition)` o `digest(condition=...)` |
+| `asDictDeeply()` | Non portato. Usa `to_json(serialize=False)` che ritorna dict/list Python invece di stringa JSON |
+| `asString()` | Non portato. Ridondante in Python 3: usa `str(bag)` o `str(bag).encode('utf-8')` |
 
 ---
 

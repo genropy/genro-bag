@@ -83,15 +83,17 @@ Elenco completo dei metodi della classe `Bag` originale (gnrbag.py).
 
 ## Path Traversal (Internal)
 
+**NOTA: Metodi privati - non considerare nel confronto (gestiti internamente).**
+
 | Method | Priority | Notes |
 |--------|----------|-------|
-| `_htraverse(pathlist, autocreate, returnLastMatch)` | ? | Core navigation |
-| `_index(label)` | ? | Trova indice per label |
-| `_pathSplit(path)` | ? | Split path in lista |
-| `_set(label, value, **kw)` | ? | Set interno |
-| `_pop(label)` | ? | Pop interno |
-| `_getNode(label, autocreate, default)` | ? | GetNode interno |
-| `_insertNode(node, position)` | ? | Insert con posizione |
+| `_htraverse(...)` | -- | Interno, non considerare |
+| `_index(label)` | -- | Interno, non considerare |
+| `_pathSplit(path)` | -- | Interno, non considerare |
+| `_set(label, value, **kw)` | -- | Interno, non considerare |
+| `_pop(label)` | -- | Interno, non considerare |
+| `_getNode(label, autocreate, default)` | -- | Interno, non considerare |
+| `_insertNode(node, position)` | -- | Interno, non considerare |
 
 ---
 
@@ -104,10 +106,10 @@ Elenco completo dei metodi della classe `Bag` originale (gnrbag.py).
 | `delParentRef()` | ? | Rimuove riferimento parent |
 | `subscribe(id, update, insert, delete, any)` | ? | Sottoscrivi eventi |
 | `unsubscribe(id, **kw)` | ? | Rimuovi sottoscrizione |
-| `_onNodeChanged(node, pathlist, evt, oldvalue)` | ? | Trigger interno update |
-| `_onNodeInserted(node, ind, pathlist)` | ? | Trigger interno insert |
-| `_onNodeDeleted(node, ind, pathlist)` | ? | Trigger interno delete |
-| `_subscribe(id, dict, callback)` | ? | Subscribe interno |
+| `_onNodeChanged(...)` | -- | Interno, non considerare |
+| `_onNodeInserted(...)` | -- | Interno, non considerare |
+| `_onNodeDeleted(...)` | -- | Interno, non considerare |
+| `_subscribe(...)` | -- | Interno, non considerare |
 
 ---
 
@@ -123,12 +125,12 @@ Elenco completo dei metodi della classe `Bag` originale (gnrbag.py).
 | `pickle(destination, bin)` | ? | Bag → pickle |
 | `unpickle(source)` | ? | pickle → Bag |
 | `fillFrom(source, **kw)` | ? | Riempie da sorgente |
-| `_fromSource(source, fromFile, mode)` | ? | Parse interno |
-| `_sourcePrepare(source)` | ? | Prepara sorgente |
-| `_fromXml(source, fromFile, **kw)` | ? | XML interno |
-| `_fromJson(json, listJoiner)` | ? | JSON interno |
-| `_fromYaml(yamlgen, listJoiner)` | ? | YAML interno |
-| `_unpickle(source, fromFile)` | ? | Unpickle interno |
+| `_fromSource(...)` | -- | Interno, non considerare |
+| `_sourcePrepare(...)` | -- | Interno, non considerare |
+| `_fromXml(...)` | -- | Interno, non considerare |
+| `_fromJson(...)` | -- | Interno, non considerare |
+| `_fromYaml(...)` | -- | Interno, non considerare |
+| `_unpickle(...)` | -- | Interno, non considerare |
 
 ---
 
@@ -136,7 +138,7 @@ Elenco completo dei metodi della classe `Bag` originale (gnrbag.py).
 
 | Method | Priority | Notes |
 |--------|----------|-------|
-| `asDict(ascii, lower)` | ? | Bag → dict (1 livello) |
+| `asDict(ascii, lower)` | P2 | Da implementare - Bag → dict (1 livello). `dict(bag)` non funziona perché `__iter__` itera sui nodi |
 | `asDictDeeply(ascii, lower)` | ? | Bag → dict (ricorsivo) |
 | `asString(encoding, mode)` | ? | Bag → string |
 | `__str__(exploredNodes, mode)` | ? | Rappresentazione string |
@@ -205,20 +207,24 @@ Elenco completo dei metodi della classe `Bag` originale (gnrbag.py).
 
 ## Formula (legacy)
 
+**NOTA: Sistema Formula non sarà portato - funzionalità legacy non più utilizzata.**
+
 | Method | Priority | Notes |
 |--------|----------|-------|
-| `defineSymbol(**kwargs)` | ? | Definisce simboli |
-| `defineFormula(**kwargs)` | ? | Definisce formula |
-| `formula(formula, **kwargs)` | ? | Crea BagFormula |
+| `defineSymbol(**kwargs)` | NO | Non portare - legacy |
+| `defineFormula(**kwargs)` | NO | Non portare - legacy |
+| `formula(formula, **kwargs)` | NO | Non portare - legacy |
 
 ---
 
 ## Validation
 
+**NOTA: Sistema Validation non sarà portato - gestito diversamente nella nuova architettura.**
+
 | Method | Priority | Notes |
 |--------|----------|-------|
-| `addValidator(path, validator, params)` | ? | Aggiunge validatore |
-| `removeValidator(path, validator)` | ? | Rimuove validatore |
+| `addValidator(path, validator, params)` | NO | Non portare |
+| `removeValidator(path, validator)` | NO | Non portare |
 
 ---
 
@@ -226,18 +232,20 @@ Elenco completo dei metodi della classe `Bag` originale (gnrbag.py).
 
 | Method | Priority | Notes |
 |--------|----------|-------|
-| `__getstate__()` | ? | Per pickle |
-| `makePicklable()` | ? | Prepara per pickle |
-| `restoreFromPicklable()` | ? | Ripristina da pickle |
+| `__getstate__()` | P2 | Da implementare - Per pickle |
+| `makePicklable()` | P2 | Da implementare - Prepara per pickle |
+| `restoreFromPicklable()` | P2 | Da implementare - Ripristina da pickle |
 
 ---
 
 ## Structure Building (da GnrStructData)
 
+**NOTA: Metodi gestiti dal Builder system - modulo separato (06-builder/).**
+
 | Method | Priority | Notes |
 |--------|----------|-------|
-| `child(tag, childname, childcontent, _parentTag)` | ? | Crea child strutturato |
-| `rowchild(childname, _pkey, **kw)` | ? | Child tipo riga |
+| `child(tag, childname, childcontent, _parentTag)` | BUILDER | Gestito dal Builder system |
+| `rowchild(childname, _pkey, **kw)` | BUILDER | Da considerare quando si implementa il Builder |
 
 ---
 
@@ -248,6 +256,6 @@ Elenco completo dei metodi della classe `Bag` originale (gnrbag.py).
 | `toTree(group_by, caption, attributes)` | ? | Flat → Tree |
 | `popAttributesFromNodes(blacklist)` | ? | Rimuove attr da tutti |
 | `getFormattedValue(joiner, omitEmpty)` | ? | Valore formattato |
-| `__pow__(kwargs)` | ? | `bag ** {'attr': v}` setta attr |
-| `_setModified(**kwargs)` | ? | Callback interno |
-| `_deepIndex(path, resList, exploredItems)` | ? | Index interno |
+| `__pow__(kwargs)` | ? | Da valutare - `bag ** {'attr': v}` setta attr |
+| `_setModified(...)` | -- | Interno, non considerare |
+| `_deepIndex(...)` | -- | Interno, non considerare |

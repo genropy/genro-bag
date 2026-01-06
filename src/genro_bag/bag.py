@@ -33,6 +33,7 @@ from genro_toolbox.typeutils import safe_is_instance
 from .bag_node import BagNode
 from .bagnode_container import BagNodeContainer
 from .parser import BagParser
+from .resolver import BagCbResolver
 from .serializer import BagSerializer
 
 
@@ -857,6 +858,22 @@ class Bag(BagParser, BagSerializer):
         """
         return self._nodes.items(iter=iter)
 
+    def as_dict(self, ascii: bool = False, lower: bool = False) -> dict[str, Any]:
+        """Convert Bag to dict (first level only).
+
+        :param ascii: If True, convert keys to ASCII.
+        :param lower: If True, convert keys to lowercase.
+        """
+        result = {}
+        for el in self._nodes:
+            key = el.label
+            if ascii:
+                key = str(key)
+            if lower:
+                key = key.lower()
+            result[key] = el.value
+        return result
+
     def setdefault(self, path: str, default: Any = None) -> Any:
         """Return value at path, setting it to default if not present."""
         node = self.get_node(path)
@@ -1011,6 +1028,19 @@ class Bag(BagParser, BagSerializer):
             resolver: The resolver to set.
         """
         self.set_item(path, None, resolver=resolver)
+
+    def set_callback_item(self, path: str, callback: Callable, **kwargs) -> None:
+        """Set a callback resolver at the given path.
+
+        Shortcut for creating a BagCbResolver.
+
+        Args:
+            path: Path to the node.
+            callback: Callable that returns the value.
+            **kwargs: Additional arguments passed to BagCbResolver.
+        """
+        resolver = BagCbResolver(callback, **kwargs)
+        self.set_item(path, resolver, **kwargs)
 
     def sort(self, key: str | Callable = '#k:a') -> Bag:
         """Sort nodes in place.
@@ -1457,6 +1487,41 @@ class Bag(BagParser, BagSerializer):
                 value = value.deepcopy()
             result.set_item(node.label, value, attr=dict(node.attr))
         return result
+
+    # -------------------- pickle support --------------------------------
+
+    def __getstate__(self) -> dict:
+        """Return state for pickling."""
+        self._make_picklable()
+        return self.__dict__
+
+    def __setstate__(self, state: dict) -> None:
+        """Restore state after unpickling."""
+        self.__dict__.update(state)
+        self._restore_from_picklable()
+
+    def _make_picklable(self) -> None:
+        """Prepare Bag for pickling (internal)."""
+        if self._backref:
+            self._backref = 'x'
+        self._parent = None
+        self._parent_node = None
+        for node in self:
+            node._parent_bag = None
+            value = node.static_value
+            if isinstance(value, Bag):
+                value._make_picklable()
+
+    def _restore_from_picklable(self) -> None:
+        """Restore Bag from its picklable form (internal)."""
+        if self._backref == 'x':
+            self.set_backref()
+        else:
+            for node in self:
+                node._parent_bag = None
+                value = node.static_value
+                if isinstance(value, Bag):
+                    value._restore_from_picklable()
 
     # -------------------- update --------------------------------
 
