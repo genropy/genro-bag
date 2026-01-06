@@ -370,9 +370,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
 
                 # Return callable bound to this Bag
                 # Use _tag, _label to avoid clash with HTML attributes like target='_blank'
-                return lambda _label=None, **attr: handler(
-                    self, _tag=name, _label=_label, **attr
-                )
+                return lambda _label=None, **attr: handler(self, _tag=name, _label=_label, **attr)
             except AttributeError:
                 pass
 

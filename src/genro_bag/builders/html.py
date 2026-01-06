@@ -132,7 +132,11 @@ class HtmlBuilder(BagBuilderBase):
         is_void = name in self._schema_data["void_elements"]
 
         def tag_method(
-            _target: Bag, _tag: str = name, _label: str | None = None, value: Any = None, **attr: Any
+            _target: Bag,
+            _tag: str = name,
+            _label: str | None = None,
+            value: Any = None,
+            **attr: Any,
         ) -> Bag | BagNode:
             if is_void and value is None:
                 value = ""
