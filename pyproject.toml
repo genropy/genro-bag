@@ -74,6 +74,10 @@ markers = [
     "network: marks tests as requiring network access (deselect with '-m \"not network\"')",
 ]
 
+[tool.black]
+line-length = 100
+target-version = ["py310"]
+
 [tool.ruff]
 target-version = "py310"
 line-length = 100
