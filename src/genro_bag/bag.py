@@ -77,19 +77,25 @@ class Bag(BagParser, BagSerializer, BagQuery):
         _ins_subscribers: Callbacks for insert events.
         _del_subscribers: Callbacks for delete events.
         _root_attributes: Attributes for the root bag.
+        _builder: Optional builder for domain-specific node creation.
     """
 
-    def __init__(self, source: dict[str, Any] | None = None):
+    def __init__(self, source: dict[str, Any] | None = None, builder=None):
         """Create a new Bag.
 
         Args:
             source: Optional dict to initialize from. Keys become labels,
                 values become node values.
+            builder: Optional BagBuilderBase instance for domain-specific
+                node creation (e.g., HtmlBuilder for HTML generation).
 
         Example:
             >>> bag = Bag({'a': 1, 'b': 2})
             >>> bag['a']
             1
+            >>> from genro_bag.builders import HtmlBuilder
+            >>> html = Bag(builder=HtmlBuilder())
+            >>> html.div(id='main').p(value='Hello')
         """
         self._nodes: BagNodeContainer = BagNodeContainer()
         self._backref: bool = False
@@ -99,6 +105,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
         self._ins_subscribers: dict = {}
         self._del_subscribers: dict = {}
         self._root_attributes: dict | None = None
+        self._builder = builder
 
         if source:
             self.fill_from(source)
@@ -329,6 +336,45 @@ class Bag(BagParser, BagSerializer, BagQuery):
     @root_attributes.setter
     def root_attributes(self, attrs: dict) -> None:
         self._root_attributes = dict(attrs)
+
+    @property
+    def builder(self):
+        """Get the builder associated with this Bag.
+
+        Returns:
+            The BagBuilderBase instance, or None if no builder is set.
+        """
+        return self._builder
+
+    def __getattr__(self, name: str) -> Any:
+        """Delegate attribute access to builder if present.
+
+        When a builder is set, unknown attributes are looked up on the builder.
+        This enables fluent APIs like bag.div(id='main').p(value='Hello').
+
+        Args:
+            name: Attribute name to look up.
+
+        Returns:
+            A callable that creates a child node with that tag.
+
+        Raises:
+            AttributeError: If no builder is set or builder doesn't have the tag.
+        """
+        if name.startswith('_'):
+            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+
+        if self._builder is not None:
+            try:
+                handler = getattr(self._builder, name)
+                # Return callable bound to this Bag
+                def bound_handler(**kwargs):
+                    return handler(self, name, **kwargs)
+                return bound_handler
+            except AttributeError:
+                pass
+
+        raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
     # -------------------- _htraverse helpers --------------------------------
 

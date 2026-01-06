@@ -1,0 +1,86 @@
+{
+  "elements": {
+    "table": {
+      "children": "caption[:1], colgroup, thead[:1], tbody, tfoot[:1], tr"
+    },
+    "caption": {
+      "children": "=flow"
+    },
+    "colgroup": {
+      "children": "col"
+    },
+    "col": {
+      "leaf": true,
+      "attrs": {
+        "span": {
+          "type": "int",
+          "min": 1,
+          "default": 1
+        }
+      }
+    },
+    "thead": {
+      "children": "tr"
+    },
+    "tbody": {
+      "children": "tr"
+    },
+    "tfoot": {
+      "children": "tr"
+    },
+    "tr": {
+      "children": "th, td"
+    },
+    "th": {
+      "children": "=flow",
+      "attrs": {
+        "colspan": {
+          "type": "int",
+          "min": 1,
+          "default": 1
+        },
+        "rowspan": {
+          "type": "int",
+          "min": 0,
+          "default": 1
+        },
+        "headers": {
+          "type": "idrefs"
+        },
+        "scope": {
+          "type": "enum",
+          "values": [
+            "row",
+            "col",
+            "rowgroup",
+            "colgroup"
+          ]
+        },
+        "abbr": {
+          "type": "string"
+        }
+      }
+    },
+    "td": {
+      "children": "=flow",
+      "attrs": {
+        "colspan": {
+          "type": "int",
+          "min": 1,
+          "default": 1
+        },
+        "rowspan": {
+          "type": "int",
+          "min": 0,
+          "default": 1
+        },
+        "headers": {
+          "type": "idrefs"
+        }
+      }
+    }
+  },
+  "refs": {
+    "flow": "div, p, span, a, em, strong, ul, ol, table"
+  }
+}
