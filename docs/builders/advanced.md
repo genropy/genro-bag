@@ -1,0 +1,490 @@
+# Advanced Patterns
+
+This guide covers advanced builder patterns for complex use cases.
+
+## Reference Resolution
+
+Builders support `=ref` syntax to reference reusable element groups.
+
+### Defining References
+
+Define `_ref_<name>` properties on your builder:
+
+```{doctest}
+>>> from genro_bag import Bag
+>>> from genro_bag.builders import BagBuilderBase, element
+
+>>> class HtmlLikeBuilder(BagBuilderBase):
+...     """Builder with content category references."""
+...
+...     @property
+...     def _ref_inline(self):
+...         """Inline elements: text formatting."""
+...         return 'span, strong, em, a, code'
+...
+...     @property
+...     def _ref_block(self):
+...         """Block elements: structural."""
+...         return 'div, p, ul, ol'
+...
+...     @property
+...     def _ref_flow(self):
+...         """Flow content: both inline and block."""
+...         return '=inline, =block'  # Combine other refs!
+...
+...     @element(children='=flow')  # Use reference
+...     def div(self, target, tag, **attr):
+...         return self.child(target, tag, **attr)
+...
+...     @element(children='=inline')
+...     def p(self, target, tag, value=None, **attr):
+...         return self.child(target, tag, value=value, **attr)
+...
+...     @element()
+...     def span(self, target, tag, value=None, **attr):
+...         return self.child(target, tag, value=value or '', **attr)
+...
+...     @element()
+...     def strong(self, target, tag, value=None, **attr):
+...         return self.child(target, tag, value=value or '', **attr)
+...
+...     @element()
+...     def em(self, target, tag, value=None, **attr):
+...         return self.child(target, tag, value=value or '', **attr)
+...
+...     @element()
+...     def a(self, target, tag, value=None, **attr):
+...         return self.child(target, tag, value=value or '', **attr)
+...
+...     @element()
+...     def code(self, target, tag, value=None, **attr):
+...         return self.child(target, tag, value=value or '', **attr)
+...
+...     @element(children='li')
+...     def ul(self, target, tag, **attr):
+...         return self.child(target, tag, **attr)
+...
+...     @element(children='li')
+...     def ol(self, target, tag, **attr):
+...         return self.child(target, tag, **attr)
+...
+...     @element(children='=flow')
+...     def li(self, target, tag, value=None, **attr):
+...         return self.child(target, tag, value=value, **attr)
+
+>>> bag = Bag(builder=HtmlLikeBuilder())
+>>> div = bag.div()
+>>> div.p(value='Paragraph text')  # block in flow ✓
+BagNode : ... at ...
+>>> div.span(value='Inline text')  # inline in flow ✓
+BagNode : ... at ...
+>>> ul = div.ul()  # block in flow ✓
+>>> ul.li(value='Item')  # doctest: +ELLIPSIS
+BagNode : ... at ...
+```
+
+### Reference Resolution Chain
+
+References can reference other references:
+
+```{doctest}
+>>> from genro_bag import Bag
+>>> from genro_bag.builders import BagBuilderBase
+
+>>> class ChainedRefBuilder(BagBuilderBase):
+...     @property
+...     def _ref_text(self):
+...         return 'span, strong'
+...
+...     @property
+...     def _ref_media(self):
+...         return 'img, video'
+...
+...     @property
+...     def _ref_all(self):
+...         return '=text, =media, div'  # Combines both + div
+...
+...     _schema = {
+...         'container': {'children': '=all'},
+...         'div': {},
+...         'span': {},
+...         'strong': {},
+...         'img': {'leaf': True},
+...         'video': {},
+...     }
+
+>>> builder = ChainedRefBuilder()
+>>> resolved = builder._resolve_ref('=all')
+>>> 'span' in resolved and 'img' in resolved and 'div' in resolved
+True
+```
+
+### Dynamic References via __getattr__
+
+For schema-loaded builders, use `__getattr__` for dynamic ref lookup:
+
+```{doctest}
+>>> from genro_bag import Bag
+>>> from genro_bag.builders import BagBuilderBase
+
+>>> class DynamicRefBuilder(BagBuilderBase):
+...     def __init__(self):
+...         self._refs = {
+...             'controls': 'button, input, select',
+...             'display': 'span, div, label',
+...         }
+...
+...     def __getattr__(self, name):
+...         if name.startswith('_ref_'):
+...             ref_name = name[5:]
+...             if ref_name in self._refs:
+...                 return self._refs[ref_name]
+...             raise AttributeError(f"Reference '{ref_name}' not found")
+...         return super().__getattr__(name)
+...
+...     _schema = {
+...         'form': {'children': '=controls, =display'},
+...         'button': {},
+...         'input': {'leaf': True},
+...         'select': {},
+...         'span': {},
+...         'div': {},
+...         'label': {},
+...     }
+
+>>> bag = Bag(builder=DynamicRefBuilder())
+>>> form = bag.form()
+>>> form.button(value='Submit')  # control ✓
+BagNode : ... at ...
+>>> form.label(value='Name:')   # display ✓
+BagNode : ... at ...
+```
+
+## Builder Inheritance
+
+### Extending Existing Builders
+
+```{doctest}
+>>> from genro_bag import Bag
+>>> from genro_bag.builders import BagBuilderBase, element
+
+>>> class BaseUIBuilder(BagBuilderBase):
+...     """Base builder with common UI elements."""
+...
+...     @element()
+...     def container(self, target, tag, **attr):
+...         return self.child(target, tag, **attr)
+...
+...     @element()
+...     def text(self, target, tag, value=None, **attr):
+...         return self.child(target, tag, value=value or '', **attr)
+
+>>> class ExtendedUIBuilder(BaseUIBuilder):
+...     """Extended builder with additional elements."""
+...
+...     @element()
+...     def button(self, target, tag, value=None, **attr):
+...         return self.child(target, tag, value=value or 'Click', **attr)
+...
+...     @element(children='option')
+...     def select(self, target, tag, **attr):
+...         return self.child(target, tag, **attr)
+...
+...     @element()
+...     def option(self, target, tag, value=None, **attr):
+...         return self.child(target, tag, value=value or '', **attr)
+
+>>> bag = Bag(builder=ExtendedUIBuilder())
+>>> cont = bag.container()  # From parent
+>>> cont.text(value='Label')  # From parent
+BagNode : ... at ...
+>>> cont.button(value='Submit')  # From child
+BagNode : ... at ...
+>>> sel = cont.select()  # From child
+>>> sel.option(value='A')  # doctest: +ELLIPSIS
+BagNode : ... at ...
+```
+
+### Overriding Methods
+
+```{doctest}
+>>> from genro_bag import Bag
+>>> from genro_bag.builders import BagBuilderBase, element
+
+>>> class BaseBuilder(BagBuilderBase):
+...     @element()
+...     def item(self, target, tag, value=None, **attr):
+...         return self.child(target, tag, value=value, **attr)
+
+>>> class StyledBuilder(BaseBuilder):
+...     @element()
+...     def item(self, target, tag, value=None, style='default', **attr):
+...         # Add automatic styling
+...         attr['class_'] = f'item-{style}'
+...         return self.child(target, tag, value=value, **attr)
+
+>>> bag = Bag(builder=StyledBuilder())
+>>> item = bag.item(value='Styled', style='highlight')
+>>> item.attr['class_']
+'item-highlight'
+```
+
+## Nested Builders
+
+### Different Builders for Subtrees
+
+Use `_builder` parameter to change builder mid-tree:
+
+```{doctest}
+>>> from genro_bag import Bag
+>>> from genro_bag.builders import BagBuilderBase, element
+
+>>> class OuterBuilder(BagBuilderBase):
+...     @element()
+...     def outer(self, target, tag, **attr):
+...         return self.child(target, tag, **attr)
+...
+...     @element()
+...     def wrapper(self, target, tag, inner_builder=None, **attr):
+...         # Pass different builder for this subtree
+...         return self.child(target, tag, _builder=inner_builder, **attr)
+
+>>> class InnerBuilder(BagBuilderBase):
+...     @element()
+...     def inner_item(self, target, tag, value=None, **attr):
+...         return self.child(target, tag, value=value or '', **attr)
+
+>>> outer_builder = OuterBuilder()
+>>> inner_builder = InnerBuilder()
+
+>>> bag = Bag(builder=outer_builder)
+>>> wrapper = bag.wrapper(inner_builder=inner_builder)
+
+>>> # Now wrapper uses InnerBuilder
+>>> wrapper.inner_item(value='Inside')  # doctest: +ELLIPSIS
+BagNode : ... at ...
+```
+
+## JSON Schema Loading
+
+### Loading Schema from File
+
+```{doctest}
+>>> import json
+>>> import tempfile
+>>> from pathlib import Path
+>>> from genro_bag import Bag
+>>> from genro_bag.builders import BagBuilderBase
+
+>>> # Create a schema file
+>>> schema_data = {
+...     'elements': {
+...         'container': {'children': 'item'},
+...         'item': {}
+...     },
+...     'refs': {
+...         'common': 'item'
+...     }
+... }
+
+>>> class JsonSchemaBuilder(BagBuilderBase):
+...     def __init__(self, schema_path=None, schema_dict=None):
+...         if schema_dict:
+...             data = schema_dict
+...         elif schema_path:
+...             data = json.loads(Path(schema_path).read_text())
+...         else:
+...             data = {'elements': {}, 'refs': {}}
+...
+...         self._schema = data.get('elements', {})
+...         self._refs = data.get('refs', {})
+...
+...     def __getattr__(self, name):
+...         if name.startswith('_ref_'):
+...             ref_name = name[5:]
+...             if ref_name in self._refs:
+...                 return self._refs[ref_name]
+...             raise AttributeError(f"Reference '{ref_name}' not found")
+...         return super().__getattr__(name)
+
+>>> builder = JsonSchemaBuilder(schema_dict=schema_data)
+>>> bag = Bag(builder=builder)
+>>> cont = bag.container()
+>>> cont.item(value='Test')  # doctest: +ELLIPSIS
+BagNode : ... at ...
+```
+
+## Custom Validation
+
+### Pre-Build Validation
+
+Validate before creating nodes:
+
+```{doctest}
+>>> from genro_bag import Bag
+>>> from genro_bag.builders import BagBuilderBase, element
+
+>>> class ValidatedBuilder(BagBuilderBase):
+...     @element()
+...     def email_field(self, target, tag, value=None, **attr):
+...         if value and '@' not in value:
+...             raise ValueError(f"Invalid email: {value}")
+...         return self.child(target, tag, value=value or '', **attr)
+...
+...     @element()
+...     def positive_number(self, target, tag, value=None, **attr):
+...         if value is not None:
+...             num = float(value)
+...             if num <= 0:
+...                 raise ValueError(f"Must be positive: {value}")
+...         return self.child(target, tag, value=value, **attr)
+
+>>> bag = Bag(builder=ValidatedBuilder())
+>>> bag.email_field(value='test@example.com')  # doctest: +ELLIPSIS
+BagNode : ... at ...
+
+>>> try:
+...     bag.email_field(value='invalid')
+... except ValueError as e:
+...     'Invalid email' in str(e)
+True
+```
+
+### Post-Build Validation
+
+Validate complete structures:
+
+```{doctest}
+>>> from genro_bag import Bag
+>>> from genro_bag.builders import BagBuilderBase, element
+
+>>> class FormBuilder(BagBuilderBase):
+...     @element(children='field')
+...     def form(self, target, tag, **attr):
+...         return self.child(target, tag, **attr)
+...
+...     @element()
+...     def field(self, target, tag, name=None, value=None, **attr):
+...         if name:
+...             attr['name'] = name
+...         return self.child(target, tag, value=value or '', **attr)
+...
+...     def validate_form(self, form_bag):
+...         """Ensure all fields have names."""
+...         errors = []
+...         for node in form_bag:
+...             if node.tag == 'field' and 'name' not in node.attr:
+...                 errors.append(f"Field '{node.label}' missing 'name' attribute")
+...         return errors
+
+>>> bag = Bag(builder=FormBuilder())
+>>> form = bag.form()
+>>> form.field(name='email', value='')  # doctest: +ELLIPSIS
+BagNode : ... at ...
+>>> form.field(value='no name')  # Missing name
+BagNode : ... at ...
+
+>>> errors = bag.builder.validate_form(form)
+>>> len(errors) > 0
+True
+>>> 'missing' in errors[0]
+True
+```
+
+## Performance Tips
+
+### 1. Cache Schema Loading
+
+```python
+# Good: Load schema once
+_cached_schema = None
+
+def get_schema():
+    global _cached_schema
+    if _cached_schema is None:
+        _cached_schema = load_schema_from_file()
+    return _cached_schema
+
+class MyBuilder(BagBuilderBase):
+    def __init__(self):
+        self._schema = get_schema()
+```
+
+### 2. Avoid Excessive Validation
+
+Disable validation for trusted input:
+
+```python
+@element(validate=False)  # Skip attribute validation
+def trusted_input(self, target, tag, **attr):
+    return self.child(target, tag, **attr)
+```
+
+### 3. Use Batch Operations
+
+```python
+# Instead of validating each step:
+for data in large_dataset:
+    parent.item(value=data)
+
+# Validate once at the end:
+errors = builder.check(parent, parent_tag='list')
+```
+
+## Real-World Example: Config Builder
+
+```{doctest}
+>>> from genro_bag import Bag
+>>> from genro_bag.builders import BagBuilderBase, element
+
+>>> class ConfigBuilder(BagBuilderBase):
+...     """Builder for application configuration."""
+...
+...     @element(children='database[1], cache[:1], logging[:1], features')
+...     def config(self, target, tag, env='production', **attr):
+...         attr['env'] = env
+...         return self.child(target, tag, **attr)
+...
+...     @element()
+...     def database(self, target, tag, host='localhost', port=5432, **attr):
+...         attr['host'] = host
+...         attr['port'] = port
+...         return self.child(target, tag, **attr)
+...
+...     @element()
+...     def cache(self, target, tag, enabled=True, ttl=3600, **attr):
+...         attr['enabled'] = enabled
+...         attr['ttl'] = ttl
+...         return self.child(target, tag, **attr)
+...
+...     @element()
+...     def logging(self, target, tag, level='INFO', **attr):
+...         attr['level'] = level
+...         return self.child(target, tag, **attr)
+...
+...     @element()
+...     def features(self, target, tag, value=None, **attr):
+...         return self.child(target, tag, value=value or '', **attr)
+
+>>> bag = Bag(builder=ConfigBuilder())
+>>> config = bag.config(env='development')
+>>> config.database(host='db.local', port=5433)  # doctest: +ELLIPSIS
+<genro_bag.bag.Bag object at ...>
+>>> config.cache(enabled=True, ttl=7200)  # doctest: +ELLIPSIS
+<genro_bag.bag.Bag object at ...>
+>>> config.logging(level='DEBUG')  # doctest: +ELLIPSIS
+<genro_bag.bag.Bag object at ...>
+>>> config.features(value='dark_mode,beta_ui')  # doctest: +ELLIPSIS
+BagNode : ... at ...
+
+>>> # Validate structure
+>>> errors = bag.builder.check(config, parent_tag='config')
+>>> errors
+[]
+
+>>> # Access config values
+>>> config['database_0?host']
+'db.local'
+>>> config['database_0?port']
+5433
+```

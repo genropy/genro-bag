@@ -369,10 +369,10 @@ class Bag(BagParser, BagSerializer, BagQuery):
                 handler = getattr(self._builder, name)
 
                 # Return callable bound to this Bag
-                def bound_handler(**kwargs):
-                    return handler(self, name, **kwargs)
-
-                return bound_handler
+                # Use _tag, _label to avoid clash with HTML attributes like target='_blank'
+                return lambda _label=None, **attr: handler(
+                    self, _tag=name, _label=_label, **attr
+                )
             except AttributeError:
                 pass
 

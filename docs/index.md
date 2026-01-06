@@ -1,51 +1,148 @@
 # Genro Bag
 
-Welcome to the Genro Bag documentation.
+**Genro Bag** is a hierarchical data container for the Genropy framework, providing:
 
-Genro Bag is a modernized bag system for the Genropy framework - a hierarchical data container with XML serialization.
+- **Tree-like Structure**: Organize nested data with nodes, values, and attributes
+- **Builders System**: Domain-specific fluent APIs for constructing validated structures
+- **Serialization**: XML, JSON, and MessagePack support via TyTx format
 
-## Status
+## Quick Example
 
-**Development Status: Pre-Alpha**
+```{doctest}
+>>> from genro_bag import Bag
+>>> from genro_bag.builders import HtmlBuilder
 
-This project is currently in the planning and design phase.
+>>> # Create a Bag with HTML builder
+>>> bag = Bag(builder=HtmlBuilder())
+
+>>> # Build structure with fluent API
+>>> div = bag.div(id='main', class_='container')
+>>> div.h1(value='Welcome')  # doctest: +ELLIPSIS
+BagNode : ... at ...
+>>> div.p(value='Hello, World!')  # doctest: +ELLIPSIS
+BagNode : ... at ...
+
+>>> # Access the structure
+>>> bag['div_0.h1_0']
+'Welcome'
+>>> len(list(div))  # 2 children: h1 and p
+2
+```
 
 ## Features
 
-- **Hierarchical Data Storage**: Tree-like structure for organizing nested data
-- **XML Serialization**: Native support for reading and writing XML format
-- **Attribute Support**: Nodes can have both values and attributes
-- **Path-based Access**: Navigate and manipulate data using path expressions
-- **Event System**: Subscribe to changes in the data structure
+### Hierarchical Data Storage
 
-## Quick Start
+Organize data in a tree structure with path-based access:
 
-```python
-from genro_bag import Bag
+```{doctest}
+>>> from genro_bag import Bag
 
-# Create a new bag
-bag = Bag()
+>>> bag = Bag()
+>>> bag.set_item('config.database.host', 'localhost')
+>>> bag.set_item('config.database.port', 5432)
 
-# Add nested data
-bag['config.database.host'] = 'localhost'
-bag['config.database.port'] = 5432
-
-# Access data
-host = bag['config.database.host']
-
-# Serialize to XML
-xml_content = bag.toXml()
+>>> bag['config.database.host']
+'localhost'
+>>> bag['config.database.port']
+5432
 ```
 
-## Contents
+### Builders System
+
+Create domain-specific APIs with validation:
+
+```{doctest}
+>>> from genro_bag import Bag
+>>> from genro_bag.builders import BagBuilderBase, element
+
+>>> class MenuBuilder(BagBuilderBase):
+...     @element(children='item')
+...     def menu(self, target, tag, **attr):
+...         return self.child(target, tag, **attr)
+...
+...     @element()
+...     def item(self, target, tag, value=None, **attr):
+...         return self.child(target, tag, value=value or '', **attr)
+
+>>> bag = Bag(builder=MenuBuilder())
+>>> menu = bag.menu(id='nav')
+>>> menu.item(value='Home', href='/')  # doctest: +ELLIPSIS
+BagNode : ... at ...
+>>> menu.item(value='About', href='/about')  # doctest: +ELLIPSIS
+BagNode : ... at ...
+```
+
+### HTML Generation
+
+Build complete HTML pages with `HtmlPage`:
+
+```{doctest}
+>>> from genro_bag.builders import HtmlPage
+
+>>> page = HtmlPage()
+>>> page.head.title(value='My Site')  # doctest: +ELLIPSIS
+BagNode : ... at ...
+>>> page.body.div().p(value='Welcome!')  # doctest: +ELLIPSIS
+BagNode : ... at ...
+
+>>> html = page.to_html()
+>>> '<!DOCTYPE html>' in html
+True
+>>> '<title>My Site</title>' in html
+True
+```
+
+### Attributes on Nodes
+
+Nodes can have both values and arbitrary attributes:
+
+```{doctest}
+>>> from genro_bag import Bag
+
+>>> bag = Bag()
+>>> bag.set_item('user', 'Alice', role='admin', active=True)
+>>> bag['user']
+'Alice'
+>>> bag['user?role']
+'admin'
+>>> bag['user?active']
+True
+```
+
+## Installation
+
+```bash
+pip install genro-bag
+```
+
+## Documentation
 
 ```{toctree}
 :maxdepth: 2
-:caption: Contents
+:caption: Getting Started
 
 installation
 quickstart
 ```
+
+```{toctree}
+:maxdepth: 2
+:caption: Builders System
+
+builders/index
+builders/quickstart
+builders/custom-builders
+builders/html-builder
+builders/validation
+builders/advanced
+```
+
+## Status
+
+**Development Status: Alpha**
+
+The core API is stabilizing. Breaking changes may still occur.
 
 ## Indices and tables
 

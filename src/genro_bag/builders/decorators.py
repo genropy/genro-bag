@@ -68,7 +68,8 @@ def _extract_attrs_from_signature(func: Callable) -> dict[str, dict[str, Any]] |
     attrs_spec: dict[str, dict[str, Any]] = {}
 
     # Skip these parameters - they're not user attributes
-    skip_params = {"self", "target", "tag", "label", "value"}
+    # Include both old (target, tag, label) and new (_target, _tag, _label) names
+    skip_params = {"self", "target", "tag", "label", "value", "_target", "_tag", "_label"}
 
     for name, param in sig.parameters.items():
         if name in skip_params:
@@ -209,6 +210,13 @@ def element(
 
         @wraps(func)
         def wrapper(*args: Any, **kwargs: Any) -> Any:
+            # Remap underscore-prefixed params to non-prefixed for user methods
+            # This allows HTML attributes like target='_blank' to not clash
+            if "_tag" in kwargs:
+                kwargs["tag"] = kwargs.pop("_tag")
+            if "_label" in kwargs:
+                kwargs["label"] = kwargs.pop("_label")
+
             if attrs_spec:
                 _validate_attrs_from_spec(attrs_spec, kwargs)
             return func(*args, **kwargs)

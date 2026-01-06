@@ -226,10 +226,10 @@ class BagBuilderBase(ABC):
         is_leaf = spec.get("leaf", False)
         builder = self
 
-        def handler(target, tag: str = tag, label: str | None = None, value=None, **attr):
+        def handler(_target, _tag: str = tag, _label: str | None = None, value=None, **attr):
             if value is None and is_leaf:
                 value = ""
-            return builder.child(target, tag, label=label, value=value, **attr)
+            return builder.child(_target, _tag, _label=_label, value=value, **attr)
 
         children_spec = spec.get("children")
         if children_spec is not None:
@@ -264,9 +264,9 @@ class BagBuilderBase(ABC):
 
     def child(
         self,
-        target: Bag,
-        tag: str,
-        label: str | None = None,
+        _target: Bag,
+        _tag: str,
+        _label: str | None = None,
         value: Any = None,
         _position: str | None = None,
         _builder: BagBuilderBase | None = None,
@@ -275,9 +275,9 @@ class BagBuilderBase(ABC):
         """Create a child node in the target Bag.
 
         Args:
-            target: The Bag to add the child to.
-            tag: The node's type (stored in node.tag).
-            label: Explicit label. If None, auto-generated as tag_N.
+            _target: The Bag to add the child to.
+            _tag: The node's type (stored in node.tag).
+            _label: Explicit label. If None, auto-generated as tag_N.
             value: If provided, creates a leaf node; otherwise creates a branch.
             _position: Position specifier (see Bag.set_item for syntax).
             _builder: Override builder for this branch and its descendants.
@@ -285,29 +285,33 @@ class BagBuilderBase(ABC):
 
         Returns:
             Bag if branch (for adding children), BagNode if leaf.
+
+        Note:
+            Parameters use underscore prefix (_target, _tag, _label) to avoid
+            clashes with HTML attributes like target='_blank'.
         """
         from ..bag import Bag
 
-        if label is None:
+        if _label is None:
             n = 0
-            while f"{tag}_{n}" in target._nodes:
+            while f"{_tag}_{n}" in _target._nodes:
                 n += 1
-            label = f"{tag}_{n}"
+            _label = f"{_tag}_{n}"
 
-        child_builder = _builder if _builder is not None else target._builder
+        child_builder = _builder if _builder is not None else _target._builder
 
         if value is not None:
             # Leaf node
-            target.set_item(label, value, _position=_position, **attr)
-            node = target.get_node(label)
-            node.tag = tag
+            _target.set_item(_label, value, _position=_position, **attr)
+            node = _target.get_node(_label)
+            node.tag = _tag
             return node
         else:
             # Branch node
             child_bag = Bag(builder=child_builder)
-            target.set_item(label, child_bag, _position=_position, **attr)
-            node = target.get_node(label)
-            node.tag = tag
+            _target.set_item(_label, child_bag, _position=_position, **attr)
+            node = _target.get_node(_label)
+            node.tag = _tag
             return child_bag
 
     def _get_validation_rules(
