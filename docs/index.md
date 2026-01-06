@@ -124,6 +124,17 @@ pip install genro-bag
 
 installation
 quickstart
+basic-usage
+```
+
+```{toctree}
+:maxdepth: 2
+:caption: User Guide
+
+query-syntax
+serialization
+resolvers
+subscriptions
 ```
 
 ```{toctree}
