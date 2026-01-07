@@ -147,6 +147,7 @@ query-syntax
 serialization
 resolvers
 subscriptions
+examples
 ```
 
 ```{toctree}
