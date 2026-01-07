@@ -228,9 +228,41 @@ resolver = bag.get_node('data').resolver
 resolver.reset()  # Clear cache, next access will reload
 ```
 
-## Async Resolvers
+## Sync and Async Support
 
-All resolvers support async operations via `smartasync`:
+All resolvers work transparently in both **synchronous** and **asynchronous** contexts. The same resolver, the same code, works everywhere.
+
+### Sync Context
+
+```python
+from genro_bag import Bag
+from genro_bag.resolvers import UrlResolver
+
+bag = Bag()
+bag['api'] = UrlResolver('https://api.example.com/data')
+
+# In a regular function
+def get_data():
+    return bag['api']  # Works synchronously
+```
+
+### Async Context
+
+```python
+from genro_bag import Bag
+from genro_bag.resolvers import UrlResolver
+
+bag = Bag()
+bag['api'] = UrlResolver('https://api.example.com/data')
+
+# In an async function
+async def get_data():
+    return bag['api']  # Works asynchronously
+```
+
+### Async Callbacks
+
+You can also use async functions as callbacks:
 
 ```python
 from genro_bag import Bag
@@ -248,6 +280,8 @@ bag['data'] = BagCbResolver(fetch_data)
 # Works in both sync and async contexts
 data = bag['data']  # Automatically handles async
 ```
+
+The resolver detects the execution context and adapts automatically. No special handling required.
 
 ## read_only Mode
 

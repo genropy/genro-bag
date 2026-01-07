@@ -1,114 +1,120 @@
 # Genro Bag
 
-**Genro Bag** is a hierarchical data container for the Genropy framework, providing:
+Most software systems deal with structured things: web pages, configuration files, APIs, database schemas. We usually treat these as separate worlds, each with its own language and tools.
 
-- **Tree-like Structure**: Organize nested data with nodes, values, and attributes
-- **Builders System**: Domain-specific fluent APIs for constructing validated structures
-- **Serialization**: XML, JSON, and MessagePack support via TyTx format
+Yet they all share something very simple: **they are organized hierarchically**, and humans reason about them by location rather than by mechanism.
 
-## Quick Example
+This library starts from that observation.
 
-```{doctest}
->>> from genro_bag import Bag
->>> from genro_bag.builders import HtmlBuilder
+## A hierarchy as a first-class concept
 
->>> # Create a Bag with HTML builder
->>> bag = Bag(builder=HtmlBuilder())
-
->>> # Build structure with fluent API
->>> div = bag.div(id='main', class_='container')
->>> div.h1(value='Welcome')  # doctest: +ELLIPSIS
-BagNode : ... at ...
->>> div.p(value='Hello, World!')  # doctest: +ELLIPSIS
-BagNode : ... at ...
-
->>> # Access the structure
->>> bag['div_0.h1_0']
-'Welcome'
->>> len(list(div))  # 2 children: h1 and p
-2
-```
-
-## Features
-
-### Hierarchical Data Storage
-
-Organize data in a tree structure with path-based access:
+A Bag is a **hierarchical dictionary**: a tree of named nodes.
 
 ```{doctest}
 >>> from genro_bag import Bag
 
 >>> bag = Bag()
->>> bag.set_item('config.database.host', 'localhost')
->>> bag.set_item('config.database.port', 5432)
+>>> bag['config.database.host'] = 'localhost'
+>>> bag['config.database.port'] = 5432
 
 >>> bag['config.database.host']
 'localhost'
->>> bag['config.database.port']
-5432
 ```
 
-### Builders System
+Instead of translating hierarchical thinking into tables, messages, or ad-hoc APIs, the hierarchy is kept explicit and central.
 
-Create domain-specific APIs with validation:
+## Nodes with values and attributes
 
-```{doctest}
->>> from genro_bag import Bag
->>> from genro_bag.builders import BagBuilderBase, element
-
->>> class MenuBuilder(BagBuilderBase):
-...     @element(children='item')
-...     def menu(self, target, tag, **attr):
-...         return self.child(target, tag, **attr)
-...
-...     @element()
-...     def item(self, target, tag, value=None, **attr):
-...         return self.child(target, tag, value=value or '', **attr)
-
->>> bag = Bag(builder=MenuBuilder())
->>> menu = bag.menu(id='nav')
->>> menu.item(value='Home', href='/')  # doctest: +ELLIPSIS
-BagNode : ... at ...
->>> menu.item(value='About', href='/about')  # doctest: +ELLIPSIS
-BagNode : ... at ...
-```
-
-### HTML Generation
-
-Build complete HTML pages with `HtmlPage`:
-
-```{doctest}
->>> from genro_bag.builders import HtmlPage
-
->>> page = HtmlPage()
->>> page.head.title(value='My Site')  # doctest: +ELLIPSIS
-BagNode : ... at ...
->>> page.body.div().p(value='Welcome!')  # doctest: +ELLIPSIS
-BagNode : ... at ...
-
->>> html = page.to_html()
->>> '<!DOCTYPE html>' in html
-True
->>> '<title>My Site</title>' in html
-True
-```
-
-### Attributes on Nodes
-
-Nodes can have both values and arbitrary attributes:
+Each node can carry both a **value** and arbitrary **attributes**:
 
 ```{doctest}
 >>> from genro_bag import Bag
 
 >>> bag = Bag()
 >>> bag.set_item('user', 'Alice', role='admin', active=True)
+
 >>> bag['user']
 'Alice'
 >>> bag['user?role']
 'admin'
->>> bag['user?active']
-True
 ```
+
+## When values are not just values
+
+Some values must be *obtained*: by calling a service, reading hardware, or computing something on demand.
+
+In a Bag, this does not require a different mental model. You still navigate to a place in the hierarchy. Some places just know how to **resolve** a value instead of containing one.
+
+From the outside, access looks the same. You navigate first. Resolution happens later.
+
+Resolvers work transparently in both synchronous and asynchronous contexts — the same code, everywhere.
+
+## Reacting to meaning, not plumbing
+
+Change is inevitable in any non-trivial system. Usually, change is handled through events, callbacks, or polling loops that leak into application code.
+
+A Bag takes a different approach: instead of subscribing to events, you express interest in a **place** in the hierarchy.
+
+```{doctest}
+>>> from genro_bag import Bag
+
+>>> bag = Bag()
+>>> changes = []
+
+>>> def on_change(node, evt, **kw):
+...     changes.append(f"{evt}: {node.label}")
+
+>>> bag.subscribe('watcher', any=on_change)
+>>> bag['name'] = 'Alice'
+>>> bag['name'] = 'Bob'
+
+>>> changes
+['ins: name', 'upd_value: name']
+```
+
+You care about *what* changed, not *how* the change was transported.
+
+## Writing structure the same way you read it
+
+**Builders** allow structures to be written fluently, in a way that mirrors how they are described mentally:
+
+```{doctest}
+>>> from genro_bag import Bag
+>>> from genro_bag.builders import HtmlBuilder
+
+>>> bag = Bag(builder=HtmlBuilder())
+>>> div = bag.div(id='main')
+>>> div.h1(value='Welcome')  # doctest: +ELLIPSIS
+BagNode : ... at ...
+>>> div.p(value='Hello!')  # doctest: +ELLIPSIS
+BagNode : ... at ...
+
+>>> bag['div_0.h1_0']
+'Welcome'
+```
+
+Builders can also enforce rules about what is allowed, so structures are **valid as they are built**, not validated afterwards.
+
+## One way of thinking, many domains
+
+Once this model is in place, the same way of reasoning can be applied to:
+
+- web pages
+- XML documents
+- API descriptions
+- database structures
+- cloud architectures
+- shared real-time state
+
+The structure stays the same. Only the vocabulary changes.
+
+## A structural IR, not a framework
+
+This project is best understood as a **structural intermediate representation**.
+
+It sits between how humans reason about structured systems and how specific technologies require them to be expressed.
+
+It does not replace HTML, Terraform, APIs, or databases. It can compile into them, connect them, or synchronize them — and then disappear.
 
 ## Installation
 
@@ -116,11 +122,16 @@ True
 pip install genro-bag
 ```
 
-## Documentation
+## Status
+
+**Development Status: Beta**
+
+The core API is stable. Minor breaking changes may still occur.
 
 ```{toctree}
 :maxdepth: 2
 :caption: Getting Started
+:hidden:
 
 installation
 quickstart
@@ -130,6 +141,7 @@ basic-usage
 ```{toctree}
 :maxdepth: 2
 :caption: User Guide
+:hidden:
 
 query-syntax
 serialization
@@ -140,6 +152,7 @@ subscriptions
 ```{toctree}
 :maxdepth: 2
 :caption: Builders System
+:hidden:
 
 builders/index
 builders/quickstart
@@ -148,15 +161,3 @@ builders/html-builder
 builders/validation
 builders/advanced
 ```
-
-## Status
-
-**Development Status: Beta**
-
-The core API is stable. Minor breaking changes may still occur.
-
-## Indices and tables
-
-- {ref}`genindex`
-- {ref}`modindex`
-- {ref}`search`
