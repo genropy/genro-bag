@@ -225,6 +225,81 @@ class TestBuilderValidation:
         assert 'is required' in errors[0]
 
 
+class TestSchemaValidation:
+    """Tests for validation via _schema in _make_schema_handler."""
+
+    def test_schema_validates_attrs_on_call(self):
+        """Schema-defined elements validate attrs when called."""
+        class SchemaBuilder(BagBuilderBase):
+            _schema = {
+                'td': {
+                    'attrs': {
+                        'colspan': {'type': 'int', 'min': 1, 'max': 10},
+                        'scope': {'type': 'enum', 'values': ['row', 'col']},
+                    }
+                }
+            }
+
+        bag = Bag(builder=SchemaBuilder())
+
+        # Valid call
+        bag.td(colspan=5, scope='row')
+
+        # Invalid colspan
+        with pytest.raises(ValueError, match='must be >= 1'):
+            bag.td(colspan=0)
+
+        # Invalid scope
+        with pytest.raises(ValueError, match='must be one of'):
+            bag.td(scope='invalid')
+
+    def test_schema_validates_pattern(self):
+        """Schema validates pattern constraint."""
+        class SchemaBuilder(BagBuilderBase):
+            _schema = {
+                'email': {
+                    'leaf': True,
+                    'attrs': {
+                        'address': {'type': 'string', 'pattern': r'^[\w\.-]+@[\w\.-]+\.\w+$'},
+                    }
+                }
+            }
+
+        bag = Bag(builder=SchemaBuilder())
+
+        # Valid
+        bag.email(address='test@example.com')
+
+        # Invalid
+        with pytest.raises(ValueError, match='must match pattern'):
+            bag.email(address='not-an-email')
+
+    def test_schema_validates_length(self):
+        """Schema validates minLength/maxLength constraints."""
+        class SchemaBuilder(BagBuilderBase):
+            _schema = {
+                'code': {
+                    'leaf': True,
+                    'attrs': {
+                        'code': {'type': 'string', 'minLength': 3, 'maxLength': 10},
+                    }
+                }
+            }
+
+        bag = Bag(builder=SchemaBuilder())
+
+        # Valid
+        bag.code(code='ABC123')
+
+        # Too short
+        with pytest.raises(ValueError, match='at least 3 characters'):
+            bag.code(code='AB')
+
+        # Too long
+        with pytest.raises(ValueError, match='at most 10 characters'):
+            bag.code(code='ABCDEFGHIJK')
+
+
 class TestBuilderReferences:
     """Tests for =reference resolution."""
 
