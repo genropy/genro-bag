@@ -339,7 +339,8 @@ class _BagXmlHandler(sax.handler.ContentHandler):
         """Add node to parent bag."""
         dest = self.bags[-1][0]
 
-        # Use _tag attribute as label if present
+        # Use _tag attribute as label if present, keep original as xml_tag
+        original_xml_tag = tag_label
         tag_label = attrs.pop("_tag", tag_label)
 
         # Handle duplicate labels (always active - Bag doesn't allow duplicates)
@@ -356,3 +357,8 @@ class _BagXmlHandler(sax.handler.ContentHandler):
             dest.set_item(tag_label, curr, _attributes=attrs)
         else:
             dest.set_item(tag_label, curr)
+
+        # Set xml_tag for XML serialization
+        node = dest.get_node(tag_label)
+        if node:
+            node.xml_tag = original_xml_tag

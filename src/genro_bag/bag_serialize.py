@@ -114,7 +114,9 @@ class BagSerializer:
         local_namespaces = self._extract_namespaces(node.attr)
         current_namespaces = namespaces + local_namespaces
 
-        tag, original_tag = self._sanitize_tag(node.label, current_namespaces)
+        # Use xml_tag (from parsing), or tag (from builder), or label (unique key)
+        xml_tag = node.xml_tag or node.tag or node.label
+        tag, original_tag = self._sanitize_tag(xml_tag, current_namespaces)
 
         # Build attributes string
         attrs_parts = []

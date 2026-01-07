@@ -54,6 +54,8 @@ class BagNode:
         _parent_bag: Reference to the parent Bag containing this node.
         _resolver: Optional BagResolver for lazy/dynamic value computation.
         _node_subscribers: Dict mapping subscriber_id to callback for change notifications.
+        tag: Semantic type for builder validation.
+        xml_tag: Original XML tag name for serialization.
         _invalid_reasons: List of validation error messages. Empty list means valid.
             This attribute is reserved for external validation systems (e.g., TreeStore
             builders) to populate. The BagNode itself does not set validation errors.
@@ -67,6 +69,7 @@ class BagNode:
         "_resolver",
         "_node_subscribers",
         "tag",
+        "xml_tag",
         "_invalid_reasons",
     )
 
@@ -78,6 +81,7 @@ class BagNode:
         attr: dict[str, Any] | None = None,
         resolver: BagResolver | None = None,
         tag: str | None = None,
+        xml_tag: str | None = None,
         _remove_null_attributes: bool = True,
     ) -> None:
         """Initialize a BagNode.
@@ -88,7 +92,8 @@ class BagNode:
             value: The node's value (can be scalar or Bag).
             attr: Dict of attributes to set via set_attr() (with processing).
             resolver: A BagResolver for lazy/dynamic value loading.
-            tag: Optional type/tag for the node (used by builders).
+            tag: Optional type/tag for the node (used by builders for validation).
+            xml_tag: Original XML tag name (used for XML serialization).
             _remove_null_attributes: If True, remove None values from attributes.
         """
         # Basic node identity
@@ -99,6 +104,7 @@ class BagNode:
         self._node_subscribers: dict[str, NodeSubscriberCallback] = {}
         self._attr: dict[str, Any] = {}
         self.tag = tag
+        self.xml_tag = xml_tag
         self._invalid_reasons: list[str] = []
 
         # Set parent (uses property setter)
@@ -542,6 +548,18 @@ class BagNode:
             True if _invalid_reasons is empty, False otherwise.
         """
         return len(self._invalid_reasons) == 0
+
+    @property
+    def is_branch(self) -> bool:
+        """Check if this node's value is a Bag (branch node).
+
+        Returns:
+            True if the node's value is a Bag, False otherwise.
+        """
+        # Import here to avoid circular import
+        from .bag import Bag
+
+        return isinstance(self._value, Bag)
 
     # -------------------------------------------------------------------------
     # Utility Methods
