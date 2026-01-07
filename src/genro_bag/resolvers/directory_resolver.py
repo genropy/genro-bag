@@ -107,6 +107,9 @@ class DirectoryResolver(BagResolver):
         dropext: If True, omit extension from node labels. Default False.
         processors: Dict mapping extension names to handler functions.
             Use False as value to disable processing for an extension.
+        follow_symlinks: If False (default), symlinks pointing outside the
+            base directory are skipped for security. Set to True only if
+            you trust the directory content and need to follow symlinks.
 
     Node Attributes:
         Each node in the resulting Bag has these attributes:
@@ -156,6 +159,7 @@ class DirectoryResolver(BagResolver):
         "callback": None,
         "dropext": False,
         "processors": None,
+        "follow_symlinks": False,
     }
     class_args = ["path", "relocate"]
 
@@ -194,12 +198,22 @@ class DirectoryResolver(BagResolver):
             directory = []
         if not self._kw["invisible"]:
             directory = [x for x in directory if not x.startswith(".")]
+        base_realpath = os.path.realpath(self._kw["path"])
         for fname in directory:
             # skip journal files
             if fname.startswith("#") or fname.endswith("#") or fname.endswith("~"):
                 continue
             nodecaption = fname
             fullpath = os.path.join(self._kw["path"], fname)
+
+            # Security check: prevent symlink escape attacks
+            # Verify that resolved path is still within the base directory
+            if not self._kw["follow_symlinks"]:
+                real_fullpath = os.path.realpath(fullpath)
+                if not real_fullpath.startswith(base_realpath + os.sep) and real_fullpath != base_realpath:
+                    # Path escapes base directory via symlink - skip it
+                    continue
+
             relpath = os.path.join(self._kw["relocate"], fname)
             add_it = True
             if os.path.isdir(fullpath):

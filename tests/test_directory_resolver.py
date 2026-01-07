@@ -342,3 +342,88 @@ class TestDirectoryResolverCaching:
         """Cache time can be customized."""
         resolver = DirectoryResolver('/tmp', cache_time=60)
         assert resolver.cache_time == 60
+
+
+class TestDirectoryResolverSymlinkSecurity:
+    """Symlink security tests."""
+
+    def test_symlink_inside_base_allowed(self, tmp_path):
+        """Symlinks pointing inside base directory are allowed."""
+        # Create a file and a symlink to it within the same directory
+        real_file = tmp_path / 'real.txt'
+        real_file.write_text('content')
+        link = tmp_path / 'link.txt'
+        link.symlink_to(real_file)
+
+        resolver = DirectoryResolver(str(tmp_path), ext='txt')
+        result = resolver.load()
+
+        # Both real file and symlink should be included
+        assert 'real_txt' in result
+        assert 'link_txt' in result
+
+    def test_symlink_outside_base_blocked_by_default(self, tmp_path):
+        """Symlinks pointing outside base directory are blocked by default."""
+        # Create an external directory with a file
+        external_dir = tmp_path / 'external'
+        external_dir.mkdir()
+        external_file = external_dir / 'secret.txt'
+        external_file.write_text('secret content')
+
+        # Create base directory with a symlink to external file
+        base_dir = tmp_path / 'base'
+        base_dir.mkdir()
+        (base_dir / 'normal.txt').write_text('normal')
+        escape_link = base_dir / 'escape.txt'
+        escape_link.symlink_to(external_file)
+
+        resolver = DirectoryResolver(str(base_dir), ext='txt')
+        result = resolver.load()
+
+        # Normal file should be included, escape symlink should be blocked
+        assert 'normal_txt' in result
+        assert 'escape_txt' not in result
+
+    def test_symlink_outside_base_allowed_with_follow_symlinks(self, tmp_path):
+        """Symlinks outside base are allowed when follow_symlinks=True."""
+        # Create an external directory with a file
+        external_dir = tmp_path / 'external'
+        external_dir.mkdir()
+        external_file = external_dir / 'allowed.txt'
+        external_file.write_text('allowed content')
+
+        # Create base directory with a symlink to external file
+        base_dir = tmp_path / 'base'
+        base_dir.mkdir()
+        escape_link = base_dir / 'link.txt'
+        escape_link.symlink_to(external_file)
+
+        resolver = DirectoryResolver(str(base_dir), ext='txt', follow_symlinks=True)
+        result = resolver.load()
+
+        # With follow_symlinks=True, external symlink should be included
+        assert 'link_txt' in result
+
+    def test_symlink_directory_outside_base_blocked(self, tmp_path):
+        """Symlink directories pointing outside are blocked."""
+        # Create an external directory
+        external_dir = tmp_path / 'external'
+        external_dir.mkdir()
+        (external_dir / 'secret.txt').write_text('secret')
+
+        # Create base directory with a symlink to external directory
+        base_dir = tmp_path / 'base'
+        base_dir.mkdir()
+        escape_dir_link = base_dir / 'escape_dir'
+        escape_dir_link.symlink_to(external_dir)
+
+        resolver = DirectoryResolver(str(base_dir))
+        result = resolver.load()
+
+        # Symlink directory pointing outside should be blocked
+        assert 'escape_dir' not in result
+
+    def test_default_follow_symlinks_is_false(self):
+        """Default follow_symlinks is False for security."""
+        resolver = DirectoryResolver('/tmp')
+        assert resolver._kw['follow_symlinks'] is False
