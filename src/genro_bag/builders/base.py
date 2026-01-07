@@ -10,6 +10,8 @@ from __future__ import annotations
 from abc import ABC
 from typing import TYPE_CHECKING, Any
 
+from .validations import parse_tag_spec, validate_call_args
+
 if TYPE_CHECKING:
     from ..bag import Bag
     from ..bagnode import BagNode
@@ -73,8 +75,7 @@ class BagBuilderBase(ABC):
         Returns:
             List of error messages (empty if valid).
         """
-        schema = getattr(self, "_schema", {})
-        spec = schema.get(tag, {})
+        spec = self._schema.get(tag, {})
         attrs_spec = spec.get("attrs")
 
         if not attrs_spec:
@@ -215,18 +216,20 @@ class BagBuilderBase(ABC):
             method_name = element_tags[name]
             return getattr(self, method_name)
 
-        schema = getattr(self, "_schema", {})
-        if name in schema:
-            return self._make_schema_handler(name, schema[name])
+        if name in self._schema:
+            return self._create_child(name, self._schema[name])
 
         raise AttributeError(f"'{type(self).__name__}' has no element '{name}'")
 
-    def _make_schema_handler(self, tag: str, spec: dict):
-        """Create a handler function for a schema-defined element."""
+    def _create_child(self, tag: str, spec: dict):
+        """Create a child node using schema specification."""
         is_leaf = spec.get("leaf", False)
+        attrs_spec = spec.get("attrs")
         builder = self
 
         def handler(_target, _tag: str = tag, _label: str | None = None, value=None, **attr):
+            if attrs_spec:
+                validate_call_args(attr, attrs_spec)
             if value is None and is_leaf:
                 value = ""
             return builder.child(_target, _tag, _label=_label, value=value, **attr)
@@ -247,8 +250,6 @@ class BagBuilderBase(ABC):
         self, spec: str | set | frozenset
     ) -> tuple[frozenset[str], dict[str, tuple[int, int | None]]]:
         """Parse a children spec into validation rules."""
-        from .decorators import _parse_tag_spec
-
         resolved_spec = self._resolve_ref(spec)
 
         if isinstance(resolved_spec, (set, frozenset)):
@@ -257,7 +258,7 @@ class BagBuilderBase(ABC):
         parsed: dict[str, tuple[int, int | None]] = {}
         specs = [s.strip() for s in resolved_spec.split(",") if s.strip()]
         for tag_spec in specs:
-            tag, min_c, max_c = _parse_tag_spec(tag_spec)
+            tag, min_c, max_c = parse_tag_spec(tag_spec)
             parsed[tag] = (min_c, max_c)
 
         return frozenset(parsed.keys()), parsed
@@ -333,9 +334,8 @@ class BagBuilderBase(ABC):
                 cardinality = getattr(method, "_child_cardinality", {})
                 return valid, cardinality
 
-        schema = getattr(self, "_schema", {})
-        if tag in schema:
-            spec = schema[tag]
+        if tag in self._schema:
+            spec = self._schema[tag]
             children_spec = spec.get("children")
             if children_spec is not None:
                 return self._parse_children_spec(children_spec)
