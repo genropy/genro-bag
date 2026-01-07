@@ -125,6 +125,25 @@ It does not replace HTML, Terraform, APIs, or databases. It can compile into the
 
 That is why it is more accurate to see this as a **mental model made concrete**, rather than as a framework to adopt wholesale.
 
+## Why Bag instead of the usual toolbox?
+
+A typical Python project dealing with hierarchical data ends up combining `omegaconf` + `pydantic` + `munch` + `rxpy` + `lxml` + custom glue code. The result: 10+ dependencies, 5-6 different access styles, and low real productivity.
+
+Bag offers **one coherent model** covering hierarchical data, attributes, lazy loading, reactivity, and multi-format serialization.
+
+| Need | Typical solution(s) | With Bag |
+|------|---------------------|----------|
+| Hierarchical data | dict + manual nesting | Native path-based access |
+| Configuration | omegaconf, hydra | Bag + builders |
+| Lazy/computed values | @property, decorators | Transparent resolvers |
+| Reactivity | rxpy, signals, events | Location-based subscriptions |
+| XML/JSON handling | lxml, xmltodict | Unified serialization |
+| Glue code | Many custom utils | Almost none |
+
+*One coherent model. Less glue. More domain logic. Higher velocity.*
+
+See the full comparison in [Why Bag?](https://genro-bag.readthedocs.io/why-bag/)
+
 ## Why this exists
 
 Over time, we noticed that much of the accidental complexity in software comes from constantly translating the same hierarchical ideas into different forms.

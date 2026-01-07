@@ -116,6 +116,14 @@ It sits between how humans reason about structured systems and how specific tech
 
 It does not replace HTML, Terraform, APIs, or databases. It can compile into them, connect them, or synchronize them — and then disappear.
 
+## Why Bag instead of the usual toolbox?
+
+Instead of combining `omegaconf` + `pydantic` + `munch` + `rxpy` + `lxml` + custom glue code, Bag offers **one coherent model** for hierarchical data with attributes, lazy loading, reactivity, and multi-format serialization.
+
+*Less glue. More domain logic. Higher velocity.*
+
+See [Why Bag?](why-bag.md) for a detailed comparison with the typical Python toolbox.
+
 ## Installation
 
 ```bash
@@ -136,6 +144,7 @@ The core API is stable. Minor breaking changes may still occur.
 installation
 quickstart
 basic-usage
+why-bag
 ```
 
 ```{toctree}
@@ -147,6 +156,7 @@ query-syntax
 serialization
 resolvers
 subscriptions
+benchmarks
 examples
 faq
 ```
@@ -162,4 +172,12 @@ builders/custom-builders
 builders/html-builder
 builders/validation
 builders/advanced
+```
+
+```{toctree}
+:maxdepth: 2
+:caption: Appendix
+:hidden:
+
+architecture
 ```

@@ -6,7 +6,9 @@ Run with: python benchmarks/benchmark_bag.py
 """
 
 import statistics
+import sys
 import time
+import tracemalloc
 from contextlib import contextmanager
 
 from genro_bag import Bag
@@ -202,20 +204,38 @@ def benchmark_serialization():
     elapsed = time.perf_counter() - start
     print(f"from_xml (100x): {elapsed*1000:.2f}ms ({elapsed/100*1000:.2f}ms/op)")
 
-    # to_tytx
+    # to_tytx (JSON - default)
     start = time.perf_counter()
     for _ in range(100):
-        tytx = bag.to_tytx()
+        tytx_json = bag.to_tytx(transport="json")
     elapsed = time.perf_counter() - start
-    print(f"to_tytx (100x100 nodes): {elapsed*1000:.2f}ms ({elapsed/100*1000:.2f}ms/op)")
-    print(f"  TYTX size: {len(tytx)} bytes")
+    print(f"to_tytx JSON (100x100 nodes): {elapsed*1000:.2f}ms ({elapsed/100*1000:.2f}ms/op)")
+    print(f"  TYTX JSON size: {len(tytx_json)} bytes")
 
-    # from_tytx
+    # from_tytx (JSON)
     start = time.perf_counter()
     for _ in range(100):
-        Bag.from_tytx(tytx)
+        Bag.from_tytx(tytx_json)
     elapsed = time.perf_counter() - start
-    print(f"from_tytx (100x): {elapsed*1000:.2f}ms ({elapsed/100*1000:.2f}ms/op)")
+    print(f"from_tytx JSON (100x): {elapsed*1000:.2f}ms ({elapsed/100*1000:.2f}ms/op)")
+
+    # to_tytx (MessagePack)
+    try:
+        start = time.perf_counter()
+        for _ in range(100):
+            tytx_mp = bag.to_tytx(transport="msgpack")
+        elapsed = time.perf_counter() - start
+        print(f"to_tytx MsgPack (100x100 nodes): {elapsed*1000:.2f}ms ({elapsed/100*1000:.2f}ms/op)")
+        print(f"  TYTX MsgPack size: {len(tytx_mp)} bytes")
+
+        # from_tytx (MessagePack)
+        start = time.perf_counter()
+        for _ in range(100):
+            Bag.from_tytx(tytx_mp, transport="msgpack")
+        elapsed = time.perf_counter() - start
+        print(f"from_tytx MsgPack (100x): {elapsed*1000:.2f}ms ({elapsed/100*1000:.2f}ms/op)")
+    except ImportError:
+        print("  (MessagePack not available - install msgpack)")
 
 
 def benchmark_resolvers():
@@ -329,7 +349,7 @@ def benchmark_builders():
 
 def benchmark_large_bag():
     """Benchmark operations on large bags."""
-    print("\n=== Large Bag Benchmarks ===")
+    print("\n=== Large Bag Benchmarks (100k nodes) ===")
 
     # Create large bag
     print("Creating 100k node bag...")
@@ -363,9 +383,225 @@ def benchmark_large_bag():
     print(f"len() on 100k bag (1k): {elapsed*1000:.2f}ms ({elapsed/1000*1e6:.2f}µs/op)")
 
 
+def benchmark_very_large_flat_bag():
+    """Benchmark operations on very large flat bag (1M nodes)."""
+    print("\n=== Very Large Flat Bag Benchmarks (1M nodes) ===")
+
+    import random
+
+    # Create 1M node bag
+    print("Creating 1M node flat bag...")
+    start = time.perf_counter()
+    bag = Bag()
+    for i in range(1000000):
+        bag[f'item{i}'] = i
+    elapsed = time.perf_counter() - start
+    print(f"Create 1M nodes: {elapsed:.2f}s ({elapsed/1000000*1e6:.2f}µs/op)")
+
+    # Sequential access (first 10k)
+    start = time.perf_counter()
+    for i in range(10000):
+        _ = bag[f'item{i}']
+    elapsed = time.perf_counter() - start
+    print(f"Sequential access (10k on 1M): {elapsed*1000:.2f}ms ({elapsed/10000*1e6:.2f}µs/op)")
+
+    # Random access
+    keys = [f'item{random.randint(0, 999999)}' for _ in range(10000)]
+    start = time.perf_counter()
+    for key in keys:
+        _ = bag[key]
+    elapsed = time.perf_counter() - start
+    print(f"Random access (10k on 1M): {elapsed*1000:.2f}ms ({elapsed/10000*1e6:.2f}µs/op)")
+
+    # Update existing keys
+    start = time.perf_counter()
+    for i in range(10000):
+        bag[f'item{i}'] = i * 2
+    elapsed = time.perf_counter() - start
+    print(f"Update existing (10k on 1M): {elapsed*1000:.2f}ms ({elapsed/10000*1e6:.2f}µs/op)")
+
+    # len()
+    start = time.perf_counter()
+    for _ in range(100):
+        _ = len(bag)
+    elapsed = time.perf_counter() - start
+    print(f"len() on 1M bag (100x): {elapsed*1000:.2f}ms ({elapsed/100*1000:.2f}ms/op)")
+
+    # Iteration (partial - first 100k)
+    start = time.perf_counter()
+    count = 0
+    for node in bag:
+        count += 1
+        if count >= 100000:
+            break
+    elapsed = time.perf_counter() - start
+    print(f"Partial iteration (100k of 1M): {elapsed*1000:.2f}ms")
+
+    # Full iteration
+    start = time.perf_counter()
+    count = sum(1 for _ in bag)
+    elapsed = time.perf_counter() - start
+    print(f"Full iteration (1M nodes): {elapsed:.2f}s")
+
+
+def format_bytes(size):
+    """Format bytes to human readable string."""
+    for unit in ['B', 'KB', 'MB', 'GB']:
+        if size < 1024:
+            return f"{size:.2f} {unit}"
+        size /= 1024
+    return f"{size:.2f} TB"
+
+
+def benchmark_memory():
+    """Benchmark memory consumption."""
+    print("\n=== Memory Benchmarks ===")
+
+    # Empty structures
+    empty_dict = {}
+    empty_bag = Bag()
+    print(f"Empty dict: {sys.getsizeof(empty_dict)} bytes")
+    print(f"Empty Bag: {sys.getsizeof(empty_bag)} bytes (shallow)")
+
+    # Small structures (100 items)
+    tracemalloc.start()
+    d = {f'key{i}': i for i in range(100)}
+    dict_snapshot = tracemalloc.take_snapshot()
+    dict_mem = sum(stat.size for stat in dict_snapshot.statistics('lineno'))
+    tracemalloc.stop()
+
+    tracemalloc.start()
+    bag = Bag()
+    for i in range(100):
+        bag[f'key{i}'] = i
+    bag_snapshot = tracemalloc.take_snapshot()
+    bag_mem = sum(stat.size for stat in bag_snapshot.statistics('lineno'))
+    tracemalloc.stop()
+
+    print(f"\n100 items:")
+    print(f"  dict: {format_bytes(dict_mem)}")
+    print(f"  Bag: {format_bytes(bag_mem)}")
+    print(f"  Ratio: {bag_mem/dict_mem:.1f}x")
+
+    # Medium structures (10k items)
+    tracemalloc.start()
+    d = {f'key{i}': i for i in range(10000)}
+    dict_snapshot = tracemalloc.take_snapshot()
+    dict_mem = sum(stat.size for stat in dict_snapshot.statistics('lineno'))
+    tracemalloc.stop()
+
+    tracemalloc.start()
+    bag = Bag()
+    for i in range(10000):
+        bag[f'key{i}'] = i
+    bag_snapshot = tracemalloc.take_snapshot()
+    bag_mem = sum(stat.size for stat in bag_snapshot.statistics('lineno'))
+    tracemalloc.stop()
+
+    print(f"\n10,000 items:")
+    print(f"  dict: {format_bytes(dict_mem)}")
+    print(f"  Bag: {format_bytes(bag_mem)}")
+    print(f"  Ratio: {bag_mem/dict_mem:.1f}x")
+    print(f"  Per-item overhead: {(bag_mem - dict_mem) / 10000:.0f} bytes/item")
+
+    # Large structures (100k items)
+    tracemalloc.start()
+    d = {f'key{i}': i for i in range(100000)}
+    dict_snapshot = tracemalloc.take_snapshot()
+    dict_mem = sum(stat.size for stat in dict_snapshot.statistics('lineno'))
+    tracemalloc.stop()
+
+    tracemalloc.start()
+    bag = Bag()
+    for i in range(100000):
+        bag[f'key{i}'] = i
+    bag_snapshot = tracemalloc.take_snapshot()
+    bag_mem = sum(stat.size for stat in bag_snapshot.statistics('lineno'))
+    tracemalloc.stop()
+
+    print(f"\n100,000 items:")
+    print(f"  dict: {format_bytes(dict_mem)}")
+    print(f"  Bag: {format_bytes(bag_mem)}")
+    print(f"  Ratio: {bag_mem/dict_mem:.1f}x")
+    print(f"  Per-item overhead: {(bag_mem - dict_mem) / 100000:.0f} bytes/item")
+
+    # With attributes
+    tracemalloc.start()
+    bag = Bag()
+    for i in range(10000):
+        bag.set_item(f'item{i}', i, price=i*10, name=f'Item {i}', active=True)
+    bag_snapshot = tracemalloc.take_snapshot()
+    bag_with_attrs_mem = sum(stat.size for stat in bag_snapshot.statistics('lineno'))
+    tracemalloc.stop()
+
+    print(f"\n10,000 items with 3 attributes each:")
+    print(f"  Bag: {format_bytes(bag_with_attrs_mem)}")
+    print(f"  Per-item (with attrs): {bag_with_attrs_mem / 10000:.0f} bytes/item")
+
+    # Nested structure
+    tracemalloc.start()
+    bag = Bag()
+    for i in range(1000):
+        bag[f'level1.level2.level3.item{i}'] = i
+    bag_snapshot = tracemalloc.take_snapshot()
+    nested_mem = sum(stat.size for stat in bag_snapshot.statistics('lineno'))
+    tracemalloc.stop()
+
+    print(f"\n1,000 items nested 3 levels deep:")
+    print(f"  Bag: {format_bytes(nested_mem)}")
+    print(f"  Per-item: {nested_mem / 1000:.0f} bytes/item")
+
+    # Builder overhead
+    from genro_bag.builders import HtmlBuilder
+
+    # Bag without builder
+    tracemalloc.start()
+    bag_no_builder = Bag()
+    for i in range(100):
+        bag_no_builder[f'div_{i}'] = f'content{i}'
+    no_builder_snapshot = tracemalloc.take_snapshot()
+    no_builder_mem = sum(stat.size for stat in no_builder_snapshot.statistics('lineno'))
+    tracemalloc.stop()
+
+    # Bag with HtmlBuilder
+    tracemalloc.start()
+    bag_with_builder = Bag(builder=HtmlBuilder())
+    for i in range(100):
+        bag_with_builder.div(value=f'content{i}')
+    builder_snapshot = tracemalloc.take_snapshot()
+    builder_mem = sum(stat.size for stat in builder_snapshot.statistics('lineno'))
+    tracemalloc.stop()
+
+    print(f"\n100 items - Builder overhead:")
+    print(f"  Bag without builder: {format_bytes(no_builder_mem)}")
+    print(f"  Bag with HtmlBuilder: {format_bytes(builder_mem)}")
+    print(f"  Builder overhead: {format_bytes(builder_mem - no_builder_mem)}")
+    print(f"  Ratio: {builder_mem/no_builder_mem:.2f}x")
+
+    # Timing comparison
+    start = time.perf_counter()
+    for _ in range(1000):
+        bag = Bag()
+        for i in range(10):
+            bag[f'item{i}'] = i
+    elapsed_no_builder = time.perf_counter() - start
+
+    start = time.perf_counter()
+    for _ in range(1000):
+        bag = Bag(builder=HtmlBuilder())
+        for i in range(10):
+            bag.div(value=i)
+    elapsed_with_builder = time.perf_counter() - start
+
+    print(f"\n1000x create Bag with 10 items - Time:")
+    print(f"  Without builder: {elapsed_no_builder*1000:.2f}ms")
+    print(f"  With HtmlBuilder: {elapsed_with_builder*1000:.2f}ms")
+    print(f"  Builder slowdown: {elapsed_with_builder/elapsed_no_builder:.2f}x")
+
+
 def benchmark_comparison_dict():
     """Compare with plain dict for baseline."""
-    print("\n=== Comparison with dict ===")
+    print("\n=== Comparison with flat dict ===")
 
     # Dict creation
     start = time.perf_counter()
@@ -398,12 +634,205 @@ def benchmark_comparison_dict():
     print(f"Dict access (10k): {elapsed*1000:.2f}ms ({elapsed/10000*1e6:.2f}µs/op)")
 
 
+def benchmark_comparison_hierarchical():
+    """Compare with other hierarchical structures."""
+    import xml.etree.ElementTree as ET
+
+    print("\n=== Comparison with hierarchical structures ===")
+
+    # --- NESTED DICT ---
+    print("\n-- Nested dict --")
+
+    # Creation: nested dict 3 levels, 1000 items
+    start = time.perf_counter()
+    for _ in range(100):
+        d = {}
+        for i in range(1000):
+            if 'level1' not in d:
+                d['level1'] = {}
+            if 'level2' not in d['level1']:
+                d['level1']['level2'] = {}
+            d['level1']['level2'][f'item{i}'] = i
+    elapsed = time.perf_counter() - start
+    print(f"Nested dict creation (100x1k items, 3 levels): {elapsed*1000:.2f}ms ({elapsed/100*1000:.2f}ms/op)")
+
+    # Access: nested dict
+    d = {'level1': {'level2': {f'item{i}': i for i in range(1000)}}}
+    start = time.perf_counter()
+    for _ in range(10000):
+        _ = d['level1']['level2']['item500']
+    elapsed = time.perf_counter() - start
+    print(f"Nested dict access (10k): {elapsed*1000:.2f}ms ({elapsed/10000*1e6:.2f}µs/op)")
+
+    # Bag equivalent
+    start = time.perf_counter()
+    for _ in range(100):
+        bag = Bag()
+        for i in range(1000):
+            bag[f'level1.level2.item{i}'] = i
+    elapsed = time.perf_counter() - start
+    print(f"Bag creation (100x1k items, 3 levels): {elapsed*1000:.2f}ms ({elapsed/100*1000:.2f}ms/op)")
+
+    bag = Bag()
+    for i in range(1000):
+        bag[f'level1.level2.item{i}'] = i
+    start = time.perf_counter()
+    for _ in range(10000):
+        _ = bag['level1.level2.item500']
+    elapsed = time.perf_counter() - start
+    print(f"Bag access (10k): {elapsed*1000:.2f}ms ({elapsed/10000*1e6:.2f}µs/op)")
+
+    # --- ELEMENTTREE ---
+    print("\n-- xml.etree.ElementTree --")
+
+    # Creation: ElementTree with 1000 elements
+    start = time.perf_counter()
+    for _ in range(100):
+        root = ET.Element('root')
+        level1 = ET.SubElement(root, 'level1')
+        level2 = ET.SubElement(level1, 'level2')
+        for i in range(1000):
+            item = ET.SubElement(level2, f'item{i}')
+            item.text = str(i)
+    elapsed = time.perf_counter() - start
+    print(f"ElementTree creation (100x1k items): {elapsed*1000:.2f}ms ({elapsed/100*1000:.2f}ms/op)")
+
+    # Access by find (XPath-like)
+    root = ET.Element('root')
+    level1 = ET.SubElement(root, 'level1')
+    level2 = ET.SubElement(level1, 'level2')
+    for i in range(1000):
+        item = ET.SubElement(level2, f'item{i}')
+        item.text = str(i)
+        item.set('num', str(i))
+
+    start = time.perf_counter()
+    for _ in range(10000):
+        _ = root.find('.//item500')
+    elapsed = time.perf_counter() - start
+    print(f"ElementTree find (10k): {elapsed*1000:.2f}ms ({elapsed/10000*1e6:.2f}µs/op)")
+
+    # Access by direct traversal
+    start = time.perf_counter()
+    for _ in range(10000):
+        _ = root[0][0][500].text
+    elapsed = time.perf_counter() - start
+    print(f"ElementTree index access (10k): {elapsed*1000:.2f}ms ({elapsed/10000*1e6:.2f}µs/op)")
+
+    # Attribute access
+    start = time.perf_counter()
+    for _ in range(10000):
+        _ = root[0][0][500].get('num')
+    elapsed = time.perf_counter() - start
+    print(f"ElementTree attrib access (10k): {elapsed*1000:.2f}ms ({elapsed/10000*1e6:.2f}µs/op)")
+
+    # Bag equivalent with attributes
+    bag = Bag()
+    for i in range(1000):
+        bag.set_item(f'level1.level2.item{i}', str(i), num=str(i))
+
+    start = time.perf_counter()
+    for _ in range(10000):
+        _ = bag['level1.level2.item500']
+    elapsed = time.perf_counter() - start
+    print(f"Bag path access (10k): {elapsed*1000:.2f}ms ({elapsed/10000*1e6:.2f}µs/op)")
+
+    start = time.perf_counter()
+    for _ in range(10000):
+        _ = bag['level1.level2.item500?num']
+    elapsed = time.perf_counter() - start
+    print(f"Bag attribute access (10k): {elapsed*1000:.2f}ms ({elapsed/10000*1e6:.2f}µs/op)")
+
+    # --- SERIALIZATION COMPARISON ---
+    print("\n-- Serialization comparison --")
+
+    # ElementTree to string
+    root = ET.Element('items')
+    for i in range(100):
+        item = ET.SubElement(root, f'item{i}')
+        item.text = f'value{i}'
+        item.set('num', str(i))
+        item.set('flag', str(i % 2 == 0))
+
+    start = time.perf_counter()
+    for _ in range(100):
+        xml_str = ET.tostring(root, encoding='unicode')
+    elapsed = time.perf_counter() - start
+    print(f"ElementTree tostring (100x100 items): {elapsed*1000:.2f}ms ({elapsed/100*1000:.2f}ms/op)")
+    print(f"  Size: {len(xml_str)} bytes")
+
+    start = time.perf_counter()
+    for _ in range(100):
+        ET.fromstring(xml_str)
+    elapsed = time.perf_counter() - start
+    print(f"ElementTree fromstring (100x): {elapsed*1000:.2f}ms ({elapsed/100*1000:.2f}ms/op)")
+
+    # Bag equivalent
+    bag = Bag()
+    items = bag['items'] = Bag()
+    for i in range(100):
+        items.set_item(f'item{i}', f'value{i}', num=i, flag=i % 2 == 0)
+
+    start = time.perf_counter()
+    for _ in range(100):
+        bag_xml = bag.to_xml()
+    elapsed = time.perf_counter() - start
+    print(f"Bag to_xml (100x100 items): {elapsed*1000:.2f}ms ({elapsed/100*1000:.2f}ms/op)")
+    print(f"  Size: {len(bag_xml)} bytes")
+
+    start = time.perf_counter()
+    for _ in range(100):
+        Bag.from_xml(bag_xml)
+    elapsed = time.perf_counter() - start
+    print(f"Bag from_xml (100x): {elapsed*1000:.2f}ms ({elapsed/100*1000:.2f}ms/op)")
+
+    # --- MEMORY COMPARISON ---
+    print("\n-- Memory comparison (1000 items, 3 levels) --")
+
+    # Nested dict
+    tracemalloc.start()
+    d = {'level1': {'level2': {f'item{i}': i for i in range(1000)}}}
+    snapshot = tracemalloc.take_snapshot()
+    nested_dict_mem = sum(stat.size for stat in snapshot.statistics('lineno'))
+    tracemalloc.stop()
+    print(f"Nested dict: {format_bytes(nested_dict_mem)}")
+
+    # ElementTree
+    tracemalloc.start()
+    root = ET.Element('root')
+    level1 = ET.SubElement(root, 'level1')
+    level2 = ET.SubElement(level1, 'level2')
+    for i in range(1000):
+        item = ET.SubElement(level2, f'item{i}')
+        item.text = str(i)
+    snapshot = tracemalloc.take_snapshot()
+    et_mem = sum(stat.size for stat in snapshot.statistics('lineno'))
+    tracemalloc.stop()
+    print(f"ElementTree: {format_bytes(et_mem)}")
+
+    # Bag
+    tracemalloc.start()
+    bag = Bag()
+    for i in range(1000):
+        bag[f'level1.level2.item{i}'] = i
+    snapshot = tracemalloc.take_snapshot()
+    bag_mem = sum(stat.size for stat in snapshot.statistics('lineno'))
+    tracemalloc.stop()
+    print(f"Bag: {format_bytes(bag_mem)}")
+
+    print(f"\nRatios (vs nested dict):")
+    print(f"  ElementTree: {et_mem/nested_dict_mem:.1f}x")
+    print(f"  Bag: {bag_mem/nested_dict_mem:.1f}x")
+
+
 def main():
     print("=" * 60)
     print("genro-bag Benchmarks")
     print("=" * 60)
 
     benchmark_comparison_dict()
+    benchmark_comparison_hierarchical()
+    benchmark_memory()
     benchmark_creation()
     benchmark_access()
     benchmark_modification()
@@ -413,6 +842,7 @@ def main():
     benchmark_subscriptions()
     benchmark_builders()
     benchmark_large_bag()
+    benchmark_very_large_flat_bag()
 
     print("\n" + "=" * 60)
     print("Benchmarks completed")
