@@ -148,6 +148,7 @@ serialization
 resolvers
 subscriptions
 examples
+faq
 ```
 
 ```{toctree}
