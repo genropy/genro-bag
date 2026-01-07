@@ -141,6 +141,26 @@ True
 True
 ```
 
+### XsdBuilder
+
+Dynamic builder from XML Schema (XSD) files - automatically generates methods for all elements defined in the schema:
+
+```python
+from genro_bag import Bag
+from genro_bag.builders import XsdBuilder
+
+# Load any XSD schema
+xsd_content = open('invoice.xsd').read()
+schema = Bag.from_xml(xsd_content)
+builder = XsdBuilder(schema)
+
+# Use with Bag - methods generated from XSD
+invoice = Bag(builder=builder)
+invoice.Invoice().Header().Date(value='2025-01-01')
+```
+
+See [XSD Builder](xsd-builder.md) for complete documentation.
+
 ## Documentation
 
 ```{toctree}
@@ -149,6 +169,7 @@ True
 quickstart
 custom-builders
 html-builder
+xsd-builder
 validation
 advanced
 ```
