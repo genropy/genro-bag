@@ -1,6 +1,6 @@
 # genro-bag
 
-[![PyPI version](https://badge.fury.io/py/genro-bag.svg)](https://badge.fury.io/py/genro-bag)
+[![PyPI version](https://img.shields.io/pypi/v/genro-bag)](https://pypi.org/project/genro-bag/)
 [![Tests](https://github.com/genropy/genro-bag/actions/workflows/tests.yml/badge.svg)](https://github.com/genropy/genro-bag/actions/workflows/tests.yml)
 [![codecov](https://codecov.io/gh/genropy/genro-bag/branch/main/graph/badge.svg)](https://codecov.io/gh/genropy/genro-bag)
 [![Documentation](https://readthedocs.org/projects/genro-bag/badge/?version=latest)](https://genro-bag.readthedocs.io/)
