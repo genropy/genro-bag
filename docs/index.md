@@ -151,9 +151,9 @@ builders/advanced
 
 ## Status
 
-**Development Status: Alpha**
+**Development Status: Beta**
 
-The core API is stabilizing. Breaking changes may still occur.
+The core API is stable. Minor breaking changes may still occur.
 
 ## Indices and tables
 
