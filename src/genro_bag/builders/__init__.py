@@ -5,6 +5,11 @@ This module provides builder classes for creating structured Bag hierarchies
 with validation support. Builders enable fluent APIs for specific domains
 like HTML, XML schemas, etc.
 
+Builder Types:
+    - **BagBuilderBase**: Abstract base class for custom builders
+    - **HtmlBuilder**: HTML5 document builder with element validation
+    - **XsdBuilder**: Dynamic builder from XML Schema (XSD) files
+
 Example:
     >>> from genro_bag import Bag
     >>> from genro_bag.builders import HtmlBuilder
@@ -13,17 +18,36 @@ Example:
     >>> body = store.body()
     >>> div = body.div(id='main')
     >>> div.p(value='Hello, World!')
+
+XSD Example:
+    >>> from genro_bag import Bag
+    >>> from genro_bag.builders import XsdBuilder
+    >>>
+    >>> xsd_content = open('invoice.xsd').read()
+    >>> schema = Bag.from_xml(xsd_content)
+    >>> builder = XsdBuilder(schema)
+    >>>
+    >>> invoice = Bag(builder=builder)
+    >>> invoice.Invoice().Header().Date(value='2025-01-01')
 """
 
 from genro_bag.builders.base import BagBuilderBase
 from genro_bag.builders.decorators import element
 from genro_bag.builders.html import HtmlBodyBuilder, HtmlBuilder, HtmlHeadBuilder, HtmlPage
+from genro_bag.builders.validations import Max, MaxLength, Min, MinLength, Pattern
+from genro_bag.builders.xsd import XsdBuilder
 
 __all__ = [
     "BagBuilderBase",
     "element",
+    "Pattern",
+    "Min",
+    "Max",
+    "MinLength",
+    "MaxLength",
     "HtmlBuilder",
     "HtmlHeadBuilder",
     "HtmlBodyBuilder",
     "HtmlPage",
+    "XsdBuilder",
 ]
