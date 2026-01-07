@@ -9,93 +9,119 @@
 
 ## Introduction
 
-Most software systems deal with structured things.
+Most software systems deal with structured things: web pages, configuration files, APIs, database schemas, cloud infrastructures, documents. We usually treat these as separate worlds, each with its own language, tools, and conventions.
 
-Web pages, configuration files, APIs, database schemas, cloud infrastructures, documents: we usually treat these as separate worlds, each with its own language, tools, and conventions.
-
-Yet they all share something very simple: **they are organized hierarchically**, and humans reason about them by location rather than by mechanism.
-
-We say "the third book on the first shelf in the bedroom", not "object #42".
+Yet they all share something very simple: **they are organized hierarchically**, and humans reason about them by location rather than by mechanism. We say "the third book on the first shelf in the bedroom", not "object #42".
 
 This project starts from that observation.
 
 ## A hierarchy as a first-class concept
 
-A Bag is, at its core, a **hierarchical dictionary**: a tree of named nodes.
+A Bag is a **hierarchical dictionary**: a tree of named nodes. Instead of translating hierarchical thinking into tables, messages, callbacks, or ad-hoc APIs, the hierarchy is kept explicit and central.
 
-This may sound trivial, but it is a deliberate choice. Instead of translating hierarchical thinking into tables, messages, callbacks, or ad-hoc APIs, the hierarchy is kept explicit and central.
+```python
+from genro_bag import Bag
 
-Even without any additional feature, this already provides value:
+bag = Bag()
+bag['config.database.host'] = 'localhost'
+bag['config.database.port'] = 5432
 
-- related things live together
-- names are stable
-- navigation is uniform
-- structure is visible
+print(bag['config.database.host'])  # localhost
+```
 
-Nothing clever is required to get started.
+Each node can carry both a value and arbitrary attributes. This mirrors how we naturally think about things: a product has a name (its value) but also a price, a category, a status (its attributes).
+
+```python
+bag.set_item('product', 'Laptop', price=999, category='electronics')
+
+bag['product']           # 'Laptop'
+bag['product?price']     # 999
+bag['product?category']  # 'electronics'
+```
+
+Related things live together, names are stable, navigation is uniform, and structure is visible. Nothing clever is required to get started.
 
 ## When values are not just values
 
-In real systems, not everything can be stored.
+In real systems, not everything can be stored. Some values must be *obtained*: by calling a service, reading hardware, querying a database, or computing something on demand.
 
-Some values must be *obtained*: by calling a service, reading hardware, querying a database, or computing something on demand.
+In a Bag, this does not require a different mental model. You still navigate to a place in the hierarchy. The only difference is that some places know how to **resolve** a value instead of containing one.
 
-In a Bag, this does not require a different mental model.
+```python
+from genro_bag.resolvers import BagCbResolver, UrlResolver
 
-You still navigate to a place in the hierarchy. The only difference is that some places know how to **obtain** a value instead of containing one.
+# A value computed on demand
+bag['now'] = BagCbResolver(lambda: datetime.now().isoformat())
 
-From the outside, access looks the same. You don't switch from "data mode" to "API mode".
+# A value fetched from the network
+bag['weather'] = UrlResolver('https://api.weather.com/current', cache_time=300)
+```
 
-You navigate first. Resolution happens later.
+From the outside, access looks the same: `bag['now']` or `bag['weather']`. You don't switch from "data mode" to "API mode". You navigate first; resolution happens later. And it works the same whether you're in a synchronous or asynchronous context.
 
 ## Reacting to meaning, not plumbing
 
-Change is inevitable in any non-trivial system.
+Change is inevitable in any non-trivial system. Usually, change is handled through events, callbacks, queues, or polling loops. These mechanisms tend to leak into application code and force developers to think about infrastructure details.
 
-Usually, change is handled through events, callbacks, queues, or polling loops. These mechanisms tend to leak into application code and force developers to think about infrastructure details.
+A Bag takes a different approach. Instead of subscribing to events, you express interest in a **place** in the hierarchy.
 
-A Bag takes a different approach.
+```python
+def on_price_change(node, evt, **kw):
+    if node.label == 'price':
+        print(f"Price changed to {node.value}")
 
-Instead of subscribing to events, you express interest in a **place** in the hierarchy: you care about *what* changed, not *how* the change was transported.
+bag.subscribe('price_watcher', update=on_price_change)
 
-This keeps reactivity tied to meaning rather than to implementation details.
+bag['product?price'] = 1099  # triggers: "Price changed to 1099"
+```
+
+You care about *what* changed, not *how* the change was transported. This keeps reactivity tied to meaning rather than to implementation details.
 
 ## Writing structure the same way you read it
 
-The same hierarchy that can be navigated and observed can also be built.
+The same hierarchy that can be navigated and observed can also be built. **Builders** allow structures to be written fluently, in a way that mirrors how they are described mentally.
 
-**Builders** allow structures to be written fluently, in a way that mirrors how they are described mentally: containers contain tables, tables contain headers, and so on.
+```python
+from genro_bag.builders import HtmlBuilder
 
-This is not about inventing a new language. It is about making construction consistent with navigation.
+bag = Bag(builder=HtmlBuilder())
 
-Builders can also enforce rules about what is allowed or required, so structures are **valid as they are built**, not validated afterwards.
+page = bag.html()
+head = page.head()
+head.title(value='My Page')
+
+body = page.body()
+div = body.div(class_='container')
+div.h1(value='Welcome')
+div.p(value='This is a paragraph.')
+```
+
+This is not about inventing a new language. It is about making construction consistent with navigation. Builders can also enforce rules about what is allowed or required, so structures are **valid as they are built**, not validated afterwards.
+
+You can create domain-specific builders for any structured vocabulary: HTML, XML schemas, configuration formats, API specifications, or business documents like invoices.
 
 ## One way of thinking, many domains
 
-Once this model is in place, something interesting happens.
+Once this model is in place, something interesting happens. The same way of reasoning can be applied to web pages, XML documents, API descriptions, database structures, cloud architectures, and shared real-time state. The structure stays the same. Only the vocabulary changes.
 
-The same way of reasoning can be applied to:
+```python
+# Same mental model, different domains
+apis = Bag()
+apis['petstore'] = OpenApiResolver('https://petstore.swagger.io/api/v3/openapi.json')
+apis['github'] = OpenApiResolver('https://api.github.com/openapi.json')
 
-- web pages
-- XML documents
-- API descriptions
-- database structures
-- cloud architectures
-- shared real-time state
-
-The structure stays the same. Only the vocabulary changes.
+# Navigate APIs like local data
+apis['petstore.paths./pet.post.summary']
+apis['github.paths./repos/{owner}/{repo}.get.parameters']
+```
 
 Developers do not have to relearn how to think for each domain — only what names and constraints apply.
 
 ## A structural IR, not a framework
 
-This project is best understood as a **structural intermediate representation**.
+This project is best understood as a **structural intermediate representation**. It sits between how humans reason about structured systems and how specific technologies require them to be expressed.
 
-It sits between how humans reason about structured systems and how specific technologies require them to be expressed.
-
-It does not replace HTML, Terraform, APIs, or databases. It can compile into them, connect them, or synchronize them — and then disappear.
-
-Nothing depends on it at runtime unless you choose so.
+It does not replace HTML, Terraform, APIs, or databases. It can compile into them, connect them, or synchronize them — and then disappear. Nothing depends on it at runtime unless you choose so.
 
 That is why it is more accurate to see this as a **mental model made concrete**, rather than as a framework to adopt wholesale.
 
@@ -103,9 +129,7 @@ That is why it is more accurate to see this as a **mental model made concrete**,
 
 Over time, we noticed that much of the accidental complexity in software comes from constantly translating the same hierarchical ideas into different forms.
 
-This project exists to stop doing that.
-
-Not by simplifying domains, but by **unifying how they are described**.
+This project exists to stop doing that. Not by simplifying domains, but by **unifying how they are described**.
 
 ## Install
 
