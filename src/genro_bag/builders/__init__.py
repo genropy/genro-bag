@@ -31,9 +31,8 @@ XSD Example:
     >>> invoice.Invoice().Header().Date(value='2025-01-01')
 """
 
-from genro_bag.builders.base import BagBuilderBase
-from genro_bag.builders.decorators import element
-from genro_bag.builders.html import HtmlBodyBuilder, HtmlBuilder, HtmlHeadBuilder, HtmlPage
+from genro_bag.builders.base import BagBuilderBase, element
+from genro_bag.builders.html import HtmlBuilder
 from genro_bag.builders.validations import Max, MaxLength, Min, MinLength, Pattern
 from genro_bag.builders.xsd import XsdBuilder
 
@@ -46,8 +45,5 @@ __all__ = [
     "MinLength",
     "MaxLength",
     "HtmlBuilder",
-    "HtmlHeadBuilder",
-    "HtmlBodyBuilder",
-    "HtmlPage",
     "XsdBuilder",
 ]

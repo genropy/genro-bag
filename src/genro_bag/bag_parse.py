@@ -15,7 +15,7 @@ import datetime
 import os
 import re
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 from xml import sax
 from xml.sax import saxutils
 
@@ -96,7 +96,7 @@ class BagParser:
             result = result["GenRoBag"]
         if result is None:
             result = cls()
-        return result
+        return cast("Bag", result)
 
     # ==================== from_tytx ====================
 
@@ -160,7 +160,7 @@ class BagParser:
                 if node:
                     node.tag = tag
 
-        return bag
+        return cast("Bag", bag)
 
     # ==================== from_json ====================
 
@@ -189,7 +189,7 @@ class BagParser:
             # Wrap scalar in a dict
             source = {"value": source}
 
-        return cls._from_json_recursive(source, list_joiner)
+        return cast("Bag", cls._from_json_recursive(source, list_joiner))
 
     @classmethod
     def _from_json_recursive(
@@ -210,7 +210,7 @@ class BagParser:
                     label = item.get("label")
                     value = cls._from_json_recursive(item.get("value"), list_joiner)
                     attr = item.get("attr", {})
-                    result.set_item(label, value, _attributes=attr)
+                    result.set_item(label, value, _attributes=attr)  # type: ignore[attr-defined]
                 return result
 
             # String list with joiner
@@ -221,7 +221,7 @@ class BagParser:
             result = cls()
             prefix = parent_key if parent_key else "r"
             for n, v in enumerate(data):
-                result.set_item(f"{prefix}_{n}", cls._from_json_recursive(v, list_joiner))
+                result.set_item(f"{prefix}_{n}", cls._from_json_recursive(v, list_joiner))  # type: ignore[attr-defined]
             return result
 
         if isinstance(data, dict):
@@ -229,7 +229,7 @@ class BagParser:
                 return cls()
             result = cls()
             for k, v in data.items():
-                result.set_item(k, cls._from_json_recursive(v, list_joiner, parent_key=k))
+                result.set_item(k, cls._from_json_recursive(v, list_joiner, parent_key=k))  # type: ignore[attr-defined]
             return result
 
         # Scalar value
@@ -259,7 +259,7 @@ class _BagXmlHandler(sax.handler.ContentHandler):
         self.raise_on_error = raise_on_error
 
     def startDocument(self) -> None:
-        self.bags: list[tuple[Any, dict, str | None]] = [(self.bag_class(), None, None)]
+        self.bags: list[tuple[Any, dict | None, str | None]] = [(self.bag_class(), None, None)]
         self.value_list: list[str] = []
         self.legacy_mode: bool = False
 
@@ -333,7 +333,7 @@ class _BagXmlHandler(sax.handler.ContentHandler):
             else:
                 curr = ""
 
-        self._set_into_parent(tag_label, curr, attrs)
+        self._set_into_parent(tag_label, curr, attrs or {})
 
     def _set_into_parent(self, tag_label: str, curr: Any, attrs: dict) -> None:
         """Add node to parent bag."""
@@ -354,11 +354,9 @@ class _BagXmlHandler(sax.handler.ContentHandler):
             tag_label = f"{tag_label}_{cnt}"
 
         if attrs:
-            dest.set_item(tag_label, curr, _attributes=attrs)
+            node = dest.set_item(tag_label, curr, _attributes=attrs)
         else:
-            dest.set_item(tag_label, curr)
+            node = dest.set_item(tag_label, curr)
 
         # Set xml_tag for XML serialization
-        node = dest.get_node(tag_label)
-        if node:
-            node.xml_tag = original_xml_tag
+        node.xml_tag = original_xml_tag

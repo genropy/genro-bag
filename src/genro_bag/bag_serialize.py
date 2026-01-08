@@ -102,7 +102,7 @@ class BagSerializer:
     def _bag_to_xml(self, namespaces: list[str], self_closed_tags: list[str] | None = None) -> str:
         """Convert Bag to XML string."""
         parts = []
-        for node in self:
+        for node in self:  # type: ignore[attr-defined]
             parts.append(self._node_to_xml(node, namespaces, self_closed_tags))
         return "".join(parts)
 
@@ -284,7 +284,7 @@ class BagSerializer:
             path_to_code: dict[str, int] = {}
             code_counter = 0
 
-        for path, node in self.walk():
+        for path, node in self.walk():  # type: ignore[attr-defined]
             parent_path = path.rsplit(".", 1)[0] if "." in path else ""
 
             # Value encoding - use duck typing to check for Bag
@@ -303,7 +303,7 @@ class BagSerializer:
 
                 if hasattr(node.value, "walk") and hasattr(node.value, "_nodes"):
                     path_to_code[path] = code_counter
-                    path_registry[code_counter] = path
+                    path_registry[code_counter] = path  # type: ignore[index]
                     code_counter += 1
             else:
                 yield (parent_path, node.label, node.tag, value, attr)
@@ -325,10 +325,10 @@ class BagSerializer:
         Returns:
             JSON string representation.
         """
-        result = [self._node_to_json_dict(node, typed) for node in self]
+        result = [self._node_to_json_dict(node, typed) for node in self]  # type: ignore[attr-defined]
 
         if typed:
-            return tytx_encode(result)
+            return tytx_encode(result)  # type: ignore[return-value]
         return json.dumps(result)
 
     def _node_to_json_dict(self, node: Any, typed: bool) -> dict:

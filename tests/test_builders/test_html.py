@@ -4,7 +4,7 @@
 import pytest
 
 from genro_bag import Bag
-from genro_bag.builders import HtmlBuilder, HtmlHeadBuilder, HtmlBodyBuilder, HtmlPage
+from genro_bag.builders import HtmlBuilder
 
 
 class TestHtmlBuilder:
@@ -12,32 +12,31 @@ class TestHtmlBuilder:
 
     def test_create_bag_with_html_builder(self):
         """Creates Bag with HtmlBuilder."""
-        builder = HtmlBuilder()
-        bag = Bag(builder=builder)
-        assert bag.builder is builder
+        bag = Bag(builder=HtmlBuilder)
+        assert isinstance(bag.builder, HtmlBuilder)
 
     def test_valid_html_tags(self):
         """HtmlBuilder knows all HTML5 tags."""
-        builder = HtmlBuilder()
-        assert 'div' in builder.ALL_TAGS
-        assert 'span' in builder.ALL_TAGS
-        assert 'p' in builder.ALL_TAGS
-        assert 'a' in builder.ALL_TAGS
-        assert 'html' in builder.ALL_TAGS
+        bag = Bag(builder=HtmlBuilder)
+        assert 'div' in bag.builder.ALL_TAGS
+        assert 'span' in bag.builder.ALL_TAGS
+        assert 'p' in bag.builder.ALL_TAGS
+        assert 'a' in bag.builder.ALL_TAGS
+        assert 'html' in bag.builder.ALL_TAGS
 
     def test_void_elements(self):
         """HtmlBuilder knows void elements."""
-        builder = HtmlBuilder()
-        assert 'br' in builder.VOID_ELEMENTS
-        assert 'hr' in builder.VOID_ELEMENTS
-        assert 'img' in builder.VOID_ELEMENTS
-        assert 'input' in builder.VOID_ELEMENTS
-        assert 'meta' in builder.VOID_ELEMENTS
-        assert 'link' in builder.VOID_ELEMENTS
+        bag = Bag(builder=HtmlBuilder)
+        assert 'br' in bag.builder.VOID_ELEMENTS
+        assert 'hr' in bag.builder.VOID_ELEMENTS
+        assert 'img' in bag.builder.VOID_ELEMENTS
+        assert 'input' in bag.builder.VOID_ELEMENTS
+        assert 'meta' in bag.builder.VOID_ELEMENTS
+        assert 'link' in bag.builder.VOID_ELEMENTS
 
     def test_create_div(self):
         """Creates div element."""
-        bag = Bag(builder=HtmlBuilder())
+        bag = Bag(builder=HtmlBuilder)
         div = bag.div(id='main', class_='container')
 
         assert isinstance(div, Bag)
@@ -48,7 +47,7 @@ class TestHtmlBuilder:
 
     def test_create_void_element(self):
         """Void elements get empty value automatically."""
-        bag = Bag(builder=HtmlBuilder())
+        bag = Bag(builder=HtmlBuilder)
         node = bag.br()
 
         assert node.value == ''
@@ -56,7 +55,7 @@ class TestHtmlBuilder:
 
     def test_create_element_with_value(self):
         """Elements can have text content."""
-        bag = Bag(builder=HtmlBuilder())
+        bag = Bag(builder=HtmlBuilder)
         node = bag.p(value='Hello, World!')
 
         assert node.value == 'Hello, World!'
@@ -64,10 +63,10 @@ class TestHtmlBuilder:
 
     def test_nested_elements(self):
         """Creates nested HTML structure."""
-        bag = Bag(builder=HtmlBuilder())
+        bag = Bag(builder=HtmlBuilder)
         div = bag.div(id='main')
-        p = div.p(value='Paragraph text')
-        span = div.span(value='Span text')
+        div.p(value='Paragraph text')
+        div.span(value='Span text')
 
         assert len(div) == 2
         assert div.get_node('p_0').value == 'Paragraph text'
@@ -75,22 +74,22 @@ class TestHtmlBuilder:
 
     def test_invalid_tag_raises(self):
         """Invalid tag raises AttributeError."""
-        bag = Bag(builder=HtmlBuilder())
+        bag = Bag(builder=HtmlBuilder)
 
         with pytest.raises(AttributeError, match="has no attribute 'notarealtag'"):
             bag.notarealtag()
 
     def test_builder_inheritance_in_nested(self):
         """Nested bags inherit builder."""
-        bag = Bag(builder=HtmlBuilder())
+        bag = Bag(builder=HtmlBuilder)
         div = bag.div()
-        p = div.p(value='test')
+        div.p(value='test')
 
         assert div.builder is bag.builder
 
     def test_auto_label_generation(self):
         """Labels are auto-generated uniquely."""
-        bag = Bag(builder=HtmlBuilder())
+        bag = Bag(builder=HtmlBuilder)
         bag.div()
         bag.div()
         bag.div()
@@ -99,85 +98,66 @@ class TestHtmlBuilder:
         assert labels == ['div_0', 'div_1', 'div_2']
 
 
-class TestHtmlHeadBuilder:
-    """Tests for HtmlHeadBuilder."""
+class TestHtmlBuilderCompile:
+    """Tests for HtmlBuilder.compile()."""
 
-    def test_creates_head_elements(self):
-        """HtmlHeadBuilder creates head elements."""
-        bag = Bag(builder=HtmlHeadBuilder())
-        bag.title(value='My Page')
+    def test_compile_simple(self):
+        """compile() generates HTML string."""
+        bag = Bag(builder=HtmlBuilder)
+        bag.p(value='Hello')
+
+        html = bag.builder.compile()
+
+        assert '<p>Hello</p>' in html
+
+    def test_compile_nested(self):
+        """compile() handles nested elements."""
+        bag = Bag(builder=HtmlBuilder)
+        div = bag.div(id='main')
+        div.p(value='Content')
+
+        html = bag.builder.compile()
+
+        assert '<div id="main">' in html
+        assert '<p>Content</p>' in html
+        assert '</div>' in html
+
+    def test_compile_void_elements(self):
+        """Void elements render without closing tag."""
+        bag = Bag(builder=HtmlBuilder)
+        bag.br()
         bag.meta(charset='utf-8')
-        bag.link(rel='stylesheet', href='style.css')
 
-        assert len(bag) == 3
-        assert bag.get_node('title_0').value == 'My Page'
+        html = bag.builder.compile()
 
+        assert '<br>' in html
+        assert '</br>' not in html
+        assert '<meta charset="utf-8">' in html
+        assert '</meta>' not in html
 
-class TestHtmlBodyBuilder:
-    """Tests for HtmlBodyBuilder."""
+    def test_compile_to_file(self, tmp_path):
+        """compile() can save to file."""
+        bag = Bag(builder=HtmlBuilder)
+        bag.p(value='Content')
 
-    def test_creates_body_elements(self):
-        """HtmlBodyBuilder creates body elements."""
-        bag = Bag(builder=HtmlBodyBuilder())
-        bag.h1(value='Welcome')
-        div = bag.div(id='content')
-        div.p(value='Content here')
+        dest = tmp_path / 'test.html'
+        result = bag.builder.compile(destination=dest)
 
-        assert len(bag) == 2
+        assert dest.exists()
+        assert '<p>Content</p>' in dest.read_text()
+        assert result == '<p>Content</p>'
 
+    def test_compile_page_structure(self):
+        """compile() generates complete page structure."""
+        page = Bag(builder=HtmlBuilder)
+        head = page.head()
+        head.title(value='Test')
+        head.meta(charset='utf-8')
+        body = page.body()
+        body.div(id='main').p(value='Hello')
 
-class TestHtmlPage:
-    """Tests for HtmlPage."""
+        html = page.builder.compile()
 
-    def test_creates_page_structure(self):
-        """HtmlPage creates html/head/body structure."""
-        page = HtmlPage()
-
-        assert page.html is not None
-        assert page.head is not None
-        assert page.body is not None
-        assert 'head' in page.html._nodes
-        assert 'body' in page.html._nodes
-
-    def test_head_has_builder(self):
-        """Head has HtmlHeadBuilder."""
-        page = HtmlPage()
-        assert isinstance(page.head.builder, HtmlHeadBuilder)
-
-    def test_body_has_builder(self):
-        """Body has HtmlBodyBuilder."""
-        page = HtmlPage()
-        assert isinstance(page.body.builder, HtmlBodyBuilder)
-
-    def test_add_elements_to_head(self):
-        """Can add elements to head."""
-        page = HtmlPage()
-        page.head.title(value='Test Page')
-        page.head.meta(charset='utf-8')
-
-        assert len(page.head) == 2
-
-    def test_add_elements_to_body(self):
-        """Can add elements to body."""
-        page = HtmlPage()
-        div = page.body.div(id='main')
-        div.h1(value='Hello')
-        div.p(value='World')
-
-        assert len(page.body) == 1
-        assert len(div) == 2
-
-    def test_to_html_output(self):
-        """to_html generates valid HTML structure."""
-        page = HtmlPage()
-        page.head.title(value='Test')
-        page.body.div(id='main').p(value='Hello')
-
-        html = page.to_html()
-
-        assert '<!DOCTYPE html>' in html
-        assert '<html>' in html
-        assert '</html>' in html
         assert '<head>' in html
         assert '</head>' in html
         assert '<body>' in html
@@ -186,46 +166,23 @@ class TestHtmlPage:
         assert 'id="main"' in html
         assert '<p>Hello</p>' in html
 
-    def test_to_html_void_elements(self):
-        """Void elements render without closing tag."""
-        page = HtmlPage()
-        page.head.meta(charset='utf-8')
-        page.body.br()
-
-        html = page.to_html()
-
-        assert '<meta charset="utf-8">' in html
-        assert '</meta>' not in html
-        assert '<br>' in html
-        assert '</br>' not in html
-
-    def test_to_html_saves_to_file(self, tmp_path):
-        """to_html can save to file."""
-        page = HtmlPage()
-        page.head.title(value='Test')
-        page.body.p(value='Content')
-
-        result = page.to_html(filename='test.html', output_dir=str(tmp_path))
-
-        assert result == str(tmp_path / 'test.html')
-        content = (tmp_path / 'test.html').read_text()
-        assert '<!DOCTYPE html>' in content
-
 
 class TestHtmlBuilderIntegration:
     """Integration tests for HTML builder with Bag."""
 
     def test_complex_html_structure(self):
         """Creates complex HTML structure."""
-        page = HtmlPage()
+        page = Bag(builder=HtmlBuilder)
 
         # Head
-        page.head.meta(charset='utf-8')
-        page.head.title(value='My Website')
-        page.head.link(rel='stylesheet', href='style.css')
+        head = page.head()
+        head.meta(charset='utf-8')
+        head.title(value='My Website')
+        head.link(rel='stylesheet', href='style.css')
 
         # Body
-        header = page.body.header(id='header')
+        body = page.body()
+        header = body.header(id='header')
         header.h1(value='Welcome')
         nav = header.nav()
         ul = nav.ul()
@@ -233,19 +190,19 @@ class TestHtmlBuilderIntegration:
         ul.li(value='About')
         ul.li(value='Contact')
 
-        main = page.body.main(id='content')
+        main = body.main(id='content')
         article = main.article()
         article.h2(value='Article Title')
         article.p(value='Article content goes here.')
 
-        footer = page.body.footer()
+        footer = body.footer()
         footer.p(value='Copyright 2025')
 
         # Verify structure
-        assert len(page.head) == 3
-        assert len(page.body) == 3  # header, main, footer
+        assert len(head) == 3
+        assert len(body) == 3  # header, main, footer
 
-        html = page.to_html()
+        html = page.builder.compile()
         assert '<header id="header">' in html
         assert '<nav>' in html
         assert '<ul>' in html

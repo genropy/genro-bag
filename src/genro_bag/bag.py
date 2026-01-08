@@ -24,9 +24,10 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable
-from typing import Any
+from typing import Any, TypeVar, cast
 
 from genro_toolbox import smartasync, smartawait, smartsplit
+from genro_toolbox.decorators import extract_kwargs
 from genro_toolbox.typeutils import safe_is_instance
 
 from .bag_parse import BagParser
@@ -35,8 +36,10 @@ from .bag_serialize import BagSerializer
 from .bagnode import BagNode, BagNodeContainer
 from .resolver import BagCbResolver
 
+_T = TypeVar("_T", str, list)
 
-def _normalize_path(path: str | list) -> str | list:
+
+def _normalize_path(path: _T) -> _T:
     """Normalize a path for Bag access.
 
     Args:
@@ -80,32 +83,46 @@ class Bag(BagParser, BagSerializer, BagQuery):
         _builder: Optional builder for domain-specific node creation.
     """
 
-    def __init__(self, source: dict[str, Any] | None = None, builder=None):
+    @extract_kwargs(builder=True)
+    def __init__(self, source: dict[str, Any] | None = None, builder=None,
+                 builder_kwargs=None):
         """Create a new Bag.
 
         Args:
             source: Optional dict to initialize from. Keys become labels,
                 values become node values.
-            builder: Optional BagBuilderBase instance for domain-specific
+            builder: Optional BagBuilderBase class for domain-specific
                 node creation (e.g., HtmlBuilder for HTML generation).
+            builder_kwargs: Extra kwargs passed to builder constructor.
+                Can also be passed with builder_ prefix.
 
         Example:
             >>> bag = Bag({'a': 1, 'b': 2})
             >>> bag['a']
             1
             >>> from genro_bag.builders import HtmlBuilder
-            >>> html = Bag(builder=HtmlBuilder())
+            >>> html = Bag(builder=HtmlBuilder)
             >>> html.div(id='main').p(value='Hello')
+            >>> # With builder kwargs:
+            >>> bag = Bag(builder=XsdBuilder, builder_xsd_source='schema.xsd')
         """
         self._nodes: BagNodeContainer = BagNodeContainer()
-        self._backref: bool = False
+        self._backref: bool | str = False
         self._parent: Bag | None = None
         self._parent_node: BagNode | None = None
         self._upd_subscribers: dict = {}
         self._ins_subscribers: dict = {}
         self._del_subscribers: dict = {}
         self._root_attributes: dict | None = None
-        self._builder = builder
+        if builder is not None:
+            if isinstance(builder, type):
+                # It's a class, instantiate it
+                self._builder = builder(self, **builder_kwargs)
+            else:
+                # It's already an instance (child bag inheriting from parent)
+                self._builder = builder
+        else:
+            self._builder = None
 
         if source:
             self.fill_from(source)
@@ -171,8 +188,8 @@ class Bag(BagParser, BagSerializer, BagQuery):
 
         elif path.endswith(".bag.mp"):
             with open(path, "rb") as f:
-                data = f.read()
-            loaded = Bag.from_tytx(data, transport="msgpack")
+                data_bytes = f.read()
+            loaded = Bag.from_tytx(data_bytes, transport="msgpack")
             self._fill_from_bag(loaded)
 
         elif path.endswith(".xml"):
@@ -250,7 +267,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
         from genro_bag.resolvers import UrlResolver
 
         resolver = UrlResolver(url, timeout=timeout, as_bag=True)
-        return await smartawait(resolver())
+        return cast("Bag", await smartawait(resolver()))
 
     # -------------------- properties --------------------------------
 
@@ -288,7 +305,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
         parent node, enabling tree traversal and event propagation up the
         hierarchy.
         """
-        return self._backref
+        return bool(self._backref)
 
     @property
     def fullpath(self) -> str | None:
@@ -297,7 +314,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
         Returns the dot-separated path from the root of the hierarchy to this
         Bag. Returns None if backref mode is not enabled or if this is the root.
         """
-        if self.parent is not None:
+        if self.parent is not None and self.parent_node is not None:
             parent_fullpath = self.parent.fullpath
             if parent_fullpath:
                 return f"{parent_fullpath}.{self.parent_node.label}"
@@ -318,14 +335,14 @@ class Bag(BagParser, BagSerializer, BagQuery):
         return curr
 
     @property
-    def attributes(self) -> dict:
+    def attributes(self) -> dict[str, Any]:
         """Attributes of the parent node containing this Bag.
 
         Returns the attributes dict of the BagNode that contains this Bag.
         Returns an empty dict if this is a standalone Bag with no parent node.
         """
         if self.parent_node is not None:
-            return self.parent_node.get_attr()
+            return cast(dict[str, Any], self.parent_node.get_attr())
         return {}
 
     @property
@@ -378,7 +395,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
 
     # -------------------- _htraverse helpers --------------------------------
 
-    def _htraverse_before(self, path: str | list) -> tuple[Bag, list]:
+    def _htraverse_before(self, path: str | list) -> tuple[Bag | None, list[str]]:
         """Parse path and handle #parent navigation.
 
         First phase of path traversal: converts path to list, handles '../' alias,
@@ -389,10 +406,10 @@ class Bag(BagParser, BagSerializer, BagQuery):
 
         Returns:
             Tuple of (curr, pathlist) where:
-                - curr: Starting Bag (may have moved up via #parent)
+                - curr: Starting Bag (may have moved up via #parent), or None
                 - pathlist: Remaining path segments to process
         """
-        curr = self
+        curr: Bag | None = self
 
         if isinstance(path, str):
             path = path.replace("../", "#parent.")
@@ -401,15 +418,15 @@ class Bag(BagParser, BagSerializer, BagQuery):
             pathlist = list(path)
 
         # handle parent reference #parent at the beginning
-        while pathlist and pathlist[0] == "#parent":
+        while pathlist and pathlist[0] == "#parent" and curr is not None:
             pathlist.pop(0)
             curr = curr.parent
 
         return curr, pathlist
 
     def _htraverse_after(
-        self, curr: Bag, pathlist: list, write_mode: bool = False
-    ) -> tuple[Any, str]:
+        self, curr: Bag, pathlist: list[str], write_mode: bool = False
+    ) -> tuple[Any, str | None]:
         """Finalize traversal and handle write_mode autocreate.
 
         Final phase of path traversal: handles empty paths, checks for
@@ -521,7 +538,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
 
     # -------------------- _htraverse (sync) --------------------------------
 
-    def _htraverse(self, path: str | list, write_mode: bool = False) -> tuple[Any, str]:
+    def _htraverse(self, path: str | list, write_mode: bool = False) -> tuple[Any, str | None]:
         """Traverse a hierarchical path synchronously (static mode).
 
         Sync version that never triggers resolvers. Used by set_item, pop, etc.
@@ -536,6 +553,8 @@ class Bag(BagParser, BagSerializer, BagQuery):
                 - label: The final path segment
         """
         curr, pathlist = self._htraverse_before(path)
+        if curr is None:
+            return None, None
         if not pathlist:
             return curr, ""
         curr, pathlist = self._traverse_until(curr, pathlist, write_mode)
@@ -546,7 +565,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
     @smartasync
     async def _async_htraverse(
         self, path: str | list, write_mode: bool = False, static: bool = False
-    ) -> tuple[Any, str]:
+    ) -> tuple[Any, str | None]:
         """Traverse a hierarchical path with async support.
 
         Async version that may trigger resolvers when static=False.
@@ -563,6 +582,8 @@ class Bag(BagParser, BagSerializer, BagQuery):
                 - label: The final path segment
         """
         curr, pathlist = self._htraverse_before(path)
+        if curr is None:
+            return None, None
         if not pathlist:
             return curr, ""
         curr, pathlist = await smartawait(self._async_traverse_until(curr, pathlist, static=static))
@@ -659,9 +680,9 @@ class Bag(BagParser, BagSerializer, BagQuery):
         """
         path = _normalize_path(path)
         obj, label = self._htraverse(path)
-        if isinstance(obj, Bag):
+        if isinstance(obj, Bag) and label is not None:
             return obj.get(label)
-        if hasattr(obj, "get"):
+        if hasattr(obj, "get") and label is not None:
             return obj.get(label)
         return None
 
@@ -680,7 +701,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
         do_trigger: bool = True,
         resolver=None,
         **kwargs,
-    ) -> None:
+    ) -> BagNode:
         """Set value at a hierarchical path.
 
         Traverses the Bag hierarchy following the dot-separated path, creating
@@ -712,10 +733,13 @@ class Bag(BagParser, BagSerializer, BagQuery):
                 Set to False to suppress ins/upd events.
             **kwargs: Additional attributes to set on the node.
 
+        Returns:
+            The created or updated BagNode.
+
         Example:
             >>> bag = Bag()
-            >>> bag.set_item('a.b.c', 42)
-            >>> bag['a.b.c']
+            >>> node = bag.set_item('a.b.c', 42)
+            >>> node.value
             42
             >>> bag.set_item('a.b.d', 'hello', _attributes={'type': 'greeting'})
             >>> # Set a single attribute using ?attr syntax
@@ -744,14 +768,15 @@ class Bag(BagParser, BagSerializer, BagQuery):
             _attributes.update(resolver.attributes)
 
         path = _normalize_path(path)
-        obj, label = self._htraverse(path, write_mode=True)
+        result, label = self._htraverse(path, write_mode=True)
+        obj = cast("Bag", result)
 
-        if label.startswith("#"):
+        if label is None or label.startswith("#"):
             raise BagException("Cannot create new node with #n syntax")
 
         if attrname:
             # ?attr syntax: set attribute on node (create if needed)
-            node = obj._nodes.get(label)
+            node = cast("BagNode | None", obj._nodes.get(label))
             if node is None:
                 # Create the node first with None value
                 node = obj._nodes.set(
@@ -764,23 +789,26 @@ class Bag(BagParser, BagSerializer, BagQuery):
                     do_trigger=do_trigger,
                 )
             node.set_attr({attrname: value}, trigger=do_trigger)
-        else:
-            obj._nodes.set(
-                label,
-                value,
-                _position,
-                attr=_attributes,
-                resolver=resolver,
-                parent_bag=obj,
-                _updattr=_updattr,
-                _remove_null_attributes=_remove_null_attributes,
-                _reason=_reason,
-                do_trigger=do_trigger,
-            )
+            return node
 
-            if _fired:
-                # Reset to None without triggering (event was already fired with the value)
-                obj._nodes.set(label, None, parent_bag=obj, _reason=_reason, do_trigger=False)
+        node = obj._nodes.set(
+            label,
+            value,
+            _position,
+            attr=_attributes,
+            resolver=resolver,
+            parent_bag=obj,
+            _updattr=_updattr,
+            _remove_null_attributes=_remove_null_attributes,
+            _reason=_reason,
+            do_trigger=do_trigger,
+        )
+
+        if _fired:
+            # Reset to None without triggering (event was already fired with the value)
+            obj._nodes.set(label, None, parent_bag=obj, _reason=_reason, do_trigger=False)
+
+        return node
 
     def __setitem__(self, path: str, value: Any) -> None:
         self.set_item(path, value)
@@ -799,7 +827,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
         """
         p = self._nodes.index(label)
         if p >= 0:
-            node = self._nodes.pop(p)
+            node = cast(BagNode, self._nodes.pop(p))
             if self.backref:
                 self._on_node_deleted(node, p, reason=_reason)
             return node
@@ -864,8 +892,9 @@ class Bag(BagParser, BagSerializer, BagQuery):
             >>> node.attr
             {'type': 'int'}
         """
-        obj, label = self._htraverse(path)
-        if obj:
+        result, label = self._htraverse(path)
+        if result and label:
+            obj = cast("Bag", result)
             n = obj._pop(label, _reason=_reason)
             if n:
                 return n
@@ -948,6 +977,27 @@ class Bag(BagParser, BagSerializer, BagQuery):
     def nodes(self) -> list[BagNode]:
         """Property alias for get_nodes()."""
         return self.get_nodes()
+
+    def node(self, key: str | int) -> BagNode | None:
+        """Get a first-level node by label or index.
+
+        Sync method for quick access to direct child nodes.
+        Does not traverse paths or trigger resolvers.
+
+        Args:
+            key: Node label (str) or index (int).
+
+        Returns:
+            The BagNode if found, None otherwise.
+
+        Example:
+            >>> bag = Bag({'a': 1, 'b': 2})
+            >>> bag.node('a').value
+            1
+            >>> bag.node(0).label
+            'a'
+        """
+        return cast("BagNode | None", self._nodes[key])
 
     def set_attr(
         self,
@@ -1289,10 +1339,11 @@ class Bag(BagParser, BagSerializer, BagQuery):
             (10, 2, 3)
         """
         # Normalize to list of (label, value, attr)
+        items: list[tuple[Any, Any, dict[str, Any]]]
         if isinstance(source, dict):
             items = [(k, v, {}) for k, v in source.items()]
         else:
-            items = source.query(what="#k,#v,#a")
+            items = list(source.query(what="#k,#v,#a"))
 
         for label, value, attr in items:
             if label in self._nodes:
@@ -1323,8 +1374,9 @@ class Bag(BagParser, BagSerializer, BagQuery):
             The BagNode, or None if not found and not autocreate.
         """
         p = self._nodes.index(label)
+        node: BagNode | None
         if p >= 0:
-            node = self._nodes[p]
+            node = cast(BagNode, self._nodes[p])
         elif autocreate:
             node = BagNode(self, label=label, value=default)
             i = len(self._nodes)
@@ -1346,7 +1398,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
         autocreate: bool = False,
         default: Any = None,
         static: bool = False,
-    ) -> BagNode | None:
+    ) -> BagNode | tuple[Bag, BagNode | None] | None:
         """Get the BagNode at a path.
 
         Unlike get_item which returns the value, this returns the BagNode itself,
@@ -1377,7 +1429,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
             return self.parent_node
 
         if isinstance(path, int):
-            return self._nodes[path]
+            return cast("BagNode | None", self._nodes[path])
 
         obj, label = await smartawait(
             self._async_htraverse(path, write_mode=autocreate, static=static)
@@ -1442,7 +1494,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
         """Trigger for node change events."""
         for s in list(self._upd_subscribers.values()):
             s(node=node, pathlist=pathlist, oldvalue=oldvalue, evt=evt, reason=reason)
-        if self.parent:
+        if self.parent and self.parent_node:
             self.parent._on_node_changed(
                 node, [self.parent_node.label] + pathlist, evt, oldvalue, reason=reason
             )
@@ -1459,7 +1511,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
             pathlist = []
         for s in list(self._ins_subscribers.values()):
             s(node=node, pathlist=pathlist, ind=ind, evt="ins", reason=reason)
-        if self.parent:
+        if self.parent and self.parent_node:
             self.parent._on_node_inserted(
                 node, ind, [self.parent_node.label] + pathlist, reason=reason
             )
@@ -1470,7 +1522,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
         """Trigger for node delete events."""
         for s in list(self._del_subscribers.values()):
             s(node=node, pathlist=pathlist, ind=ind, evt="del", reason=reason)
-        if self.parent:
+        if self.parent and self.parent_node:
             if pathlist is None:
                 pathlist = []
             self.parent._on_node_deleted(

@@ -171,7 +171,7 @@ class BagResolver:
     @property
     def cache_time(self) -> int:
         """Get cache time in seconds."""
-        return self._kw.get("cache_time", 0)
+        return self._kw.get("cache_time", 0)  # type: ignore[no-any-return]
 
     # =========================================================================
     # READ ONLY PROPERTY
@@ -180,7 +180,7 @@ class BagResolver:
     @property
     def read_only(self) -> bool:
         """Whether resolver is in read-only mode."""
-        return self._kw.get("read_only", True)
+        return self._kw.get("read_only", True)  # type: ignore[no-any-return]
 
     # =========================================================================
     # CACHE MANAGEMENT
@@ -317,7 +317,7 @@ class BagResolver:
         """
         module = importlib.import_module(data["resolver_module"])
         resolver_cls = getattr(module, data["resolver_class"])
-        return resolver_cls(*data.get("args", ()), **data.get("kwargs", {}))
+        return resolver_cls(*data.get("args", ()), **data.get("kwargs", {}))  # type: ignore[no-any-return]
 
     # =========================================================================
     # PROXY METHODS - DELEGATE TO RESOLVED BAG

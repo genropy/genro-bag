@@ -2,19 +2,47 @@
 """BagBuilderBase - Abstract base class for Bag builders.
 
 Provides domain-specific methods for creating nodes in a Bag with
-validation support. Adapted from genro-treestore BuilderBase.
+validation support.
 """
 
 from __future__ import annotations
 
 from abc import ABC
+from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
-from .validations import parse_tag_spec, validate_call_args
+from .validations import extract_attrs_from_signature, parse_tag_spec, validate_call_args
 
 if TYPE_CHECKING:
     from ..bag import Bag
     from ..bagnode import BagNode
+
+
+def element(
+    tags: str | tuple[str, ...] = "",
+    children: str | tuple[str, ...] = "",
+) -> Callable:
+    """Decorator to mark a method as element handler.
+
+    The decorator is a simple marker. All processing (tag parsing, attrs extraction,
+    children spec parsing) happens in __init_subclass__.
+
+    Args:
+        tags: Tag names this method handles. Can be:
+            - A comma-separated string: 'fridge, oven, sink'
+            - A tuple of strings: ('fridge', 'oven', 'sink')
+            If empty, the method name is used as the single tag.
+
+        children: Valid child tag specs for structure validation. Can be:
+            - A comma-separated string: 'tag1, tag2[:1], tag3[1:]'
+            - A tuple of strings: ('tag1', 'tag2[:1]', 'tag3[1:]')
+    """
+
+    def decorator(func: Callable) -> Callable:
+        func._decorator = {"tags": tags, "children_spec": children}  # type: ignore[attr-defined]
+        return func
+
+    return decorator
 
 
 class BagBuilderBase(ABC):
@@ -55,82 +83,17 @@ class BagBuilderBase(ABC):
     The lookup order is: decorated methods first, then _schema.
 
     Usage:
-        >>> bag = Bag(builder=MyBuilder())
+        >>> bag = Bag(builder=MyBuilder)
         >>> bag.fridge()  # calls appliance() with tag='fridge'
     """
 
-    _element_tags: dict[str, str]
+    _elements: dict[str, dict[str, Any]]
     _schema: dict[str, dict] = {}
 
-    def _validate_attrs(
-        self, tag: str, attrs: dict[str, Any], raise_on_error: bool = True
-    ) -> list[str]:
-        """Validate attributes against schema specification (pure Python).
-
-        Args:
-            tag: The tag name to get attrs spec for.
-            attrs: Dict of attribute values to validate.
-            raise_on_error: If True, raises ValueError on validation failure.
-
-        Returns:
-            List of error messages (empty if valid).
-        """
-        spec = self._schema.get(tag, {})
-        attrs_spec = spec.get("attrs")
-
-        if not attrs_spec:
-            return []
-
-        errors = []
-
-        for attr_name, attr_spec in attrs_spec.items():
-            value = attrs.get(attr_name)
-            required = attr_spec.get("required", False)
-            type_name = attr_spec.get("type", "string")
-
-            if required and value is None:
-                errors.append(f"'{attr_name}' is required for '{tag}'")
-                continue
-
-            if value is None:
-                continue
-
-            if type_name == "int":
-                if not isinstance(value, int):
-                    try:
-                        value = int(value)
-                    except (ValueError, TypeError):
-                        errors.append(
-                            f"'{attr_name}' must be an integer, got {type(value).__name__}"
-                        )
-                        continue
-
-                min_val = attr_spec.get("min")
-                max_val = attr_spec.get("max")
-                if min_val is not None and value < min_val:
-                    errors.append(f"'{attr_name}' must be >= {min_val}, got {value}")
-                if max_val is not None and value > max_val:
-                    errors.append(f"'{attr_name}' must be <= {max_val}, got {value}")
-
-            elif type_name == "bool":
-                if not isinstance(value, bool):
-                    if isinstance(value, str):
-                        if value.lower() not in ("true", "false", "1", "0", "yes", "no"):
-                            errors.append(f"'{attr_name}' must be a boolean, got '{value}'")
-                    else:
-                        errors.append(
-                            f"'{attr_name}' must be a boolean, got {type(value).__name__}"
-                        )
-
-            elif type_name == "enum":
-                values = attr_spec.get("values", [])
-                if values and value not in values:
-                    errors.append(f"'{attr_name}' must be one of {values}, got '{value}'")
-
-        if errors and raise_on_error:
-            raise ValueError(f"Attribute validation failed for '{tag}': " + "; ".join(errors))
-
-        return errors
+    def __init__(self, bag: Bag) -> None:
+        """Initialize builder with its Bag."""
+        self.bag = bag
+        self.bag.set_backref()
 
     def _resolve_ref(self, value: Any) -> Any:
         """Resolve =ref references by looking up _ref_<name> properties.
@@ -142,7 +105,7 @@ class BagBuilderBase(ABC):
         Handles comma-separated strings with mixed refs and literals.
         """
         if isinstance(value, (set, frozenset)):
-            resolved = set()
+            resolved: set[Any] = set()
             for item in value:
                 resolved_item = self._resolve_ref(item)
                 if isinstance(resolved_item, (set, frozenset)):
@@ -158,7 +121,7 @@ class BagBuilderBase(ABC):
 
         if "," in value:
             parts = [p.strip() for p in value.split(",") if p.strip()]
-            resolved_parts = []
+            resolved_parts: list[str] = []
             for part in parts:
                 resolved_part = self._resolve_ref(part)
                 if isinstance(resolved_part, (set, frozenset)):
@@ -184,37 +147,77 @@ class BagBuilderBase(ABC):
         return value
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
-        """Build the _element_tags dict from @element decorated methods."""
+        """Build _elements dict from @element decorated methods."""
         super().__init_subclass__(**kwargs)
 
-        cls._element_tags = {}
+        # Inherit _elements from base classes
+        cls._elements = {}
         for base in cls.__mro__[1:]:
-            if hasattr(base, "_element_tags"):
-                cls._element_tags.update(base._element_tags)
+            if hasattr(base, "_elements"):
+                cls._elements.update(base._elements)
                 break
 
-        for name, method in cls.__dict__.items():
-            if name.startswith("_"):
-                continue
-            if not callable(method):
+        # Process decorated methods
+        for name, obj in list(cls.__dict__.items()):
+            decorator_info = getattr(obj, "_decorator", None)
+            if not decorator_info:
                 continue
 
-            element_tags = getattr(method, "_element_tags", None)
-            if element_tags is None and hasattr(method, "_valid_children"):
-                cls._element_tags[name] = name
-            elif element_tags:
-                for tag in element_tags:
-                    cls._element_tags[tag] = name
+            # Rename method: foo -> _el_foo
+            new_name = f"_el_{name}"
+            setattr(cls, new_name, obj)
+            delattr(cls, name)
+
+            # Parse tags
+            tags_raw = decorator_info.get("tags", "")
+            if isinstance(tags_raw, str):
+                tag_list = [t.strip() for t in tags_raw.split(",") if t.strip()]
+            else:
+                tag_list = list(tags_raw) if tags_raw else []
+            if not tag_list:
+                tag_list = [name]
+
+            # Extract attrs_spec from signature
+            attrs_spec = extract_attrs_from_signature(obj)
+
+            # Parse children_spec (raw, will resolve refs at runtime)
+            children_raw = decorator_info.get("children_spec", "")
+
+            # Create entry in _elements for each tag
+            for tag in tag_list:
+                cls._elements[tag] = {
+                    "handler": new_name,
+                    "children_spec": children_raw,
+                    "attrs_spec": attrs_spec,
+                }
 
     def __getattr__(self, name: str) -> Any:
-        """Look up tag in _element_tags or _schema and return handler."""
+        """Look up tag in _elements or _schema and return handler with validation."""
         if name.startswith("_"):
             raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
-        element_tags = getattr(type(self), "_element_tags", {})
-        if name in element_tags:
-            method_name = element_tags[name]
-            return getattr(self, method_name)
+        elements = getattr(type(self), "_elements", {})
+        if name in elements:
+            element_info = elements[name]
+            handler_name = element_info["handler"]
+            attrs_spec = element_info.get("attrs_spec")
+            method = getattr(self, handler_name)
+
+            if attrs_spec:
+
+                def wrapper(*args: Any, _tag: str = name, **kwargs: Any) -> Any:
+                    validate_call_args(kwargs, attrs_spec)
+                    kwargs["tag"] = _tag
+                    return method(*args, **kwargs)
+
+                return wrapper
+            else:
+
+                def simple_wrapper(*args: Any, _tag: str = name, **kwargs: Any) -> Any:
+                    kwargs["tag"] = _tag
+                    return method(*args, **kwargs)
+
+                return simple_wrapper
 
         if name in self._schema:
             return self._create_child(name, self._schema[name])
@@ -230,19 +233,22 @@ class BagBuilderBase(ABC):
         def handler(_target, _tag: str = tag, _label: str | None = None, value=None, **attr):
             if attrs_spec:
                 validate_call_args(attr, attrs_spec)
+                # Validate value content if spec has 'value' key (XSD text content)
+                if "value" in attrs_spec and value is not None:
+                    validate_call_args({"value": value}, {"value": attrs_spec["value"]})
             if value is None and is_leaf:
                 value = ""
             return builder.child(_target, _tag, _label=_label, value=value, **attr)
 
         children_spec = spec.get("children")
         if children_spec is not None:
-            handler._raw_children_spec = children_spec
-            handler._valid_children, handler._child_cardinality = self._parse_children_spec(
-                children_spec
-            )
+            handler._raw_children_spec = children_spec  # type: ignore[attr-defined]
+            valid, cardinality = self._parse_children_spec(children_spec)
+            handler._valid_children = valid  # type: ignore[attr-defined]
+            handler._child_cardinality = cardinality  # type: ignore[attr-defined]
         else:
-            handler._valid_children = frozenset()
-            handler._child_cardinality = {}
+            handler._valid_children = frozenset()  # type: ignore[attr-defined]
+            handler._child_cardinality = {}  # type: ignore[attr-defined]
 
         return handler
 
@@ -293,6 +299,11 @@ class BagBuilderBase(ABC):
         """
         from ..bag import Bag
 
+        # Step 1: Pre-add - verify parent accepts this child
+        parent_node = _target.parent_node
+        if parent_node is not None:
+            self._accepts_child(parent_node, _tag)
+
         if _label is None:
             n = 0
             while f"{_tag}_{n}" in _target._nodes:
@@ -303,46 +314,68 @@ class BagBuilderBase(ABC):
 
         if value is not None:
             # Leaf node
-            _target.set_item(_label, value, _position=_position, **attr)
-            node = _target.get_node(_label)
+            node = _target.set_item(_label, value, _position=_position, **attr)
             node.tag = _tag
             return node
-        else:
-            # Branch node
-            child_bag = Bag(builder=child_builder)
-            _target.set_item(_label, child_bag, _position=_position, **attr)
-            node = _target.get_node(_label)
-            node.tag = _tag
-            return child_bag
+
+        # Branch node
+        child_bag = Bag(builder=child_builder)
+        node = _target.set_item(_label, child_bag, _position=_position, **attr)
+        node.tag = _tag
+        return child_bag
 
     def _get_validation_rules(
         self, tag: str | None
     ) -> tuple[frozenset[str] | None, dict[str, tuple[int, int | None]]]:
-        """Get validation rules for a tag from decorated methods or schema."""
+        """Get validation rules for a tag from _elements or _schema."""
         if tag is None:
             return None, {}
 
-        element_tags = getattr(type(self), "_element_tags", {})
-        if tag in element_tags:
-            method_name = element_tags[tag]
-            method = getattr(self, method_name, None)
-            if method is not None:
-                raw_spec = getattr(method, "_raw_children_spec", None)
-                if raw_spec is not None:
-                    return self._parse_children_spec(raw_spec)
-                valid = getattr(method, "_valid_children", None)
-                cardinality = getattr(method, "_child_cardinality", {})
-                return valid, cardinality
+        elements = getattr(type(self), "_elements", {})
+        if tag in elements:
+            children_spec = elements[tag].get("children_spec")
+            if children_spec:
+                return self._parse_children_spec(children_spec)
+            return frozenset(), {}
 
         if tag in self._schema:
             spec = self._schema[tag]
             children_spec = spec.get("children")
             if children_spec is not None:
                 return self._parse_children_spec(children_spec)
-            else:
-                return frozenset(), {}
+            return frozenset(), {}
 
         return None, {}
+
+    def _accepts_child(self, parent_node: BagNode, child_tag: str) -> None:
+        """Verify that parent accepts child_tag. Raises ValueError if not.
+
+        Args:
+            parent_node: The parent BagNode.
+            child_tag: Tag of the child to add.
+
+        Raises:
+            ValueError: If child_tag is not allowed under parent.
+        """
+        parent_tag = parent_node.tag
+        if parent_tag is None:
+            return  # Parent has no tag - no validation
+
+        valid_children, _ = self._get_validation_rules(parent_tag)
+
+        if valid_children is None:
+            return  # Unknown parent tag - no validation
+
+        if not valid_children:
+            raise ValueError(
+                f"'{parent_tag}' cannot have children, but got '{child_tag}'"
+            )
+
+        if child_tag not in valid_children:
+            raise ValueError(
+                f"'{child_tag}' is not a valid child of '{parent_tag}'. "
+                f"Valid children: {', '.join(sorted(valid_children))}"
+            )
 
     def check(self, bag: Bag, parent_tag: str | None = None, path: str = "") -> list[str]:
         """Check the Bag structure against this builder's rules.
@@ -399,3 +432,25 @@ class BagBuilderBase(ABC):
                 )
 
         return errors
+
+    def compile(self, format: str = "xml") -> str:
+        """Compile the bag to output format.
+
+        Override in subclasses for custom output formats (HTML, SEPA XML, etc.).
+
+        Args:
+            format: Output format. Default supports 'xml' and 'json'.
+
+        Returns:
+            String representation in the requested format.
+
+        Raises:
+            ValueError: If format is not supported.
+        """
+        if format == "xml":
+            result = self.bag.to_xml()
+            return result if result is not None else ""
+        elif format == "json":
+            return self.bag.to_json()
+        else:
+            raise ValueError(f"Unknown format: {format}")

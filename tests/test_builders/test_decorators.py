@@ -6,7 +6,7 @@ from decimal import Decimal
 from typing import Annotated, Literal
 
 from genro_bag import Bag, BagBuilderBase
-from genro_bag.builders.decorators import element
+from genro_bag.builders import element
 from genro_bag.builders.validations import (
     annotation_to_attr_spec,
     extract_attrs_from_signature,
@@ -170,39 +170,70 @@ class TestElementDecorator:
     """Tests for @element decorator."""
 
     def test_single_tag(self):
-        """Registers method for single tag."""
+        """Element with no tags uses method name as tag."""
         class Builder(BagBuilderBase):
             @element()
             def item(self, target, tag, **attr):
                 return self.child(target, tag, **attr)
 
-        assert 'item' in Builder._element_tags
-        assert Builder._element_tags['item'] == 'item'
+        bag = Bag(builder=Builder)
+        bag.item()
+        assert bag.get_node('item_0').tag == 'item'
 
     def test_multiple_tags(self):
-        """Registers method for multiple tags."""
+        """Element can handle multiple tags."""
         class Builder(BagBuilderBase):
             @element(tags='apple, banana, cherry')
             def fruit(self, target, tag, **attr):
                 return self.child(target, tag, **attr)
 
-        assert 'apple' in Builder._element_tags
-        assert 'banana' in Builder._element_tags
-        assert 'cherry' in Builder._element_tags
-        assert Builder._element_tags['apple'] == 'fruit'
+        bag = Bag(builder=Builder)
+        bag.apple()
+        bag.banana()
+        bag.cherry()
 
-    def test_children_spec(self):
-        """Stores children validation spec."""
+        assert bag.get_node('apple_0').tag == 'apple'
+        assert bag.get_node('banana_0').tag == 'banana'
+        assert bag.get_node('cherry_0').tag == 'cherry'
+
+    def test_children_spec_validation(self):
+        """Children spec is validated via check()."""
         class Builder(BagBuilderBase):
             @element(children='item[1:], header[:1]')
             def container(self, target, tag, **attr):
                 return self.child(target, tag, **attr)
 
-        method = Builder.container
-        assert 'item' in method._valid_children
-        assert 'header' in method._valid_children
-        assert method._child_cardinality['item'] == (1, None)
-        assert method._child_cardinality['header'] == (0, 1)
+            @element()
+            def item(self, target, tag, **attr):
+                return self.child(target, tag, value='', **attr)
+
+            @element()
+            def header(self, target, tag, **attr):
+                return self.child(target, tag, value='', **attr)
+
+        bag = Bag(builder=Builder)
+        container = bag.container()
+
+        # Empty container - missing required item
+        errors = bag.builder.check(container, parent_tag='container')
+        assert len(errors) == 1
+        assert 'requires at least 1' in errors[0]
+
+        # Add required item
+        container.item()
+        errors = bag.builder.check(container, parent_tag='container')
+        assert errors == []
+
+        # Add optional header (max 1)
+        container.header()
+        errors = bag.builder.check(container, parent_tag='container')
+        assert errors == []
+
+        # Add second header (exceeds max)
+        container.header()
+        errors = bag.builder.check(container, parent_tag='container')
+        assert len(errors) == 1
+        assert 'allows at most 1' in errors[0]
 
     def test_attr_validation_from_signature(self):
         """Validates attributes from type hints."""
@@ -212,7 +243,7 @@ class TestElementDecorator:
                    scope: Literal['row', 'col'] | None = None, **attr):
                 return self.child(target, tag, colspan=colspan, scope=scope, **attr)
 
-        bag = Bag(builder=Builder())
+        bag = Bag(builder=Builder)
 
         # Valid call
         bag.td(colspan=2, scope='row')
@@ -220,17 +251,6 @@ class TestElementDecorator:
         # Invalid scope should raise
         with pytest.raises(ValueError, match='must be one of'):
             bag.td(scope='invalid')
-
-    def test_validate_false_skips_validation(self):
-        """validate=False disables attribute validation."""
-        class Builder(BagBuilderBase):
-            @element(validate=False)
-            def td(self, target, tag, colspan: int = 1, **attr):
-                return self.child(target, tag, **attr)
-
-        bag = Bag(builder=Builder())
-        # This should not raise even with invalid type
-        bag.td(colspan='not-an-int')
 
 
 class TestElementDecoratorIntegration:
@@ -243,7 +263,7 @@ class TestElementDecoratorIntegration:
             def item(self, target, tag, **attr):
                 return self.child(target, tag, value='', **attr)
 
-        bag = Bag(builder=Builder())
+        bag = Bag(builder=Builder)
         node = bag.item(name='test')
 
         assert node.value == ''
@@ -256,7 +276,7 @@ class TestElementDecoratorIntegration:
             def container(self, target, tag, **attr):
                 return self.child(target, tag, **attr)
 
-        bag = Bag(builder=Builder())
+        bag = Bag(builder=Builder)
         container = bag.container()
 
         assert isinstance(container, Bag)
@@ -275,7 +295,7 @@ class TestAnnotatedValidation:
             def contact(self, target, tag, email: Email = None, **attr):
                 return self.child(target, tag, value='', email=email, **attr)
 
-        bag = Bag(builder=Builder())
+        bag = Bag(builder=Builder)
         bag.contact(email='test@example.com')
 
     def test_pattern_invalid(self):
@@ -287,7 +307,7 @@ class TestAnnotatedValidation:
             def contact(self, target, tag, email: Email = None, **attr):
                 return self.child(target, tag, value='', email=email, **attr)
 
-        bag = Bag(builder=Builder())
+        bag = Bag(builder=Builder)
         with pytest.raises(ValueError, match='must match pattern'):
             bag.contact(email='not-an-email')
 
@@ -300,7 +320,7 @@ class TestAnnotatedValidation:
             def item(self, target, tag, peso: Peso = None, **attr):
                 return self.child(target, tag, value='', peso=peso, **attr)
 
-        bag = Bag(builder=Builder())
+        bag = Bag(builder=Builder)
         bag.item(peso=5)
 
     def test_min_invalid(self):
@@ -312,7 +332,7 @@ class TestAnnotatedValidation:
             def item(self, target, tag, peso: Peso = None, **attr):
                 return self.child(target, tag, value='', peso=peso, **attr)
 
-        bag = Bag(builder=Builder())
+        bag = Bag(builder=Builder)
         with pytest.raises(ValueError, match='must be >= 1'):
             bag.item(peso=0)
 
@@ -325,7 +345,7 @@ class TestAnnotatedValidation:
             def item(self, target, tag, peso: Peso = None, **attr):
                 return self.child(target, tag, value='', peso=peso, **attr)
 
-        bag = Bag(builder=Builder())
+        bag = Bag(builder=Builder)
         with pytest.raises(ValueError, match='must be <= 13'):
             bag.item(peso=20)
 
@@ -338,7 +358,7 @@ class TestAnnotatedValidation:
             def item(self, target, tag, code: Code = None, **attr):
                 return self.child(target, tag, value='', code=code, **attr)
 
-        bag = Bag(builder=Builder())
+        bag = Bag(builder=Builder)
         bag.item(code='ABC123')
 
     def test_min_length_invalid(self):
@@ -350,7 +370,7 @@ class TestAnnotatedValidation:
             def item(self, target, tag, code: Code = None, **attr):
                 return self.child(target, tag, value='', code=code, **attr)
 
-        bag = Bag(builder=Builder())
+        bag = Bag(builder=Builder)
         with pytest.raises(ValueError, match='at least 3 characters'):
             bag.item(code='AB')
 
@@ -363,7 +383,7 @@ class TestAnnotatedValidation:
             def item(self, target, tag, code: Code = None, **attr):
                 return self.child(target, tag, value='', code=code, **attr)
 
-        bag = Bag(builder=Builder())
+        bag = Bag(builder=Builder)
         with pytest.raises(ValueError, match='at most 10 characters'):
             bag.item(code='ABCDEFGHIJK')
 
@@ -376,7 +396,7 @@ class TestAnnotatedValidation:
             def payment(self, target, tag, amount: Amount = None, **attr):
                 return self.child(target, tag, value='', amount=amount, **attr)
 
-        bag = Bag(builder=Builder())
+        bag = Bag(builder=Builder)
         bag.payment(amount=Decimal('500.50'))
 
         with pytest.raises(ValueError, match='must be >= 0'):

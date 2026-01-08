@@ -46,7 +46,7 @@ class BagQuery:
         Note:
             Replaces iterkeys() from Python 2 - use keys(iter=True) instead.
         """
-        return self._nodes.keys(iter=iter)
+        return self._nodes.keys(iter=iter)  # type: ignore[no-any-return]
 
     def values(self, iter: bool = False) -> list[Any] | Iterator[Any]:
         """Return node values in order.
@@ -57,7 +57,7 @@ class BagQuery:
         Note:
             Replaces itervalues() from Python 2 - use values(iter=True) instead.
         """
-        return self._nodes.values(iter=iter)
+        return self._nodes.values(iter=iter)  # type: ignore[no-any-return]
 
     def items(self, iter: bool = False) -> list[tuple[str, Any]] | Iterator[tuple[str, Any]]:
         """Return (label, value) tuples in order.
@@ -68,7 +68,7 @@ class BagQuery:
         Note:
             Replaces iteritems() from Python 2 - use items(iter=True) instead.
         """
-        return self._nodes.items(iter=iter)
+        return self._nodes.items(iter=iter)  # type: ignore[no-any-return]
 
     def get_nodes(self, condition: Callable[[BagNode], bool] | None = None) -> list[BagNode]:
         """Get the actual list of nodes contained in the Bag.
@@ -109,14 +109,14 @@ class BagQuery:
         sub_bags = []
         for node in self._nodes:
             if node.has_attr(attr, value):
-                return node
+                return node  # type: ignore[no-any-return]
             if isinstance(node.value, Bag):
                 sub_bags.append(node)
 
         for node in sub_bags:
             found = node.value.get_node_by_attr(attr, value)
             if found:
-                return found
+                return found  # type: ignore[no-any-return]
 
         return None
 
@@ -136,7 +136,7 @@ class BagQuery:
         for node in self._nodes:
             node_value = node.value
             if node_value and node_value[key] == value:
-                return node
+                return node  # type: ignore[no-any-return]
         return None
 
     def is_empty(self, zero_is_none: bool = False, blank_is_none: bool = False) -> bool:
@@ -242,7 +242,7 @@ class BagQuery:
                 if isinstance(node.value, Bag):
                     yield from _walk_gen(node.value, path)
 
-        return _walk_gen(self, "")
+        return _walk_gen(self, "")  # type: ignore[arg-type]
 
     def query(
         self,
@@ -307,7 +307,7 @@ class BagQuery:
         if isinstance(what, str):
             if ":" in what:
                 where, what = what.split(":")
-                obj = self[where]
+                obj = self[where]  # type: ignore[index]
             else:
                 obj = self
             whatsplit = [x.strip() for x in what.split(",")]
@@ -403,12 +403,14 @@ class BagQuery:
         result = self.query(what, condition, iter=False, deep=False)
         if as_columns:
             if not result:
-                whatsplit = [x.strip() for x in (what or "#k,#v,#a").split(",")]
+                what_str = what if isinstance(what, str) else "#k,#v,#a"
+                whatsplit = [x.strip() for x in what_str.split(",")]
                 return [[] for _ in whatsplit]
-            if isinstance(result[0], tuple):
-                return [list(col) for col in zip(*result, strict=False)]
-            return [result]
-        return result
+            result_list = list(result)  # type: ignore[arg-type]
+            if result_list and isinstance(result_list[0], tuple):
+                return [list(col) for col in zip(*result_list, strict=False)]
+            return [result_list]
+        return list(result)  # type: ignore[arg-type]
 
     def columns(self, cols: str | list, attr_mode: bool = False) -> list:
         """Return digest result as columns.

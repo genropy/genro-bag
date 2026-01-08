@@ -55,16 +55,18 @@ class XsdBuilder(BagBuilderBase):
     Parses an XSD file and populates _schema for BagBuilderBase validation.
     """
 
-    def __init__(self, xsd_source: str | Path):
+    def __init__(self, bag: Bag, xsd_source: str | Path):
         """Initialize builder from XSD file path or URL."""
-        from genro_bag import Bag
+        from genro_bag import Bag as BagClass
+
+        super().__init__(bag)
 
         source = str(xsd_source)
         if source.startswith(("http://", "https://")):
-            self._xsd_bag = Bag.from_url(source)
+            self._xsd_bag = BagClass.from_url(source)
         else:
             xsd_content = Path(source).read_text()
-            self._xsd_bag = Bag.from_xml(xsd_content)
+            self._xsd_bag = BagClass.from_xml(xsd_content)
 
         self._types: dict[str, dict] = {}
         self._schema: dict[str, dict] = {}
@@ -105,7 +107,7 @@ class XsdBuilder(BagBuilderBase):
         for node in self._xsd_bag:
             base = self._get_base_tag(node.label)
             if base == "schema":
-                return node
+                return node  # type: ignore[no-any-return]
         return None
 
     def _get_base_tag(self, label: str) -> str:

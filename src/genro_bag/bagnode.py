@@ -131,9 +131,9 @@ class BagNode:
                 and (self._attr == other._attr)
             ):
                 if self._resolver is None:
-                    return self._value == other._value
+                    return self._value == other._value  # type: ignore[no-any-return]
                 else:
-                    return self._resolver == other._resolver
+                    return self._resolver == other._resolver  # type: ignore[no-any-return]
             return False
         except Exception:
             return False
@@ -399,8 +399,9 @@ class BagNode:
                     subscriber(node=self, info=upd_attrs, evt="upd_attrs")
 
             if self._parent_bag is not None and self._parent_bag.backref:
+                reason = str(trigger) if trigger is True else trigger
                 self._parent_bag._on_node_changed(
-                    self, [self.label], evt="upd_attrs", reason=trigger
+                    self, [self.label], evt="upd_attrs", reason=reason
                 )
 
     def del_attr(self, *attrs_to_delete: str) -> None:
@@ -431,7 +432,7 @@ class BagNode:
         if label not in self._attr:
             return False
         if value is not None:
-            return self._attr[label] == value
+            return self._attr[label] == value  # type: ignore[no-any-return]
         return True
 
     # -------------------------------------------------------------------------
@@ -822,7 +823,7 @@ class BagNodeContainer:
             self._list.insert(idx, node)
             if do_trigger and parent_bag is not None and parent_bag.backref:
                 parent_bag._on_node_inserted(node, idx, reason=_reason)
-        return node
+        return node  # type: ignore[no-any-return]
 
     def pop(self, key: str | int) -> Any:
         """Remove and return item.

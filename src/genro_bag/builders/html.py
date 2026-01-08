@@ -84,7 +84,7 @@ class HtmlBuilder(BagBuilderBase):
     from W3C Validator RELAX NG schema files.
 
     Usage:
-        >>> bag = Bag(builder=HtmlBuilder())
+        >>> bag = Bag(builder=HtmlBuilder)
         >>> bag.div(id='main').p(value='Hello')
         >>> bag.ul().li(value='Item 1')
 
@@ -93,19 +93,20 @@ class HtmlBuilder(BagBuilderBase):
         ALL_TAGS: Set of all valid HTML5 element names.
     """
 
-    def __init__(self):
+    def __init__(self, bag: Bag):
         """Initialize HtmlBuilder with W3C HTML5 schema."""
+        super().__init__(bag)
         self._schema_data = _load_html5_schema()
 
     @property
     def VOID_ELEMENTS(self) -> frozenset[str]:
         """Void elements (self-closing, no content)."""
-        return self._schema_data["void_elements"]
+        return self._schema_data["void_elements"]  # type: ignore[no-any-return]
 
     @property
     def ALL_TAGS(self) -> frozenset[str]:
         """All valid HTML5 element names."""
-        return self._schema_data["elements"]
+        return self._schema_data["elements"]  # type: ignore[no-any-return]
 
     def __getattr__(self, name: str) -> Callable[..., Bag | BagNode]:
         """Dynamic method for any HTML tag.
@@ -144,51 +145,24 @@ class HtmlBuilder(BagBuilderBase):
 
         return tag_method
 
+    def compile(self, destination: str | Path | None = None) -> str:
+        """Compile the bag to HTML.
 
-class HtmlHeadBuilder(HtmlBuilder):
-    """Builder for HTML head section.
+        Args:
+            destination: If provided, write HTML to this file path.
 
-    Allows all HTML tags but semantically intended for head content
-    (meta, title, link, style, script, etc.)
-    """
+        Returns:
+            HTML string representation.
+        """
+        lines = []
+        for node in self.bag:
+            lines.append(self._node_to_html(node, indent=0))
+        html = "\n".join(lines)
 
-    pass
+        if destination:
+            Path(destination).write_text(html)
 
-
-class HtmlBodyBuilder(HtmlBuilder):
-    """Builder for HTML body section.
-
-    Allows all HTML tags for body content generation.
-    """
-
-    pass
-
-
-class HtmlPage:
-    """HTML page with separate head and body Bags.
-
-    Creates a complete HTML document structure with:
-    - html root Bag
-    - head Bag with HtmlHeadBuilder (metadata only)
-    - body Bag with HtmlBodyBuilder (flow content)
-
-    Usage:
-        >>> page = HtmlPage()
-        >>> page.head.title(value='My Page')
-        >>> page.head.meta(charset='utf-8')
-        >>> page.body.div(id='main').p(value='Hello World')
-        >>> html = page.to_html()
-    """
-
-    def __init__(self):
-        """Initialize the page with head and body."""
-        from ..bag import Bag
-
-        self.html = Bag()
-        self.head = Bag(builder=HtmlHeadBuilder())
-        self.body = Bag(builder=HtmlBodyBuilder())
-        self.html.set_item("head", self.head)
-        self.html.set_item("body", self.body)
+        return html
 
     def _node_to_html(self, node: BagNode, indent: int = 0) -> str:
         """Recursively convert a node to HTML."""
@@ -212,71 +186,3 @@ class HtmlPage:
             lines.append(self._node_to_html(child, indent + 1))
         lines.append(f"{spaces}</{tag}>")
         return "\n".join(lines)
-
-    def _store_to_html(self, bag: Bag, tag: str, indent: int = 0) -> str:
-        """Convert a Bag to HTML with a wrapper tag."""
-        spaces = "  " * indent
-        lines = [f"{spaces}<{tag}>"]
-        for node in bag:
-            lines.append(self._node_to_html(node, indent + 1))
-        lines.append(f"{spaces}</{tag}>")
-        return "\n".join(lines)
-
-    def to_html(self, filename: str | None = None, output_dir: str | None = None) -> str:
-        """Generate complete HTML.
-
-        Args:
-            filename: If provided, save to output_dir/filename
-            output_dir: Directory to save to (default: current directory)
-
-        Returns:
-            HTML string, or path if filename was provided
-        """
-        html_lines = [
-            "<!DOCTYPE html>",
-            "<html>",
-            self._store_to_html(self.head, "head", indent=0),
-            self._store_to_html(self.body, "body", indent=0),
-            "</html>",
-        ]
-        html_content = "\n".join(html_lines)
-
-        if filename:
-            output_dir = Path.cwd() if output_dir is None else Path(output_dir)
-            output_dir.mkdir(exist_ok=True)
-            output_path = output_dir / filename
-            output_path.write_text(html_content)
-            return str(output_path)
-
-        return html_content
-
-    def print_tree(self):
-        """Print the tree structure for debugging."""
-        from ..bag import Bag
-
-        print("=" * 60)
-        print("HEAD")
-        print("=" * 60)
-        for path, node in self.head.walk():
-            indent_level = "  " * path.count(".")
-            tag = node.tag or node.label
-            value_str = ""
-            node_value = node.get_value(static=True)
-            if not isinstance(node_value, Bag) and node_value:
-                val = str(node_value)
-                value_str = f': "{val[:30]}..."' if len(val) > 30 else f': "{val}"'
-            print(f"{indent_level}<{tag}>{value_str}")
-
-        print("\n" + "=" * 60)
-        print("BODY")
-        print("=" * 60)
-        for path, node in self.body.walk():
-            indent_level = "  " * path.count(".")
-            tag = node.tag or node.label
-            node_value = node.get_value(static=True)
-            value_str = (
-                f': "{node_value}"' if not isinstance(node_value, Bag) and node_value else ""
-            )
-            attrs = " ".join(f'{k}="{v}"' for k, v in node.attr.items() if not k.startswith("_"))
-            attrs_str = f" [{attrs}]" if attrs else ""
-            print(f"{indent_level}<{tag}{attrs_str}>{value_str}")

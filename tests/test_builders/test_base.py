@@ -4,7 +4,7 @@
 import pytest
 
 from genro_bag import Bag, BagBuilderBase
-from genro_bag.builders.decorators import element
+from genro_bag.builders import element
 
 
 class SimpleBuilder(BagBuilderBase):
@@ -27,10 +27,9 @@ class TestBagBuilderBase:
     """Tests for BagBuilderBase functionality."""
 
     def test_bag_with_builder(self):
-        """Bag can be created with a builder."""
-        builder = SimpleBuilder()
-        bag = Bag(builder=builder)
-        assert bag.builder is builder
+        """Bag can be created with a builder class."""
+        bag = Bag(builder=SimpleBuilder)
+        assert isinstance(bag.builder, SimpleBuilder)
 
     def test_bag_without_builder(self):
         """Bag without builder works normally."""
@@ -41,7 +40,7 @@ class TestBagBuilderBase:
 
     def test_builder_creates_leaf_node(self):
         """Builder creates leaf nodes with tag."""
-        bag = Bag(builder=SimpleBuilder())
+        bag = Bag(builder=SimpleBuilder)
         node = bag.item(name='test')
 
         assert node.tag == 'item'
@@ -51,7 +50,7 @@ class TestBagBuilderBase:
 
     def test_builder_creates_branch_node(self):
         """Builder creates branch nodes (returns Bag)."""
-        bag = Bag(builder=SimpleBuilder())
+        bag = Bag(builder=SimpleBuilder)
         container = bag.container()
 
         assert isinstance(container, Bag)
@@ -61,14 +60,14 @@ class TestBagBuilderBase:
 
     def test_builder_inheritance(self):
         """Child bags inherit builder from parent."""
-        bag = Bag(builder=SimpleBuilder())
+        bag = Bag(builder=SimpleBuilder)
         container = bag.container()
 
         assert container.builder is bag.builder
 
     def test_builder_auto_label_generation(self):
         """Builder auto-generates unique labels."""
-        bag = Bag(builder=SimpleBuilder())
+        bag = Bag(builder=SimpleBuilder)
         bag.item()
         bag.item()
         bag.item()
@@ -78,7 +77,7 @@ class TestBagBuilderBase:
 
     def test_builder_multi_tag_method(self):
         """Single method handles multiple tags."""
-        bag = Bag(builder=SimpleBuilder())
+        bag = Bag(builder=SimpleBuilder)
         bag.item()
         bag.product()
 
@@ -90,7 +89,7 @@ class TestBagBuilderBase:
 
     def test_builder_fluent_api(self):
         """Builder enables fluent API."""
-        bag = Bag(builder=SimpleBuilder())
+        bag = Bag(builder=SimpleBuilder)
         container = bag.container()
         container.item(name='first')
         container.item(name='second')
@@ -100,7 +99,7 @@ class TestBagBuilderBase:
 
     def test_builder_check_valid_structure(self):
         """check() returns empty list for valid structure."""
-        bag = Bag(builder=SimpleBuilder())
+        bag = Bag(builder=SimpleBuilder)
         container = bag.container()
         container.item()
         container.item()
@@ -111,7 +110,7 @@ class TestBagBuilderBase:
 
     def test_builder_check_missing_required_children(self):
         """check() reports missing required children."""
-        bag = Bag(builder=SimpleBuilder())
+        bag = Bag(builder=SimpleBuilder)
         container = bag.container()
         # No items added - container requires at least 1 item
 
@@ -132,7 +131,7 @@ class TestBuilderSchema:
                 'p': {'leaf': True},
             }
 
-        bag = Bag(builder=SchemaBuilder())
+        bag = Bag(builder=SchemaBuilder)
         div = bag.div()
         div.span()
         div.p()
@@ -147,7 +146,7 @@ class TestBuilderSchema:
                 'br': {'leaf': True},
             }
 
-        bag = Bag(builder=SchemaBuilder())
+        bag = Bag(builder=SchemaBuilder)
         node = bag.br()
 
         assert node.value == ''
@@ -155,10 +154,10 @@ class TestBuilderSchema:
 
 
 class TestBuilderValidation:
-    """Tests for attribute validation."""
+    """Tests for attribute validation via public API."""
 
-    def test_validate_attrs_type_int(self):
-        """Validates integer attributes."""
+    def test_schema_validates_int_range(self):
+        """Schema validates int min/max when element is called."""
         class ValidatingBuilder(BagBuilderBase):
             _schema = {
                 'td': {
@@ -168,24 +167,21 @@ class TestBuilderValidation:
                 }
             }
 
-        builder = ValidatingBuilder()
+        bag = Bag(builder=ValidatingBuilder)
 
         # Valid
-        errors = builder._validate_attrs('td', {'colspan': 5}, raise_on_error=False)
-        assert errors == []
+        bag.td(colspan=5)
 
         # Too small
-        errors = builder._validate_attrs('td', {'colspan': 0}, raise_on_error=False)
-        assert len(errors) == 1
-        assert 'must be >= 1' in errors[0]
+        with pytest.raises(ValueError, match='must be >= 1'):
+            bag.td(colspan=0)
 
         # Too large
-        errors = builder._validate_attrs('td', {'colspan': 20}, raise_on_error=False)
-        assert len(errors) == 1
-        assert 'must be <= 10' in errors[0]
+        with pytest.raises(ValueError, match='must be <= 10'):
+            bag.td(colspan=20)
 
-    def test_validate_attrs_type_enum(self):
-        """Validates enum attributes."""
+    def test_schema_validates_enum_values(self):
+        """Schema validates enum values when element is called."""
         class ValidatingBuilder(BagBuilderBase):
             _schema = {
                 'td': {
@@ -195,19 +191,17 @@ class TestBuilderValidation:
                 }
             }
 
-        builder = ValidatingBuilder()
+        bag = Bag(builder=ValidatingBuilder)
 
         # Valid
-        errors = builder._validate_attrs('td', {'scope': 'row'}, raise_on_error=False)
-        assert errors == []
+        bag.td(scope='row')
 
         # Invalid
-        errors = builder._validate_attrs('td', {'scope': 'invalid'}, raise_on_error=False)
-        assert len(errors) == 1
-        assert 'must be one of' in errors[0]
+        with pytest.raises(ValueError, match='must be one of'):
+            bag.td(scope='invalid')
 
-    def test_validate_attrs_required(self):
-        """Validates required attributes."""
+    def test_schema_validates_required_attrs(self):
+        """Schema validates required attrs when element is called."""
         class ValidatingBuilder(BagBuilderBase):
             _schema = {
                 'img': {
@@ -217,12 +211,11 @@ class TestBuilderValidation:
                 }
             }
 
-        builder = ValidatingBuilder()
+        bag = Bag(builder=ValidatingBuilder)
 
         # Missing required
-        errors = builder._validate_attrs('img', {}, raise_on_error=False)
-        assert len(errors) == 1
-        assert 'is required' in errors[0]
+        with pytest.raises(ValueError, match='is required'):
+            bag.img()
 
 
 class TestSchemaValidation:
@@ -240,7 +233,7 @@ class TestSchemaValidation:
                 }
             }
 
-        bag = Bag(builder=SchemaBuilder())
+        bag = Bag(builder=SchemaBuilder)
 
         # Valid call
         bag.td(colspan=5, scope='row')
@@ -265,7 +258,7 @@ class TestSchemaValidation:
                 }
             }
 
-        bag = Bag(builder=SchemaBuilder())
+        bag = Bag(builder=SchemaBuilder)
 
         # Valid
         bag.email(address='test@example.com')
@@ -286,7 +279,7 @@ class TestSchemaValidation:
                 }
             }
 
-        bag = Bag(builder=SchemaBuilder())
+        bag = Bag(builder=SchemaBuilder)
 
         # Valid
         bag.code(code='ABC123')
@@ -301,43 +294,46 @@ class TestSchemaValidation:
 
 
 class TestBuilderReferences:
-    """Tests for =reference resolution."""
+    """Tests for =reference resolution via public API."""
 
-    def test_resolve_simple_ref(self):
-        """Resolves simple =ref references."""
+    def test_ref_in_children_spec(self):
+        """References in children spec are resolved correctly."""
         class RefBuilder(BagBuilderBase):
             @property
             def _ref_items(self):
-                return 'apple, banana, cherry'
+                return 'apple, banana'
 
             _schema = {
                 'menu': {'children': '=items'},
+                'apple': {'leaf': True},
+                'banana': {'leaf': True},
             }
 
-        builder = RefBuilder()
-        resolved = builder._resolve_ref('=items')
-        assert resolved == 'apple, banana, cherry'
+        bag = Bag(builder=RefBuilder)
+        menu = bag.menu()
+        # These should work because =items resolves to 'apple, banana'
+        menu.apple()
+        menu.banana()
 
-    def test_resolve_mixed_ref(self):
-        """Resolves mixed refs and literals."""
+        # Verify structure
+        assert len(menu) == 2
+
+    def test_ref_with_invalid_child_raises(self):
+        """Invalid child under referenced parent raises error."""
         class RefBuilder(BagBuilderBase):
             @property
-            def _ref_fruits(self):
+            def _ref_items(self):
                 return 'apple, banana'
 
-            _schema = {}
+            _schema = {
+                'menu': {'children': '=items'},
+                'apple': {'leaf': True},
+                'banana': {'leaf': True},
+                'cherry': {'leaf': True},
+            }
 
-        builder = RefBuilder()
-        resolved = builder._resolve_ref('=fruits, vegetable')
-        assert 'apple' in resolved
-        assert 'banana' in resolved
-        assert 'vegetable' in resolved
-
-    def test_resolve_ref_not_found(self):
-        """Raises error for unknown reference."""
-        class RefBuilder(BagBuilderBase):
-            _schema = {}
-
-        builder = RefBuilder()
-        with pytest.raises(ValueError, match='Reference.*not found'):
-            builder._resolve_ref('=unknown')
+        bag = Bag(builder=RefBuilder)
+        menu = bag.menu()
+        # cherry is not in =items, should raise ValueError
+        with pytest.raises(ValueError, match="'cherry' is not a valid child"):
+            menu.cherry()
