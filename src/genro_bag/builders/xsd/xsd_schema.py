@@ -43,7 +43,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from genro_bag.builders.base import BagBuilderBase
+from genro_bag.builders.base_builder import BagBuilderBase
 
 if TYPE_CHECKING:
     from genro_bag import Bag, BagNode

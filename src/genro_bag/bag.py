@@ -386,8 +386,9 @@ class Bag(BagParser, BagSerializer, BagQuery):
                 handler = getattr(self._builder, name)
 
                 # Return callable bound to this Bag
-                # Use _tag, _label to avoid clash with HTML attributes like target='_blank'
-                return lambda _label=None, **attr: handler(self, _tag=name, _label=_label, **attr)
+                # value is first positional arg, node_label for Bag label (not HTML)
+                # Merge value and node_label into attr to emulate original call
+                return lambda value=None, node_label=None, **attr: handler(self, _tag=name, **{**attr, 'value': value, 'node_label': node_label})
             except AttributeError:
                 pass
 

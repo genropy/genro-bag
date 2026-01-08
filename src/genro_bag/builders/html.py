@@ -27,7 +27,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from .base import BagBuilderBase
+from .base_builder import BagBuilderBase
 
 if TYPE_CHECKING:
     from ..bag import Bag
