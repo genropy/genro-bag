@@ -32,7 +32,7 @@ def demo():
     payer = BankAccount(
         'Acme Corporation S.r.l.',
         'IT60X0542811101000000123456',
-        'BABOROMA1XXX',
+        'BABOROMAXXX',
         'IT',
         'Via Roma 123, 00100 Roma'
     )

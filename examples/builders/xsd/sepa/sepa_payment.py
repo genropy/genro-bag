@@ -15,7 +15,13 @@ from genro_bag import Bag
 from genro_bag.builders import XsdBuilder
 
 
-XSD_PATH = Path(__file__).parent / "pain.001.001.12.xsd"
+class SepaBuilder(XsdBuilder):
+    """Builder for SEPA Credit Transfer (pain.001.001.12)."""
+
+    XSD_PATH = Path(__file__).parent / "pain.001.001.12.xsd"
+
+    def __init__(self, bag):
+        super().__init__(bag, self.XSD_PATH)
 
 
 @dataclass
@@ -55,10 +61,9 @@ class SepaPayment:
         self.debtor = debtor
         self.message_id = message_id
         self.execution_date = execution_date
-        self.builder = XsdBuilder(XSD_PATH)
 
         # Create document structure
-        self.bag = Bag(builder=self.builder)
+        self.bag = Bag(builder=SepaBuilder)
         root = self.bag.Document().CstmrCdtTrfInitn()
 
         self.header = root.GrpHdr()
