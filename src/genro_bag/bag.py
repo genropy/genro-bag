@@ -386,9 +386,12 @@ class Bag(BagParser, BagSerializer, BagQuery):
                 handler = getattr(self._builder, name)
 
                 # Return callable bound to this Bag
-                # value is first positional arg, node_label for Bag label (not HTML)
-                # Merge value and node_label into attr to emulate original call
-                return lambda value=None, node_label=None, **attr: handler(self, _tag=name, **{**attr, 'value': value, 'node_label': node_label})
+                # API: bag.foo('John') -> value='John', node_label=auto, tag='foo'
+                #      bag.foo('John', node_label='x') -> explicit label
+                #      bag.foo('John', node_position='<first') -> insertion position
+                return lambda value=None, node_label=None, node_position=None, **attr: handler(
+                    self, _tag=name, value=value, node_label=node_label, node_position=node_position, **attr
+                )
             except AttributeError:
                 pass
 

@@ -136,22 +136,28 @@ class TestBagBuilderBase:
 
 
 # =============================================================================
-# Tests for _schema-based builders
+# Tests for element decorator with children validation
 # =============================================================================
 
-class TestBuilderSchema:
-    """Tests for _schema-based builders."""
+class TestBuilderChildrenValidation:
+    """Tests for children validation via @element decorator."""
 
-    def test_schema_based_element(self):
-        """Schema dict defines elements."""
-        class SchemaBuilder(BagBuilderBase):
-            _schema = {
-                'div': {'children': 'span, p'},
-                'span': {'leaf': True},
-                'p': {'leaf': True},
-            }
+    def test_element_with_children_spec(self):
+        """@element children spec defines valid children."""
+        class ContainerBuilder(BagBuilderBase):
+            @element(children='span, p')
+            def div(self, target, tag, **attr):
+                return self.child(target, tag, **attr)
 
-        bag = Bag(builder=SchemaBuilder)
+            @element()
+            def span(self, target, tag, value='', **attr):
+                return self.child(target, tag, value=value, **attr)
+
+            @element()
+            def p(self, target, tag, value='', **attr):
+                return self.child(target, tag, value=value, **attr)
+
+        bag = Bag(builder=ContainerBuilder)
         div = bag.div()
         div.span()
         div.p()
@@ -159,14 +165,14 @@ class TestBuilderSchema:
         assert isinstance(div, Bag)
         assert len(div) == 2
 
-    def test_schema_leaf_element(self):
-        """Schema leaf elements get empty value."""
-        class SchemaBuilder(BagBuilderBase):
-            _schema = {
-                'br': {'leaf': True},
-            }
+    def test_element_leaf_with_default_value(self):
+        """Leaf elements return BagNode with value."""
+        class LeafBuilder(BagBuilderBase):
+            @element()
+            def br(self, target, tag, **attr):
+                return self.child(target, tag, value='', **attr)
 
-        bag = Bag(builder=SchemaBuilder)
+        bag = Bag(builder=LeafBuilder)
         node = bag.br()
 
         assert node.value == ''
@@ -174,22 +180,20 @@ class TestBuilderSchema:
 
 
 # =============================================================================
-# Tests for attribute validation via public API
+# Tests for attribute validation via @element decorator
 # =============================================================================
 
 class TestBuilderValidation:
-    """Tests for attribute validation via public API."""
+    """Tests for attribute validation via @element decorator."""
 
-    def test_schema_validates_int_range(self):
-        """Schema validates int min/max when element is called."""
+    def test_element_validates_int_range(self):
+        """@element validates int min/max via Annotated."""
         class ValidatingBuilder(BagBuilderBase):
-            _schema = {
-                'td': {
-                    'attrs': {
-                        'colspan': {'type': 'int', 'min': 1, 'max': 10},
-                    }
-                }
-            }
+            @element()
+            def td(self, target, tag, colspan: Annotated[int, Min(1), Max(10)] = None, **attr):
+                if colspan is not None:
+                    attr['colspan'] = colspan
+                return self.child(target, tag, value='', **attr)
 
         bag = Bag(builder=ValidatingBuilder)
 
@@ -204,16 +208,14 @@ class TestBuilderValidation:
         with pytest.raises(ValueError, match='must be <= 10'):
             bag.td(colspan=20)
 
-    def test_schema_validates_enum_values(self):
-        """Schema validates enum values when element is called."""
+    def test_element_validates_enum_values(self):
+        """@element validates enum values via Literal."""
         class ValidatingBuilder(BagBuilderBase):
-            _schema = {
-                'td': {
-                    'attrs': {
-                        'scope': {'type': 'enum', 'values': ['row', 'col']},
-                    }
-                }
-            }
+            @element()
+            def td(self, target, tag, scope: Literal['row', 'col'] = None, **attr):
+                if scope is not None:
+                    attr['scope'] = scope
+                return self.child(target, tag, value='', **attr)
 
         bag = Bag(builder=ValidatingBuilder)
 
@@ -224,44 +226,43 @@ class TestBuilderValidation:
         with pytest.raises(ValueError, match='must be one of'):
             bag.td(scope='invalid')
 
-    def test_schema_validates_required_attrs(self):
-        """Schema validates required attrs when element is called."""
+    def test_element_validates_required_attrs(self):
+        """@element validates required attrs (no default value)."""
         class ValidatingBuilder(BagBuilderBase):
-            _schema = {
-                'img': {
-                    'attrs': {
-                        'src': {'type': 'string', 'required': True},
-                    }
-                }
-            }
+            @element()
+            def img(self, target, tag, src: str, **attr):
+                attr['src'] = src
+                return self.child(target, tag, value='', **attr)
 
         bag = Bag(builder=ValidatingBuilder)
 
-        # Missing required
-        with pytest.raises(ValueError, match='is required'):
+        # Missing required - Python itself raises TypeError
+        with pytest.raises(TypeError):
             bag.img()
 
 
 # =============================================================================
-# Tests for validation via _schema in _make_schema_handler
+# Tests for Annotated validation constraints
 # =============================================================================
 
-class TestSchemaValidation:
-    """Tests for validation via _schema in _make_schema_handler."""
+class TestAnnotatedConstraintsValidation:
+    """Tests for validation via Annotated constraints in @element."""
 
-    def test_schema_validates_attrs_on_call(self):
-        """Schema-defined elements validate attrs when called."""
-        class SchemaBuilder(BagBuilderBase):
-            _schema = {
-                'td': {
-                    'attrs': {
-                        'colspan': {'type': 'int', 'min': 1, 'max': 10},
-                        'scope': {'type': 'enum', 'values': ['row', 'col']},
-                    }
-                }
-            }
+    def test_element_validates_multiple_constraints(self):
+        """@element validates multiple constraints on same parameter."""
+        class ConstraintBuilder(BagBuilderBase):
+            @element()
+            def td(self, target, tag,
+                   colspan: Annotated[int, Min(1), Max(10)] = None,
+                   scope: Literal['row', 'col'] = None,
+                   **attr):
+                if colspan is not None:
+                    attr['colspan'] = colspan
+                if scope is not None:
+                    attr['scope'] = scope
+                return self.child(target, tag, value='', **attr)
 
-        bag = Bag(builder=SchemaBuilder)
+        bag = Bag(builder=ConstraintBuilder)
 
         # Valid call
         bag.td(colspan=5, scope='row')
@@ -274,19 +275,18 @@ class TestSchemaValidation:
         with pytest.raises(ValueError, match='must be one of'):
             bag.td(scope='invalid')
 
-    def test_schema_validates_pattern(self):
-        """Schema validates pattern constraint."""
-        class SchemaBuilder(BagBuilderBase):
-            _schema = {
-                'email': {
-                    'leaf': True,
-                    'attrs': {
-                        'address': {'type': 'string', 'pattern': r'^[\w\.-]+@[\w\.-]+\.\w+$'},
-                    }
-                }
-            }
+    def test_element_validates_pattern(self):
+        """@element validates pattern constraint via Annotated."""
+        class PatternBuilder(BagBuilderBase):
+            @element()
+            def email(self, target, tag,
+                      address: Annotated[str, Pattern(r'^[\w\.-]+@[\w\.-]+\.\w+$')] = None,
+                      **attr):
+                if address is not None:
+                    attr['address'] = address
+                return self.child(target, tag, value='', **attr)
 
-        bag = Bag(builder=SchemaBuilder)
+        bag = Bag(builder=PatternBuilder)
 
         # Valid
         bag.email(address='test@example.com')
@@ -295,19 +295,18 @@ class TestSchemaValidation:
         with pytest.raises(ValueError, match='must match pattern'):
             bag.email(address='not-an-email')
 
-    def test_schema_validates_length(self):
-        """Schema validates minLength/maxLength constraints."""
-        class SchemaBuilder(BagBuilderBase):
-            _schema = {
-                'code': {
-                    'leaf': True,
-                    'attrs': {
-                        'code': {'type': 'string', 'minLength': 3, 'maxLength': 10},
-                    }
-                }
-            }
+    def test_element_validates_length(self):
+        """@element validates minLength/maxLength via Annotated."""
+        class LengthBuilder(BagBuilderBase):
+            @element()
+            def code(self, target, tag,
+                     code: Annotated[str, MinLength(3), MaxLength(10)] = None,
+                     **attr):
+                if code is not None:
+                    attr['code'] = code
+                return self.child(target, tag, value='', **attr)
 
-        bag = Bag(builder=SchemaBuilder)
+        bag = Bag(builder=LengthBuilder)
 
         # Valid
         bag.code(code='ABC123')
@@ -322,11 +321,11 @@ class TestSchemaValidation:
 
 
 # =============================================================================
-# Tests for =reference resolution via public API
+# Tests for =reference resolution in children spec
 # =============================================================================
 
 class TestBuilderReferences:
-    """Tests for =reference resolution via public API."""
+    """Tests for =reference resolution in @element children spec."""
 
     def test_ref_in_children_spec(self):
         """References in children spec are resolved correctly."""
@@ -335,11 +334,17 @@ class TestBuilderReferences:
             def _ref_items(self):
                 return 'apple, banana'
 
-            _schema = {
-                'menu': {'children': '=items'},
-                'apple': {'leaf': True},
-                'banana': {'leaf': True},
-            }
+            @element(children='=items')
+            def menu(self, target, tag, **attr):
+                return self.child(target, tag, **attr)
+
+            @element()
+            def apple(self, target, tag, **attr):
+                return self.child(target, tag, value='', **attr)
+
+            @element()
+            def banana(self, target, tag, **attr):
+                return self.child(target, tag, value='', **attr)
 
         bag = Bag(builder=RefBuilder)
         menu = bag.menu()
@@ -357,12 +362,21 @@ class TestBuilderReferences:
             def _ref_items(self):
                 return 'apple, banana'
 
-            _schema = {
-                'menu': {'children': '=items'},
-                'apple': {'leaf': True},
-                'banana': {'leaf': True},
-                'cherry': {'leaf': True},
-            }
+            @element(children='=items')
+            def menu(self, target, tag, **attr):
+                return self.child(target, tag, **attr)
+
+            @element()
+            def apple(self, target, tag, **attr):
+                return self.child(target, tag, value='', **attr)
+
+            @element()
+            def banana(self, target, tag, **attr):
+                return self.child(target, tag, value='', **attr)
+
+            @element()
+            def cherry(self, target, tag, **attr):
+                return self.child(target, tag, value='', **attr)
 
         bag = Bag(builder=RefBuilder)
         menu = bag.menu()

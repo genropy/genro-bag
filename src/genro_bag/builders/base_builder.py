@@ -48,8 +48,10 @@ def element(
 class BagBuilderBase(ABC):
     """Abstract base class for Bag builders.
 
-    A builder provides domain-specific methods for creating nodes
-    in a Bag. There are two ways to define elements:
+    A builder provides domain-specific methods for creating nodes in a Bag.
+    All element definitions are stored in a unified _schema Bag.
+
+    Elements can be defined in two ways:
 
     1. Using @element decorator on methods:
         @element(children='item')
@@ -60,40 +62,75 @@ class BagBuilderBase(ABC):
         def appliance(self, target, tag, **attr):
             return self.child(target, tag, value='', **attr)
 
-    2. Using _schema dict for external/dynamic definitions:
-        class HtmlBuilder(BagBuilderBase):
-            _schema = {
-                'div': {'children': '=flow'},
-                'br': {'leaf': True},
-                'td': {
-                    'children': '=flow',
-                    'attrs': {
-                        'colspan': {'type': 'int', 'min': 1, 'default': 1},
-                        'rowspan': {'type': 'int', 'min': 0, 'default': 1},
-                        'scope': {'type': 'enum', 'values': ['row', 'col']},
-                    }
-                },
-            }
+    2. Building _schema programmatically (e.g., from XSD):
+        _schema = Bag()
+        _schema.set_item('div', children_bag, handler='_el_generic')
+        _schema.set_item('br', None, leaf=True)
 
-    Schema keys:
-        - children: str or set of allowed child tags (supports =ref)
-        - leaf: True if element has no children (value='')
-        - attrs: dict of attribute specs for validation
-
-    The lookup order is: decorated methods first, then _schema.
+    Schema structure (unified for both approaches):
+        _schema is a Bag where each node represents an element:
+        - node.label = element name
+        - node.value = Bag of ordered children (None for leaf/no children spec)
+        - node.attr = {
+            handler: str (method name, e.g. '_el_foo'),
+            children_spec: str (raw spec like 'item, section[:1]'),
+            attrs_spec: dict (attribute validation),
+            leaf: bool (element has no children),
+            attrs: dict (for XSD-style validation)
+          }
 
     Usage:
         >>> bag = Bag(builder=MyBuilder)
-        >>> bag.fridge()  # calls appliance() with tag='fridge'
+        >>> bag.fridge()  # looks up 'fridge' in _schema, calls handler
     """
 
-    _elements: dict[str, dict[str, Any]]
-    _schema: dict[str, dict] = {}
+    _schema: Bag  # type: ignore[assignment]
 
     def __init__(self, bag: Bag) -> None:
         """Initialize builder with its Bag."""
         self.bag = bag
         self.bag.set_backref()
+
+    def __contains__(self, name: str) -> bool:
+        """Check if element exists in schema. Supports 'name in builder'."""
+        schema = getattr(type(self), "_schema", None)
+        if schema is None:
+            return False
+        return schema.node(name) is not None
+
+    def __iter__(self):
+        """Iterate over element names in schema."""
+        schema = getattr(type(self), "_schema", None)
+        if schema is None:
+            return iter([])
+        return (node.label for node in schema)
+
+    def __repr__(self) -> str:
+        """Show builder schema summary."""
+        schema = getattr(type(self), "_schema", None)
+        if schema is None:
+            return f"<{type(self).__name__} (no schema)>"
+        return f"<{type(self).__name__} ({len(schema)} elements)>"
+
+    def __str__(self) -> str:
+        """Show detailed schema structure."""
+        schema = getattr(type(self), "_schema", None)
+        if schema is None:
+            return f"{type(self).__name__}: no schema"
+
+        lines = [f"{type(self).__name__} schema:"]
+        for element in self:
+            node = schema.node(element)
+            children = node.get_value(static=True)
+            is_leaf = node.attr.get("leaf", False)
+            if is_leaf:
+                lines.append(f"  {element} (leaf)")
+            elif children:
+                child_names = ", ".join(n.label for n in children)
+                lines.append(f"  {element} -> [{child_names}]")
+            else:
+                lines.append(f"  {element}")
+        return "\n".join(lines)
 
     def _resolve_ref(self, value: Any) -> Any:
         """Resolve =ref references by looking up _ref_<name> properties.
@@ -147,14 +184,23 @@ class BagBuilderBase(ABC):
         return value
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
-        """Build _elements dict from @element decorated methods."""
+        """Build _schema Bag from @element decorated methods."""
+        from ..bag import Bag as BagClass
+
         super().__init_subclass__(**kwargs)
 
-        # Inherit _elements from base classes
-        cls._elements = {}
+        # Create new _schema, inheriting from base if present
+        cls._schema = BagClass()
         for base in cls.__mro__[1:]:
-            if hasattr(base, "_elements"):
-                cls._elements.update(base._elements)
+            if hasattr(base, "_schema") and base._schema is not None:
+                # Copy nodes from parent schema
+                for node in base._schema:
+                    if cls._schema.node(node.label) is None:
+                        cls._schema.set_item(
+                            node.label,
+                            node.get_value(static=True),
+                            **node.attr
+                        )
                 break
 
         # Process decorated methods
@@ -183,54 +229,58 @@ class BagBuilderBase(ABC):
             # Parse children_spec (raw, will resolve refs at runtime)
             children_raw = decorator_info.get("children_spec", "")
 
-            # Create entry in _elements for each tag
+            # Create entry in _schema for each tag
             for tag in tag_list:
-                cls._elements[tag] = {
-                    "handler": new_name,
-                    "children_spec": children_raw,
-                    "attrs_spec": attrs_spec,
-                }
+                cls._schema.set_item(
+                    tag,
+                    None,  # children_bag populated later if needed
+                    handler=new_name,
+                    children_spec=children_raw,
+                    attrs_spec=attrs_spec,
+                )
 
     def __getattr__(self, name: str) -> Any:
-        """Look up tag in _elements or _schema and return handler with validation."""
+        """Look up tag in _schema and return handler with validation."""
         if name.startswith("_"):
             raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
-        elements = getattr(type(self), "_elements", {})
-        if name in elements:
-            element_info = elements[name]
-            handler_name = element_info["handler"]
-            attrs_spec = element_info.get("attrs_spec")
+        schema = getattr(type(self), "_schema", None)
+        if schema is None:
+            raise AttributeError(f"'{type(self).__name__}' has no element '{name}'")
+
+        schema_node = schema.node(name)
+        if schema_node is None:
+            raise AttributeError(f"'{type(self).__name__}' has no element '{name}'")
+
+        # Check if this element has a handler method (from @element decorator)
+        handler_name = schema_node.attr.get("handler")
+        if handler_name:
+            attrs_spec = schema_node.attr.get("attrs_spec")
             method = getattr(self, handler_name)
 
             if attrs_spec:
-
                 def wrapper(*args: Any, _tag: str = name, **kwargs: Any) -> Any:
                     validate_call_args(kwargs, attrs_spec)
                     kwargs["tag"] = _tag
                     return method(*args, **kwargs)
-
                 return wrapper
             else:
-
                 def simple_wrapper(*args: Any, _tag: str = name, **kwargs: Any) -> Any:
                     kwargs["tag"] = _tag
                     return method(*args, **kwargs)
-
                 return simple_wrapper
 
-        if name in self._schema:
-            return self._create_child(name, self._schema[name])
+        # No handler - create child directly from schema node (XSD-style)
+        return self._create_child_from_node(name, schema_node)
 
-        raise AttributeError(f"'{type(self).__name__}' has no element '{name}'")
-
-    def _create_child(self, tag: str, spec: dict):
-        """Create a child node using schema specification."""
-        is_leaf = spec.get("leaf", False)
-        attrs_spec = spec.get("attrs")
+    def _create_child_from_node(self, tag: str, schema_node: BagNode):
+        """Create a child node using schema BagNode."""
+        is_leaf = schema_node.attr.get("leaf", False)
+        attrs_spec = schema_node.attr.get("attrs")
+        children_bag = schema_node.get_value(static=True)
         builder = self
 
-        def handler(_target, _tag: str = tag, _label: str | None = None, value=None, **attr):
+        def handler(_target, _tag: str = tag, node_label: str | None = None, value=None, **attr):
             if attrs_spec:
                 validate_call_args(attr, attrs_spec)
                 # Validate value content if spec has 'value' key (XSD text content)
@@ -238,14 +288,12 @@ class BagBuilderBase(ABC):
                     validate_call_args({"value": value}, {"value": attrs_spec["value"]})
             if value is None and is_leaf:
                 value = ""
-            return builder.child(_target, _tag, _label=_label, value=value, **attr)
+            return builder.child(_target, _tag, node_label=node_label, value=value, **attr)
 
-        children_spec = spec.get("children")
-        if children_spec is not None:
-            handler._raw_children_spec = children_spec  # type: ignore[attr-defined]
-            valid, cardinality = self._parse_children_spec(children_spec)
+        if children_bag is not None:
+            valid = frozenset(node.label for node in children_bag)
             handler._valid_children = valid  # type: ignore[attr-defined]
-            handler._child_cardinality = cardinality  # type: ignore[attr-defined]
+            handler._child_cardinality = {}  # type: ignore[attr-defined]
         else:
             handler._valid_children = frozenset()  # type: ignore[attr-defined]
             handler._child_cardinality = {}  # type: ignore[attr-defined]
@@ -273,10 +321,10 @@ class BagBuilderBase(ABC):
         self,
         _target: Bag,
         _tag: str,
-        _label: str | None = None,
+        node_label: str | None = None,
         value: Any = None,
-        _position: str | None = None,
-        _builder: BagBuilderBase | None = None,
+        node_position: str | None = None,
+        node_builder: BagBuilderBase | None = None,
         **attr: Any,
     ) -> Bag | BagNode:
         """Create a child node in the target Bag.
@@ -284,18 +332,18 @@ class BagBuilderBase(ABC):
         Args:
             _target: The Bag to add the child to.
             _tag: The node's type (stored in node.tag).
-            _label: Explicit label. If None, auto-generated as tag_N.
+            node_label: Explicit label. If None, auto-generated as tag_N.
             value: If provided, creates a leaf node; otherwise creates a branch.
-            _position: Position specifier (see Bag.set_item for syntax).
-            _builder: Override builder for this branch and its descendants.
+            node_position: Position specifier (see Bag.set_item for syntax).
+            node_builder: Override builder for this branch and its descendants.
             **attr: Node attributes.
 
         Returns:
             Bag if branch (for adding children), BagNode if leaf.
 
         Note:
-            Parameters use underscore prefix (_target, _tag, _label) to avoid
-            clashes with HTML attributes like target='_blank'.
+            _target and _tag use underscore prefix to avoid clashes with
+            HTML attributes like target='_blank'.
         """
         from ..bag import Bag
 
@@ -304,48 +352,53 @@ class BagBuilderBase(ABC):
         if parent_node is not None:
             self._accepts_child(parent_node, _tag)
 
-        if _label is None:
+        if node_label is None:
             n = 0
             while f"{_tag}_{n}" in _target._nodes:
                 n += 1
-            _label = f"{_tag}_{n}"
+            node_label = f"{_tag}_{n}"
 
-        child_builder = _builder if _builder is not None else _target._builder
+        child_builder = node_builder if node_builder is not None else _target._builder
 
         if value is not None:
             # Leaf node
-            node = _target.set_item(_label, value, _position=_position, **attr)
+            node = _target.set_item(node_label, value, _position=node_position, **attr)
             node.tag = _tag
             return node
 
         # Branch node
         child_bag = Bag(builder=child_builder)
-        node = _target.set_item(_label, child_bag, _position=_position, **attr)
+        node = _target.set_item(node_label, child_bag, _position=node_position, **attr)
         node.tag = _tag
         return child_bag
 
     def _get_validation_rules(
         self, tag: str | None
     ) -> tuple[frozenset[str] | None, dict[str, tuple[int, int | None]]]:
-        """Get validation rules for a tag from _elements or _schema."""
+        """Get validation rules for a tag from _schema."""
         if tag is None:
             return None, {}
 
-        elements = getattr(type(self), "_elements", {})
-        if tag in elements:
-            children_spec = elements[tag].get("children_spec")
-            if children_spec:
-                return self._parse_children_spec(children_spec)
-            return frozenset(), {}
+        schema = getattr(type(self), "_schema", None)
+        if schema is None:
+            return None, {}
 
-        if tag in self._schema:
-            spec = self._schema[tag]
-            children_spec = spec.get("children")
-            if children_spec is not None:
-                return self._parse_children_spec(children_spec)
-            return frozenset(), {}
+        schema_node = schema.node(tag)
+        if schema_node is None:
+            return None, {}
 
-        return None, {}
+        # Check for children_spec string (from @element decorator)
+        children_spec = schema_node.attr.get("children_spec")
+        if children_spec:
+            return self._parse_children_spec(children_spec)
+
+        # Check for children Bag (from XSD or programmatic schema)
+        children_bag = schema_node.get_value(static=True)
+        if children_bag is not None:
+            return frozenset(node.label for node in children_bag), {}
+
+        # Element exists but has no children spec - leaf element
+        return frozenset(), {}
 
     def _accepts_child(self, parent_node: BagNode, child_tag: str) -> None:
         """Verify that parent accepts child_tag. Raises ValueError if not.
