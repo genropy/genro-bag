@@ -38,10 +38,10 @@ host = bag['config.database.host']
 
 ```python
 # Convert to XML
-xml_string = bag.toXml()
+xml_string = bag.to_xml()
 
 # Create bag from XML
-bag2 = Bag(xml_string)
+bag2 = Bag.from_xml(xml_string)
 ```
 
 ## Next Steps
