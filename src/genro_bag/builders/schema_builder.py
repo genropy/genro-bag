@@ -8,28 +8,71 @@ SchemaBuilder creates schema definition nodes.
 The schema it produces can be assigned to a builder's _schema class attribute,
 or serialized to MessagePack for later loading.
 
-Example:
+Schema Structure Specification
+==============================
+
+**STATUS: IN FASE DI IMPLEMENTAZIONE**
+
+The schema uses a hierarchical path convention to distinguish between
+real elements and abstract base definitions:
+
+Path Prefixes:
+    - ``el.*`` : Real elements (usable by the builder)
+    - ``ab.*`` : Abstract elements (only for inheritance, not directly usable)
+
+Inheritance:
+    Elements can inherit attributes from other elements using ``inherits_from``.
+    This avoids repetition when many elements share the same ``sub_tags``.
+
+Example with inheritance::
+
     from genro_bag import Bag
     from genro_bag.builders import SchemaBuilder
 
-    # Create a schema for HTML-like elements
-    schema = Bag(builder=SchemaBuilder())
+    schema = Bag(builder=SchemaBuilder)
 
-    # Define elements
+    # Define abstract base elements
+    schema.item('ab.flow', sub_tags='el.p,el.div,el.span,el.ul,el.ol')
+    schema.item('ab.phrasing', sub_tags='el.span,el.a,el.em,el.strong')
+
+    # Define real elements inheriting from abstracts
+    schema.item('el.div', inherits_from='ab.flow')
+    schema.item('el.section', inherits_from='ab.flow')
+    schema.item('el.article', inherits_from='ab.flow')
+    schema.item('el.p', inherits_from='ab.phrasing')
+    schema.item('el.span', inherits_from='ab.phrasing')
+
+    # Void elements (no children allowed)
+    schema.item('el.br', sub_tags='')
+    schema.item('el.hr', sub_tags='')
+    schema.item('el.img', sub_tags='')
+
+    # Save to MessagePack
+    schema.builder.compile('path/to/schema.msgpack')
+
+Builder Lookup:
+    When a builder looks up an element, it searches only in ``el.*``.
+    Abstract elements (``ab.*``) are used only for inheritance resolution.
+
+Basic Example (without inheritance)::
+
+    from genro_bag import Bag
+    from genro_bag.builders import SchemaBuilder
+
+    schema = Bag(builder=SchemaBuilder)
+
+    # Simple flat schema
     schema.item('div', sub_tags='div,span,p,a')
     schema.item('span', sub_tags='span,a')
     schema.item('p', sub_tags='span,a')
     schema.item('a')
-    schema.void('br')
-    schema.void('hr')
-    schema.void('img')
+    schema.item('br', sub_tags='')  # void element
 
-    # Save to MessagePack file
     schema.builder.compile('path/to/schema.msgpack')
 
     # Use the schema in a builder class
     class MyHtmlBuilder(BagBuilderBase):
-        _schema = schema  # The schema built above
+        schema_path = 'path/to/schema.msgpack'
 """
 
 from __future__ import annotations
@@ -47,119 +90,36 @@ if TYPE_CHECKING:
 class SchemaBuilder(BagBuilderBase):
     """Builder for creating builder schemas.
 
+    See module docstring for full specification (including el.*/ab.* convention
+    and inherits_from attribute).
+
     Creates schema nodes with the structure expected by BagBuilderBase:
-    - node.label = element name
-    - node.value = None (or Bag for complex cases)
-    - node.attr = {handler, sub_tags, sub_tags_order, call_args_validations, leaf, ...}
+    - node.label = element name (e.g., 'div' or 'el.div')
+    - node.value = None
+    - node.attr = {sub_tags, sub_tags_order, inherits_from, ...}
 
     Usage:
-        schema = Bag(builder=SchemaBuilder())
-        schema.item('div', sub_tags='span,p')
-        schema.void('br')
+        schema = Bag(builder=SchemaBuilder)
+        schema.item('el.div', inherits_from='ab.flow')
+        schema.item('ab.flow', sub_tags='el.p,el.span')
+        schema.item('el.br', sub_tags='')  # void element
     """
 
     @element()
-    def item(
-        self,
-        target: Bag,
-        tag: str,
-        name: str,
-        sub_tags: str = "",
-        sub_tags_order: str = "",
-        handler: str | None = None,
-        **attr: Any,
-    ) -> BagNode:
+    def item(self, target: Bag, tag: str, value=None, **attr: Any) -> BagNode:
         """Define a schema item (element definition).
 
         Args:
             target: The schema Bag.
-            tag: Always 'item' (from decorator).
-            name: Element name (e.g., 'div', 'span').
-            sub_tags: Allowed sub-tags with cardinality (e.g., 'div,span[:1]').
-            sub_tags_order: Ordering constraint (e.g., 'header>body>footer').
-            handler: Method name to handle this element (e.g., '_el_div').
-            **attr: Additional attributes (e.g., attrs for XSD validation).
+            value: Element name (e.g., 'div', 'span').
+            **attr: Additional attributes (sub_tags, sub_tags_order, handler, etc.).
 
         Returns:
             The created schema node.
         """
-        return self.child(
-            target,
-            name,  # Use element name as tag
-            sub_tags=sub_tags,
-            sub_tags_order=sub_tags_order,
-            handler=handler,
-            **attr,
-        )
-
-    @element()
-    def void(
-        self,
-        target: Bag,
-        tag: str,
-        name: str,
-        handler: str | None = None,
-        **attr: Any,
-    ) -> BagNode:
-        """Define a void (self-closing) element.
-
-        Void elements have no sub-tags (leaf=True, sub_tags='').
-
-        Args:
-            target: The schema Bag.
-            tag: Always 'void' (from decorator).
-            name: Element name (e.g., 'br', 'hr', 'img').
-            handler: Method name to handle this element.
-            **attr: Additional attributes.
-
-        Returns:
-            The created schema node.
-        """
-        return self.child(
-            target,
-            name,
-            sub_tags="",  # Empty sub_tags spec = leaf
-            leaf=True,
-            handler=handler,
-            **attr,
-        )
-
-    @element()
-    def group(
-        self,
-        target: Bag,
-        tag: str,
-        name: str,
-        members: str,
-        **attr: Any,
-    ) -> BagNode:
-        """Define a group of elements (for =ref references).
-
-        Groups are not elements themselves but provide a way to define
-        sets of elements that can be referenced in sub_tags specs.
-
-        Args:
-            target: The schema Bag.
-            tag: Always 'group' (from decorator).
-            name: Group name (e.g., 'flow', 'phrasing').
-            members: Comma-separated member elements.
-            **attr: Additional attributes.
-
-        Returns:
-            The created schema node.
-
-        Note:
-            To use a group in sub_tags spec, reference it with = prefix:
-            schema.element('div', sub_tags='=flow')
-        """
-        return self.child(
-            target,
-            name,
-            node_label=f"_group_{name}",  # Prefix to avoid collision with elements
-            members=members,
-            _is_group=True,
-            **attr,
-        )
+        tag = value
+        attr['node_label'] = value
+        return self.child(target, tag, **attr)
 
     def compile(self, destination: str | Path) -> None:
         """Compile the schema to MessagePack file.

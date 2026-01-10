@@ -111,9 +111,14 @@ class BagBuilderBase(BuilderValidationsMixin, ABC):
         self.bag = bag
         self.bag.set_backref()
 
+    @property
+    def schema(self) -> Bag:
+        """Return the class schema."""
+        return type(self)._schema
+
     def __contains__(self, name: str) -> bool:
         """Check if element exists in schema. Supports 'name in builder'."""
-        return type(self)._schema.node(name) is not None
+        return self.schema.get_node(f"el.{name}") is not None
 
     def get_schema_info(self, name: str) -> tuple[str | None, str | None, dict | None]:
         """Return schema info for an element.
@@ -123,42 +128,51 @@ class BagBuilderBase(BuilderValidationsMixin, ABC):
 
         Returns:
             Tuple of (handler, sub_tags, call_args_validations).
+            Inheritance (inherits_from) is resolved.
 
         Raises:
             KeyError: If element not found in schema.
         """
-        schema_node = type(self)._schema.node(name)
+        schema_node = self.schema.get_node(f"el.{name}")
         if schema_node is None:
             raise KeyError(f"Element '{name}' not found in schema")
+
+        result = dict(schema_node.attr)
+        inherits_from = result.pop("inherits_from", None)
+
+        if inherits_from:
+            # Get attrs from abstract, then override with element attrs
+            abstract_attrs = self.schema.get_attr(inherits_from)
+            if abstract_attrs:
+                abstract_attrs.update(result)
+                result = abstract_attrs
+
         return (
-            schema_node.attr.get("handler"),
-            schema_node.attr.get("sub_tags"),
-            schema_node.attr.get("call_args_validations"),
+            result.get("handler"),
+            result.get("sub_tags"),
+            result.get("call_args_validations"),
         )
 
     def __iter__(self):
-        """Iterate over element names in schema."""
-        schema = getattr(type(self), "_schema", None)
-        if schema is None:
+        """Iterate over element names in schema (el.* nodes only)."""
+        el_bag = self.schema["el"]
+        if el_bag is None:
             return iter([])
-        return (node.label for node in schema)
+        return (node.label for node in el_bag)
 
     def __repr__(self) -> str:
         """Show builder schema summary."""
-        schema = getattr(type(self), "_schema", None)
-        if schema is None:
-            return f"<{type(self).__name__} (no schema)>"
-        return f"<{type(self).__name__} ({len(schema)} elements)>"
+        el_bag = self.schema["el"]
+        count = len(el_bag) if el_bag else 0
+        return f"<{type(self).__name__} ({count} elements)>"
 
     def __str__(self) -> str:
         """Show detailed schema structure."""
-        schema = getattr(type(self), "_schema", None)
-        if schema is None:
-            return f"{type(self).__name__}: no schema"
-
         lines = [f"{type(self).__name__} schema:"]
         for element in self:
-            node = schema.node(element)
+            node = self.schema.get_node(f"el.{element}")
+            if node is None:
+                continue
             sub_tags_bag = node.get_value(static=True)
             is_leaf = node.attr.get("leaf", False)
             if is_leaf:
@@ -169,57 +183,6 @@ class BagBuilderBase(BuilderValidationsMixin, ABC):
             else:
                 lines.append(f"  {element}")
         return "\n".join(lines)
-
-    def _resolve_ref(self, value: Any) -> Any:
-        """Resolve =ref references by looking up _ref_<name> properties.
-
-        References use the = prefix convention:
-        - '=flow' -> looks up self._ref_flow property
-        - '=phrasing' -> looks up self._ref_phrasing property
-
-        Handles comma-separated strings with mixed refs and literals.
-        """
-        if isinstance(value, (set, frozenset)):
-            resolved: set[Any] = set()
-            for item in value:
-                resolved_item = self._resolve_ref(item)
-                if isinstance(resolved_item, (set, frozenset)):
-                    resolved.update(resolved_item)
-                elif isinstance(resolved_item, str):
-                    resolved.update(t.strip() for t in resolved_item.split(",") if t.strip())
-                else:
-                    resolved.add(resolved_item)
-            return frozenset(resolved) if isinstance(value, frozenset) else resolved
-
-        if not isinstance(value, str):
-            return value
-
-        if "," in value:
-            parts = [p.strip() for p in value.split(",") if p.strip()]
-            resolved_parts: list[str] = []
-            for part in parts:
-                resolved_part = self._resolve_ref(part)
-                if isinstance(resolved_part, (set, frozenset)):
-                    resolved_parts.extend(resolved_part)
-                elif isinstance(resolved_part, str):
-                    resolved_parts.append(resolved_part)
-                else:
-                    resolved_parts.append(str(resolved_part))
-            return ", ".join(resolved_parts)
-
-        if value.startswith("="):
-            ref_name = value[1:]
-            prop_name = f"_ref_{ref_name}"
-
-            if hasattr(self, prop_name):
-                resolved = getattr(self, prop_name)
-                return self._resolve_ref(resolved)
-
-            raise ValueError(
-                f"Reference '{value}' not found: no '{prop_name}' property on {type(self).__name__}"
-            )
-
-        return value
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
         """Build _schema Bag from schema_path and/or @element decorated methods."""
@@ -281,10 +244,10 @@ class BagBuilderBase(BuilderValidationsMixin, ABC):
             sub_tags_raw = decorator_info.get("sub_tags", "")
             sub_tags_order_raw = decorator_info.get("sub_tags_order", "")
 
-            # Create entry in _schema for each tag
+            # Create entry in _schema for each tag (using el.* prefix)
             for tag in tag_list:
                 cls._schema.set_item(
-                    tag,
+                    f"el.{tag}",
                     None,  # sub_tags_bag populated later if needed
                     handler=new_name,
                     sub_tags=sub_tags_raw,

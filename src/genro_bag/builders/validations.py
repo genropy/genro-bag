@@ -394,18 +394,14 @@ class BuilderValidationsMixin:
         if sub_tags is None:
             return True
 
-        # Resolve refs in sub_tags spec
-        resolved_sub_tags = self._resolve_ref(sub_tags)  # type: ignore[attr-defined]
-
         # Parse and validate cardinality (includes membership check)
-        spec = parse_sub_tags_spec(resolved_sub_tags)
+        spec = parse_sub_tags_spec(sub_tags)
         if not validate_sub_tags_cardinality(tags, spec):
             return False
 
         # Validate order if specified
         if sub_tags_order:
-            resolved_order = self._resolve_ref(sub_tags_order)  # type: ignore[attr-defined]
-            order_groups = parse_sub_tags_order(resolved_order)
+            order_groups = parse_sub_tags_order(sub_tags_order)
             if not validate_sub_tags_order(tags, order_groups):
                 return False
 
