@@ -147,6 +147,30 @@ class BagNode:
     def __repr__(self) -> str:
         return f"BagNode : {self.label} at {id(self)}"
 
+    def __getattr__(self, name: str) -> Any:
+        """Delegate unknown attributes to builder if available.
+
+        When a builder is attached to the parent Bag, this allows calling
+        builder methods directly on nodes to add children:
+
+            node = bag.div()  # returns BagNode
+            node.span()       # delegates to builder._command_on_node()
+
+        The Bag is created lazily when the first child is added.
+        """
+        if name.startswith("_"):
+            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+
+        # Get builder from parent Bag
+        builder = self._parent_bag._builder if self._parent_bag is not None else None
+
+        if builder is not None:
+            return lambda node_position=None, **attrs: builder._command_on_node(
+                self, name, node_position=node_position, **attrs
+            )
+
+        raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
+
     # -------------------------------------------------------------------------
     # Parent Bag Property
     # -------------------------------------------------------------------------

@@ -38,7 +38,7 @@ def element(
             If empty, the method name is used as the single tag.
 
         sub_tags: Valid child tags with optional cardinality (order-free). Can be:
-            - A comma-separated string: 'tag1, tag2[:1], tag3[1:]'
+            - A comma-separated string: 'tag1,tag2[:1],tag3[1:]'
             - A tuple of strings: ('tag1', 'tag2[:1]', 'tag3[1:]')
             Cardinality syntax:
             - 'tag' - any number of occurrences
@@ -50,7 +50,7 @@ def element(
             tags within groups separated by ','. Tags in earlier groups must
             appear before tags in later groups. Tags not in order spec can
             appear anywhere.
-            Example: 'header > nav,main,aside > footer'
+            Example: 'header>nav,main,aside>footer'
     """
 
     def decorator(func: Callable) -> Callable:
@@ -92,8 +92,8 @@ class BagBuilderBase(BuilderValidationsMixin, ABC):
         - node.value = Bag of ordered sub_tags (None for leaf/no sub_tags spec)
         - node.attr = {
             handler: str (method name, e.g. '_el_foo'),
-            sub_tags: str (allowed sub_tags with cardinality, e.g. 'item, section[:1]'),
-            sub_tags_order: str (ordering constraint, e.g. 'header > body > footer'),
+            sub_tags: str (allowed sub_tags with cardinality, e.g. 'item,section[:1]'),
+            sub_tags_order: str (ordering constraint, e.g. 'header>body>footer'),
             call_args_validations: dict (attribute validation),
             leaf: bool (element has no sub_tags),
             attrs: dict (for XSD-style validation)

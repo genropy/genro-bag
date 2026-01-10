@@ -13,16 +13,16 @@ Modernized bag system for the Genropy framework - hierarchical data container wi
 
 ---
 
-## Comandi Speciali
+## Special Commands
 
-### "mostra righe" / "mostra le righe" / "rimetti qui le righe"
+### "mostra righe" / "mostra le righe" / "rimetti qui le righe" (show lines)
 
-Quando l'utente chiede di mostrare righe di codice:
+When the user asks to show code lines:
 
-1. Mostrare **solo** lo snippet di codice richiesto con qualche linea di contesto
-2. Numerare le righe
-3. **NON** aggiungere considerazioni, valutazioni o spiegazioni
-4. Copiare il codice direttamente nella chat
+1. Show **only** the requested code snippet with some context lines
+2. Number the lines
+3. **DO NOT** add considerations, evaluations, or explanations
+4. Copy the code directly into the chat
 
 ---
 

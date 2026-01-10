@@ -381,19 +381,16 @@ class Bag(BagParser, BagSerializer, BagQuery):
         if name.startswith("_"):
             raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
-        if self._builder is not None:
-            try:
-                handler = getattr(self._builder, name)
+        if self._builder is not None and name in self._builder:
+            handler = getattr(self._builder, name)
 
-                # Return callable bound to this Bag
-                # API: bag.foo('John') -> value='John', node_label=auto, tag='foo'
-                #      bag.foo('John', node_label='x') -> explicit label
-                #      bag.foo('John', node_position='<first') -> insertion position
-                return lambda value=None, node_label=None, node_position=None, **attr: handler(
-                    self, _tag=name, value=value, node_label=node_label, node_position=node_position, **attr
-                )
-            except AttributeError:
-                pass
+            # Return callable bound to this Bag
+            # API: bag.foo('John') -> value='John', node_label=auto, tag='foo'
+            #      bag.foo('John', node_label='x') -> explicit label
+            #      bag.foo('John', node_position='<first') -> insertion position
+            return lambda value=None, node_label=None, node_position=None, **attr: handler(
+                self, _tag=name, value=value, node_label=node_label, node_position=node_position, **attr
+            )
 
         raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 

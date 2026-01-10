@@ -260,7 +260,7 @@ def parse_sub_tags_order(order: str) -> list[set[str]]:
 
     Args:
         order: Groups separated by '>' with tags separated by ','.
-            - 'a,b > c > d,e' → [{'a','b'}, {'c'}, {'d','e'}]
+            - 'a,b>c>d,e' → [{'a','b'}, {'c'}, {'d','e'}]
 
     Returns:
         List of sets, each set contains tags that can appear in any order
@@ -379,8 +379,8 @@ class BuilderValidationsMixin:
         """Validate list of child tags against sub_tags spec and order.
 
         Args:
-            sub_tags: Sub-tags spec with cardinality (e.g. 'div, span[:1], p[1:]')
-            sub_tags_order: Order spec (e.g. 'header > body, aside > footer')
+            sub_tags: Sub-tags spec with cardinality (e.g. 'div,span[:1],p[1:]')
+            sub_tags_order: Order spec (e.g. 'header>body,aside>footer')
             tags: List of child tags to validate
 
         Returns:

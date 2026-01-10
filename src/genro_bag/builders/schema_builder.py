@@ -15,9 +15,9 @@ Example:
     schema = Bag(builder=SchemaBuilder())
 
     # Define elements
-    schema.item('div', sub_tags='div, span, p, a')
-    schema.item('span', sub_tags='span, a')
-    schema.item('p', sub_tags='span, a')
+    schema.item('div', sub_tags='div,span,p,a')
+    schema.item('span', sub_tags='span,a')
+    schema.item('p', sub_tags='span,a')
     schema.item('a')
     schema.void('br')
     schema.void('hr')
@@ -49,7 +49,7 @@ class SchemaBuilder(BagBuilderBase):
 
     Usage:
         schema = Bag(builder=SchemaBuilder())
-        schema.item('div', sub_tags='span, p')
+        schema.item('div', sub_tags='span,p')
         schema.void('br')
     """
 
@@ -70,8 +70,8 @@ class SchemaBuilder(BagBuilderBase):
             target: The schema Bag.
             tag: Always 'item' (from decorator).
             name: Element name (e.g., 'div', 'span').
-            sub_tags: Allowed sub-tags with cardinality (e.g., 'div, span[:1]').
-            sub_tags_order: Ordering constraint (e.g., 'header > body > footer').
+            sub_tags: Allowed sub-tags with cardinality (e.g., 'div,span[:1]').
+            sub_tags_order: Ordering constraint (e.g., 'header>body>footer').
             handler: Method name to handle this element (e.g., '_el_div').
             **attr: Additional attributes (e.g., attrs for XSD validation).
 

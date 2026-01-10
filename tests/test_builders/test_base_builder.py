@@ -17,7 +17,7 @@ class SimpleBuilder(BagBuilderBase):
     def item(self, target, tag, **attr):
         return self.child(target, tag, **attr)
 
-    @element(sub_tags='item[1:], product')  # At least 1 item, any number of product
+    @element(sub_tags='item[1:],product')  # At least 1 item, any number of product
     def container(self, target, tag, **attr):
         return self.child(target, tag, **attr)
 
@@ -128,7 +128,7 @@ class TestBuilderSubTagsValidation:
     def test_element_with_sub_tags_spec(self):
         """@element sub_tags spec defines valid children."""
         class ContainerBuilder(BagBuilderBase):
-            @element(sub_tags='span, p')
+            @element(sub_tags='span,p')
             def div(self, target, tag, **attr):
                 return self.child(target, tag, **attr)
 
@@ -268,7 +268,7 @@ class TestBuilderReferences:
         class RefBuilder(BagBuilderBase):
             @property
             def _ref_items(self):
-                return 'apple, banana'
+                return 'apple,banana'
 
             @element(sub_tags='=items')
             def menu(self, target, tag, **attr):
