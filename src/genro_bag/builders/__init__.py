@@ -33,17 +33,16 @@ XSD Example:
 
 from genro_bag.builders.base_builder import BagBuilderBase, element
 from genro_bag.builders.html import HtmlBuilder
-from genro_bag.builders.validations import Max, MaxLength, Min, MinLength, Pattern
+from genro_bag.builders.schema_builder import SchemaBuilder
+from genro_bag.builders.validations import Range, Regex
 from genro_bag.builders.xsd import XsdBuilder
 
 __all__ = [
     "BagBuilderBase",
     "element",
-    "Pattern",
-    "Min",
-    "Max",
-    "MinLength",
-    "MaxLength",
+    "Range",
+    "Regex",
     "HtmlBuilder",
+    "SchemaBuilder",
     "XsdBuilder",
 ]

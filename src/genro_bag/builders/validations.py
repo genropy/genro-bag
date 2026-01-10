@@ -5,282 +5,506 @@ This module provides validation functions and constraint classes for
 validating builder element attributes at runtime.
 
 Constraint classes for use with Annotated:
-    Pattern: regex pattern for strings
-    Min: minimum value for numbers
-    Max: maximum value for numbers
-    MinLength: minimum length for strings
-    MaxLength: maximum length for strings
+    Regex: regex pattern for strings
+    Range: min/max value constraints for numbers (ge, le, gt, lt)
+
+Type hints supported:
+    - Basic types: int, str, bool, float, Decimal
+    - Literal['a', 'b'] for enum-like constraints
+    - list[T], dict[K, V], tuple[...], set[T] for generics
+    - X | None for optional
+    - Annotated[T, validator...] for validators
 """
 
 from __future__ import annotations
 
 import inspect
 import re
-from collections.abc import Callable
+import types
+from dataclasses import dataclass
 from decimal import Decimal
-from typing import Any
+from typing import (
+    TYPE_CHECKING,
+    Annotated,
+    Any,
+    Literal,
+    get_args,
+    get_origin,
+    get_type_hints,
+)
 
-# Pattern for tag with optional cardinality: tag, tag[n], tag[n:], tag[:m], tag[n:m]
-_TAG_PATTERN = re.compile(r"^([a-zA-Z_][a-zA-Z0-9_]*)\s*(?:\[(\d*):?(\d*)\])?$")
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from ..bag import Bag
+    from ..bagnode import BagNode
 
 
-class Pattern:
+# --- Validator classes (Annotated metadata) ---
+
+
+@dataclass(frozen=True)
+class Regex:
     """Regex pattern constraint for string validation."""
 
-    def __init__(self, regex: str):
-        self.regex = regex
+    pattern: str
+    flags: int = 0
+
+    def __call__(self, value: Any) -> None:
+        if not isinstance(value, str):
+            raise TypeError("Regex validator requires a str")
+        if re.fullmatch(self.pattern, value, self.flags) is None:
+            raise ValueError(f"must match pattern '{self.pattern}'")
 
 
-class Min:
-    """Minimum value constraint for numeric validation."""
+@dataclass(frozen=True)
+class Range:
+    """Range constraint for numeric validation (Pydantic-style: ge, le, gt, lt)."""
 
-    def __init__(self, value: int | float | Decimal):
-        self.value = value
+    ge: float | None = None
+    le: float | None = None
+    gt: float | None = None
+    lt: float | None = None
 
-
-class Max:
-    """Maximum value constraint for numeric validation."""
-
-    def __init__(self, value: int | float | Decimal):
-        self.value = value
-
-
-class MinLength:
-    """Minimum length constraint for string validation."""
-
-    def __init__(self, value: int):
-        self.value = value
-
-
-class MaxLength:
-    """Maximum length constraint for string validation."""
-
-    def __init__(self, value: int):
-        self.value = value
+    def __call__(self, value: Any) -> None:
+        if not isinstance(value, (int, float, Decimal)):
+            raise TypeError("Range validator requires int, float or Decimal")
+        if self.ge is not None and value < self.ge:
+            raise ValueError(f"must be >= {self.ge}")
+        if self.le is not None and value > self.le:
+            raise ValueError(f"must be <= {self.le}")
+        if self.gt is not None and value <= self.gt:
+            raise ValueError(f"must be > {self.gt}")
+        if self.lt is not None and value >= self.lt:
+            raise ValueError(f"must be < {self.lt}")
 
 
-def parse_tag_spec(spec: str) -> tuple[str, int, int | None]:
-    """Parse a tag specification with optional cardinality.
+# --- Type hint parsing utilities ---
+
+
+def split_annotated(tp: Any) -> tuple[Any, list]:
+    """Split Annotated type into base type and validators.
 
     Args:
-        spec: Tag spec like 'foo', 'foo[1]', 'foo[1:]', 'foo[:2]', 'foo[1:3]'
+        tp: A type annotation, possibly Annotated.
 
     Returns:
-        Tuple of (tag_name, min_count, max_count)
-
-    Raises:
-        ValueError: If spec format is invalid.
+        Tuple of (base_type, validators) where validators are callables.
     """
-    match = _TAG_PATTERN.match(spec.strip())
-    if not match:
-        raise ValueError(f"Invalid tag specification: '{spec}'")
-
-    tag = match.group(1)
-    min_str = match.group(2)
-    max_str = match.group(3)
-
-    # No brackets: unlimited (0..inf)
-    if min_str is None and max_str is None:
-        return tag, 0, None
-
-    # Check if there was a colon in the original spec
-    has_colon = ":" in spec
-
-    if not has_colon:
-        # tag[n] - exactly n
-        n = int(min_str) if min_str else 0
-        return tag, n, n
-
-    # Has colon: slice syntax
-    min_count = int(min_str) if min_str else 0
-    max_count = int(max_str) if max_str else None
-
-    return tag, min_count, max_count
+    if get_origin(tp) is Annotated:
+        base, *meta = get_args(tp)
+        validators = [m for m in meta if callable(m)]
+        return base, validators
+    return tp, []
 
 
-def extract_attrs_from_signature(func: Callable) -> dict[str, dict[str, Any]] | None:
-    """Extract attribute specs from function signature type hints.
+def check_type(value: Any, tp: Any) -> bool:
+    """Check if value matches the type annotation.
 
-    Extracts typed parameters (excluding self, target, tag, label, value, **kwargs)
-    and converts them to attrs spec format for validation.
+    Args:
+        value: The value to check.
+        tp: The type annotation to check against.
 
-    Returns None if no typed parameters found.
+    Returns:
+        True if value matches the type, False otherwise.
     """
-    sig = inspect.signature(func)
-    attrs_spec: dict[str, dict[str, Any]] = {}
+    tp, _ = split_annotated(tp)
 
+    origin = get_origin(tp)
+    args = get_args(tp)
+
+    # Any type
+    if tp is Any:
+        return True
+
+    # None type
+    if tp is type(None):
+        return value is None
+
+    # Literal['a', 'b', 'c']
+    if origin is Literal:
+        return value in args
+
+    # Union / Optional (X | Y or Union[X, Y])
+    if origin is types.UnionType:
+        return any(check_type(value, t) for t in args)
+
+    # typing.Union (for older Python compatibility)
+    try:
+        from typing import Union
+
+        if origin is Union:
+            return any(check_type(value, t) for t in args)
+    except ImportError:
+        pass
+
+    # No origin - concrete type
+    if origin is None:
+        try:
+            return isinstance(value, tp)
+        except TypeError:
+            # Special types not isinstanceable
+            return True
+
+    # Generic builtins
+    if origin is list:
+        if not isinstance(value, list):
+            return False
+        if not args:
+            return True
+        t_item = args[0]
+        return all(check_type(v, t_item) for v in value)
+
+    if origin is dict:
+        if not isinstance(value, dict):
+            return False
+        if not args:
+            return True
+        k_t, v_t = args[0], args[1] if len(args) > 1 else Any
+        return all(check_type(k, k_t) and check_type(v, v_t) for k, v in value.items())
+
+    if origin is tuple:
+        if not isinstance(value, tuple):
+            return False
+        if not args:
+            return True
+        if len(args) == 2 and args[1] is Ellipsis:
+            return all(check_type(v, args[0]) for v in value)
+        return len(value) == len(args) and all(
+            check_type(v, t) for v, t in zip(value, args, strict=True)
+        )
+
+    if origin is set:
+        if not isinstance(value, set):
+            return False
+        if not args:
+            return True
+        t_item = args[0]
+        return all(check_type(v, t_item) for v in value)
+
+    # Fallback for other origins
+    try:
+        return isinstance(value, origin)
+    except TypeError:
+        return True
+
+
+def extract_validators_from_signature(fn: Callable) -> dict[str, tuple[Any, list, Any]]:
+    """Extract type hints with validators from function signature.
+
+    Args:
+        fn: The function to extract from.
+
+    Returns:
+        Dict mapping parameter name to (base_type, validators, default) tuple.
+    """
     # Skip these parameters - they're not user attributes
-    # Include both old (target, tag, label) and new (_target, _tag, _label) names
     skip_params = {"self", "target", "tag", "label", "value", "_target", "_tag", "_label"}
+
+    try:
+        hints = get_type_hints(fn, include_extras=True)
+    except Exception:
+        return {}
+
+    result = {}
+    sig = inspect.signature(fn)
 
     for name, param in sig.parameters.items():
         if name in skip_params:
             continue
-        if param.kind == inspect.Parameter.VAR_KEYWORD:
-            continue
-        if param.kind == inspect.Parameter.VAR_POSITIONAL:
+        if param.kind in (inspect.Parameter.VAR_KEYWORD, inspect.Parameter.VAR_POSITIONAL):
             continue
 
-        annotation = param.annotation
-        if annotation is inspect.Parameter.empty:
+        tp = hints.get(name)
+        if tp is None:
             continue
 
-        attr_spec = annotation_to_attr_spec(annotation)
+        base, validators = split_annotated(tp)
+        result[name] = (base, validators, param.default)
 
-        if param.default is inspect.Parameter.empty:
-            attr_spec["required"] = True
-        else:
-            attr_spec["required"] = False
-            if param.default is not None:
-                attr_spec["default"] = param.default
-
-        attrs_spec[name] = attr_spec
-
-    return attrs_spec if attrs_spec else None
+    return result
 
 
-def validate_call_args(
-    args: dict[str, Any], spec: dict[str, dict[str, Any]]
-) -> None:
-    """Validate call arguments against attribute specification.
+# --- Sub-tags validation utilities ---
+
+
+def parse_sub_tags_spec(spec: str) -> dict[str, tuple[int, int | None]]:
+    """Parse sub_tags spec into dict of {tag: (min, max)}.
 
     Args:
-        args: Dict of argument values to validate.
-        spec: Dict mapping arg names to their validation specs.
+        spec: Comma-separated tags with optional cardinality.
+            - 'div' → {'div': (0, None)} - any number
+            - 'div[:1]' → {'div': (0, 1)} - at most 1
+            - 'div[1:]' → {'div': (1, None)} - at least 1
+            - 'div[2:5]' → {'div': (2, 5)} - between 2 and 5
 
-    Raises:
-        ValueError: If validation fails.
+    Returns:
+        Dict mapping tag name to (min_count, max_count) tuple.
     """
-    errors = []
-
-    for attr_name, attr_spec in spec.items():
-        value = args.get(attr_name)
-        required = attr_spec.get("required", False)
-        type_name = attr_spec.get("type", "string")
-
-        if required and value is None:
-            errors.append(f"'{attr_name}' is required")
+    result: dict[str, tuple[int, int | None]] = {}
+    for item in spec.split(","):
+        item = item.strip()
+        if not item:
             continue
-
-        if value is None:
-            continue
-
-        if type_name == "int":
-            if not isinstance(value, int) or isinstance(value, bool):
-                try:
-                    value = int(value)
-                except (ValueError, TypeError):
-                    errors.append(f"'{attr_name}' must be an integer, got {type(value).__name__}")
-                    continue
-
-            min_val = attr_spec.get("min")
-            max_val = attr_spec.get("max")
-            if min_val is not None and value < min_val:
-                errors.append(f"'{attr_name}' must be >= {min_val}, got {value}")
-            if max_val is not None and value > max_val:
-                errors.append(f"'{attr_name}' must be <= {max_val}, got {value}")
-
-        elif type_name == "decimal":
-            if not isinstance(value, Decimal):
-                try:
-                    value = Decimal(str(value))
-                except Exception:
-                    errors.append(f"'{attr_name}' must be a decimal, got {type(value).__name__}")
-                    continue
-
-            min_val = attr_spec.get("min")
-            max_val = attr_spec.get("max")
-            if min_val is not None and value < Decimal(str(min_val)):
-                errors.append(f"'{attr_name}' must be >= {min_val}, got {value}")
-            if max_val is not None and value > Decimal(str(max_val)):
-                errors.append(f"'{attr_name}' must be <= {max_val}, got {value}")
-
-        elif type_name == "bool":
-            if not isinstance(value, bool):
-                if isinstance(value, str):
-                    if value.lower() not in ("true", "false", "1", "0", "yes", "no"):
-                        errors.append(f"'{attr_name}' must be a boolean, got '{value}'")
-                else:
-                    errors.append(f"'{attr_name}' must be a boolean, got {type(value).__name__}")
-
-        elif type_name == "enum":
-            values = attr_spec.get("values", [])
-            if values and value not in values:
-                errors.append(f"'{attr_name}' must be one of {values}, got '{value}'")
-
-        elif type_name == "string":
-            str_value = str(value)
-
-            pattern = attr_spec.get("pattern")
-            if pattern and not re.fullmatch(pattern, str_value):
-                errors.append(f"'{attr_name}' must match pattern '{pattern}', got '{str_value}'")
-
-            min_len = attr_spec.get("minLength")
-            max_len = attr_spec.get("maxLength")
-            if min_len is not None and len(str_value) < min_len:
-                errors.append(f"'{attr_name}' must have at least {min_len} characters, got {len(str_value)}")
-            if max_len is not None and len(str_value) > max_len:
-                errors.append(f"'{attr_name}' must have at most {max_len} characters, got {len(str_value)}")
-
-    if errors:
-        raise ValueError("Attribute validation failed: " + "; ".join(errors))
+        match = re.match(r"([a-zA-Z_][a-zA-Z0-9_]*)(?:\[(\d*):(\d*)\])?$", item)
+        if match:
+            tag = match.group(1)
+            min_val = int(match.group(2)) if match.group(2) else 0
+            max_val = int(match.group(3)) if match.group(3) else None
+            result[tag] = (min_val, max_val)
+    return result
 
 
-def annotation_to_attr_spec(annotation: Any) -> dict[str, Any]:
-    """Convert a type annotation to attr spec dict.
+def parse_sub_tags_order(order: str) -> list[set[str]]:
+    """Parse sub_tags order spec into list of tag groups.
 
-    Handles:
-    - int -> {'type': 'int'}
-    - str -> {'type': 'string'}
-    - bool -> {'type': 'bool'}
-    - Decimal -> {'type': 'decimal'}
-    - Literal['a', 'b'] -> {'type': 'enum', 'values': ['a', 'b']}
-    - int | None -> {'type': 'int'} (optional handled separately)
-    - Optional[int] -> {'type': 'int'}
-    - Annotated[str, Pattern(r'...')] -> {'type': 'string', 'pattern': '...'}
-    - Annotated[int, Min(1), Max(10)] -> {'type': 'int', 'min': 1, 'max': 10}
+    Args:
+        order: Groups separated by '>' with tags separated by ','.
+            - 'a,b > c > d,e' → [{'a','b'}, {'c'}, {'d','e'}]
+
+    Returns:
+        List of sets, each set contains tags that can appear in any order
+        within that group, but groups must appear in sequence.
     """
-    from typing import Annotated, Literal, Union, get_args, get_origin
+    result: list[set[str]] = []
+    for group in order.split(">"):
+        tags = {t.strip() for t in group.split(",") if t.strip()}
+        if tags:
+            result.append(tags)
+    return result
 
-    origin = get_origin(annotation)
-    args = get_args(annotation)
 
-    if origin is Annotated:
-        base_type = args[0]
-        constraints = args[1:]
+def validate_sub_tags_membership(tags: list[str], allowed: set[str]) -> bool:
+    """Check all tags are in allowed set."""
+    return all(tag in allowed for tag in tags)
 
-        spec = annotation_to_attr_spec(base_type)
 
-        for constraint in constraints:
-            if isinstance(constraint, Pattern):
-                spec["pattern"] = constraint.regex
-            elif isinstance(constraint, Min):
-                spec["min"] = constraint.value
-            elif isinstance(constraint, Max):
-                spec["max"] = constraint.value
-            elif isinstance(constraint, MinLength):
-                spec["minLength"] = constraint.value
-            elif isinstance(constraint, MaxLength):
-                spec["maxLength"] = constraint.value
+def validate_sub_tags_cardinality(
+    tags: list[str], spec: dict[str, tuple[int, int | None]]
+) -> bool:
+    """Check tag counts match cardinality constraints."""
+    from collections import Counter
 
-        return spec
+    counts = Counter(tags)
 
-    if origin is Union:
-        non_none_args = [a for a in args if a is not type(None)]
-        if len(non_none_args) == 1:
-            return annotation_to_attr_spec(non_none_args[0])
-        return {"type": "string"}
+    # Check each tag in the list is allowed
+    for tag in counts:
+        if tag not in spec:
+            return False
 
-    if origin is Literal:
-        return {"type": "enum", "values": list(args)}
+    # Check cardinality constraints
+    for tag, (min_count, max_count) in spec.items():
+        count = counts.get(tag, 0)
+        if count < min_count:
+            return False
+        if max_count is not None and count > max_count:
+            return False
 
-    if annotation is int:
-        return {"type": "int"}
-    elif annotation is bool:
-        return {"type": "bool"}
-    elif annotation is str:
-        return {"type": "string"}
-    elif annotation is Decimal:
-        return {"type": "decimal"}
+    return True
 
-    return {"type": "string"}
+
+def validate_sub_tags_order(tags: list[str], order_groups: list[set[str]]) -> bool:
+    """Check tags respect group ordering.
+
+    Tags in earlier groups must appear before tags in later groups.
+    Tags not in any group can appear anywhere.
+    """
+    current_group_idx = 0
+    for tag in tags:
+        # Find which group this tag belongs to
+        tag_group_idx = None
+        for i, group in enumerate(order_groups):
+            if tag in group:
+                tag_group_idx = i
+                break
+
+        if tag_group_idx is None:
+            continue  # Tag not in order spec, can be anywhere
+
+        if tag_group_idx < current_group_idx:
+            return False  # Tag from earlier group after later group
+
+        current_group_idx = tag_group_idx
+
+    return True
+
+
+# --- BuilderValidationsMixin ---
+
+
+class BuilderValidationsMixin:
+    """Mixin for builder child validation. Requires self._schema (Bag)."""
+
+    def _get_sub_tags_spec(self, node: BagNode) -> tuple[str | None, str | None]:
+        """Return (sub_tags, sub_tags_order) for the node's tag."""
+        tag = node.tag
+        schema_node = self._schema.node(tag)
+        if schema_node is None:
+            return None, None
+        return (
+            schema_node.attr.get("sub_tags"),
+            schema_node.attr.get("sub_tags_order"),
+        )
+
+    def _sub_tags_validation_pattern(self, node: BagNode) -> str | None:
+        """Return the sub_tags spec for the node's tag (for error messages)."""
+        sub_tags, _ = self._get_sub_tags_spec(node)
+        return sub_tags
+
+    def _can_add_child(
+        self, node: BagNode, child_tag: str, node_position: str | int | None = None
+    ) -> bool:
+        """Check if node accepts child_tag as child.
+
+        Args:
+            node: The node to add the child to
+            child_tag: The tag of the child to add
+            node_position: Insertion position (same syntax as NodeContainer._parse_position)
+        """
+        from ..bag import Bag
+
+        sub_tags, sub_tags_order = self._get_sub_tags_spec(node)
+
+        if not isinstance(node.value, Bag):
+            return self._validate_sub_tags(sub_tags, sub_tags_order, [child_tag])
+
+        idx = node.value._nodes._parse_position(node_position)
+        current_tags = [n.tag for n in node.value]
+        new_tags = current_tags[:idx] + [child_tag] + current_tags[idx:]
+        return self._validate_sub_tags(sub_tags, sub_tags_order, new_tags)
+
+    def _validate_sub_tags(
+        self, sub_tags: str | None, sub_tags_order: str | None, tags: list[str]
+    ) -> bool:
+        """Validate list of child tags against sub_tags spec and order.
+
+        Args:
+            sub_tags: Sub-tags spec with cardinality (e.g. 'div, span[:1], p[1:]')
+            sub_tags_order: Order spec (e.g. 'header > body, aside > footer')
+            tags: List of child tags to validate
+
+        Returns:
+            True if valid, False otherwise.
+        """
+        # Leaf element (empty string)
+        if sub_tags == "":
+            return len(tags) == 0
+
+        # No validation
+        if sub_tags is None:
+            return True
+
+        # Resolve refs in sub_tags spec
+        resolved_sub_tags = self._resolve_ref(sub_tags)  # type: ignore[attr-defined]
+
+        # Parse and validate cardinality (includes membership check)
+        spec = parse_sub_tags_spec(resolved_sub_tags)
+        if not validate_sub_tags_cardinality(tags, spec):
+            return False
+
+        # Validate order if specified
+        if sub_tags_order:
+            resolved_order = self._resolve_ref(sub_tags_order)  # type: ignore[attr-defined]
+            order_groups = parse_sub_tags_order(resolved_order)
+            if not validate_sub_tags_order(tags, order_groups):
+                return False
+
+        return True
+
+    def _accept_child(
+        self, destination_bag: Bag, child_tag: str, node_position: str | int | None = None
+    ) -> None:
+        """Verify destination accepts child_tag. Raises ValueError if not allowed."""
+        parent_node = destination_bag.parent_node
+        if parent_node is None:
+            return  # root level, no validation
+
+        schema_node = self._schema.node(parent_node.tag)
+        if schema_node is None:
+            return
+
+        sub_tags = schema_node.attr.get("sub_tags")
+        sub_tags_order = schema_node.attr.get("sub_tags_order")
+
+        if sub_tags is None:
+            return  # no validation
+
+        current_tags = [n.tag for n in destination_bag]
+        idx = destination_bag._nodes._parse_position(node_position)
+        new_tags = current_tags[:idx] + [child_tag] + current_tags[idx:]
+
+        if not self._validate_sub_tags(sub_tags, sub_tags_order, new_tags):
+            raise ValueError(f"'{child_tag}' not allowed as child of '{parent_node.tag}'")
+
+    def _get_method(self, tag: str, destination_bag: Bag, kwargs: dict) -> Callable:
+        """Get handler method after validation. Raises KeyError if tag not in schema."""
+        handler_name, _, call_args_validations = self.get_schema_info(tag)  # type: ignore[attr-defined]
+        self._validate_call_args(kwargs, call_args_validations)
+        self._accept_child(destination_bag, tag, kwargs.get("node_position"))
+        return getattr(self, handler_name) if handler_name else self._default_element  # type: ignore[attr-defined]
+
+    def _get_call_args_validations(self, tag: str) -> dict[str, tuple[Any, list, Any]] | None:
+        """Return attribute spec for a tag from schema.
+
+        Returns dict mapping attr name to (base_type, validators, default).
+        """
+        schema_node = self._schema.node(tag)
+        if schema_node is None:
+            return None
+        return schema_node.attr.get("call_args_validations")
+
+    def _validate_call_args(
+        self,
+        args: dict[str, Any],
+        spec: dict[str, tuple[Any, list, Any]] | None,
+    ) -> None:
+        """Validate type/pattern/range - raise on error.
+
+        Args:
+            args: Dict of argument values to validate.
+            spec: Dict mapping attr name to (base_type, validators, default).
+
+        Raises:
+            TypeError: If type check fails.
+            ValueError: If validator fails.
+        """
+        if not spec:
+            return
+
+        errors = []
+
+        for attr_name, (base_type, validators, _default) in spec.items():
+            value = args.get(attr_name)
+            if value is None:
+                continue  # required is SOFT
+
+            # Type check
+            if not check_type(value, base_type):
+                errors.append(f"'{attr_name}': expected {base_type}, got {type(value).__name__}")
+                continue
+
+            # Validator checks
+            for v in validators:
+                try:
+                    v(value)
+                except Exception as e:
+                    errors.append(f"'{attr_name}': {e}")
+
+        if errors:
+            raise ValueError("Attribute validation failed: " + "; ".join(errors))
+
+    def _check_required_attrs(
+        self,
+        args: dict[str, Any],
+        spec: dict[str, tuple[Any, list, Any]],
+    ) -> list[str]:
+        """Return list of errors for missing required attrs (SOFT).
+
+        Required = parameter has no default value (default is inspect.Parameter.empty).
+        """
+        errors: list[str] = []
+        for attr_name, (_base_type, _validators, default) in spec.items():
+            if default is inspect.Parameter.empty and args.get(attr_name) is None:
+                errors.append(f"required attribute '{attr_name}' is missing")
+        return errors
+
