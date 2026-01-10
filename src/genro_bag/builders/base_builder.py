@@ -222,24 +222,37 @@ class BagBuilderBase(BuilderValidationsMixin, ABC):
         return value
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
-        """Build _schema Bag from @element decorated methods."""
+        """Build _schema Bag from schema_path and/or @element decorated methods."""
+        from pathlib import Path
+
         from ..bag import Bag as BagClass
 
         super().__init_subclass__(**kwargs)
 
-        # Create new _schema, inheriting from base if present
-        cls._schema = BagClass()
-        for base in cls.__mro__[1:]:
-            if hasattr(base, "_schema") and base._schema is not None:
-                # Copy nodes from parent schema
-                for node in base._schema:
-                    if cls._schema.node(node.label) is None:
-                        cls._schema.set_item(
-                            node.label,
-                            node.get_value(static=True),
-                            **node.attr
-                        )
-                break
+        # Check if schema_path is defined - load pre-compiled schema
+        schema_path = getattr(cls, "schema_path", None)
+        if schema_path is not None:
+            schema_path = Path(schema_path)
+            if not schema_path.exists():
+                raise FileNotFoundError(f"Schema file not found: {schema_path}")
+            cls._schema = BagClass.from_tytx(
+                schema_path.read_bytes(),
+                transport="msgpack",
+            )
+        else:
+            # Create new _schema, inheriting from base if present
+            cls._schema = BagClass()
+            for base in cls.__mro__[1:]:
+                if hasattr(base, "_schema") and base._schema is not None:
+                    # Copy nodes from parent schema
+                    for node in base._schema:
+                        if cls._schema.node(node.label) is None:
+                            cls._schema.set_item(
+                                node.label,
+                                node.get_value(static=True),
+                                **node.attr
+                            )
+                    break
 
         # Process decorated methods
         for name, obj in list(cls.__dict__.items()):

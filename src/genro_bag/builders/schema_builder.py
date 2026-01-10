@@ -5,7 +5,8 @@ This module provides a specialized builder for constructing schemas that will
 be used by other builders. Instead of creating HTML elements or domain objects,
 SchemaBuilder creates schema definition nodes.
 
-The schema it produces can be assigned to a builder's _schema class attribute.
+The schema it produces can be assigned to a builder's _schema class attribute,
+or serialized to MessagePack for later loading.
 
 Example:
     from genro_bag import Bag
@@ -23,6 +24,9 @@ Example:
     schema.void('hr')
     schema.void('img')
 
+    # Save to MessagePack file
+    schema.builder.compile('path/to/schema.msgpack')
+
     # Use the schema in a builder class
     class MyHtmlBuilder(BagBuilderBase):
         _schema = schema  # The schema built above
@@ -30,6 +34,7 @@ Example:
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from .base_builder import BagBuilderBase, element
@@ -81,7 +86,6 @@ class SchemaBuilder(BagBuilderBase):
         return self.child(
             target,
             name,  # Use element name as tag
-            node_label=name,  # Use element name as label
             sub_tags=sub_tags,
             sub_tags_order=sub_tags_order,
             handler=handler,
@@ -114,7 +118,6 @@ class SchemaBuilder(BagBuilderBase):
         return self.child(
             target,
             name,
-            node_label=name,
             sub_tags="",  # Empty sub_tags spec = leaf
             leaf=True,
             handler=handler,
@@ -157,3 +160,15 @@ class SchemaBuilder(BagBuilderBase):
             _is_group=True,
             **attr,
         )
+
+    def compile(self, destination: str | Path) -> None:
+        """Compile the schema to MessagePack file.
+
+        Serializes the schema Bag to a MessagePack file for later loading
+        by builders that use pre-compiled schemas.
+
+        Args:
+            destination: Path to the output .msgpack file.
+        """
+        msgpack_data = self.bag.to_tytx(transport="msgpack")
+        Path(destination).write_bytes(msgpack_data)
