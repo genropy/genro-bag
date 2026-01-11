@@ -1,0 +1,796 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<grammar xmlns="http://relaxng.org/ns/structure/1.0"
+         xmlns:a="http://relaxng.org/ns/compatibility/annotations/1.0"
+         datatypeLibrary="http://www.w3.org/2001/XMLSchema-datatypes">
+  <define name="html.elem">
+    <a:documentation> RELAX NG Schema for HTML 5: Global Structure &amp; Metadata          #
+Root Element: &lt;html&gt;</a:documentation>
+    <element>
+      <name ns="">html</name>
+      <interleave>
+        <ref name="html.inner"/>
+        <ref name="html.attrs"/>
+      </interleave>
+    </element>
+  </define>
+  <define name="html.attrs">
+    <ref name="common.attrs"/>
+  </define>
+  <define name="html.inner">
+    <group>
+      <ref name="head.elem"/>
+      <ref name="body.elem"/>
+    </group>
+  </define>
+  <define name="head.elem">
+    <a:documentation>Metadata Container: &lt;head&gt;</a:documentation>
+    <element>
+      <name ns="">head</name>
+      <interleave>
+        <ref name="head.inner"/>
+        <ref name="head.attrs"/>
+      </interleave>
+    </element>
+  </define>
+  <define name="head.attrs">
+    <ref name="common.attrs"/>
+  </define>
+  <define name="head.inner">
+    <interleave>
+      <ref name="title.elem"/>
+      <optional>
+        <ref name="base.elem"/>
+      </optional>
+      <ref name="common.inner.metadata"/>
+    </interleave>
+  </define>
+  <define name="body.elem">
+    <a:documentation>Content Container: &lt;body&gt;</a:documentation>
+    <element>
+      <name ns="">body</name>
+      <interleave>
+        <ref name="body.inner"/>
+        <ref name="body.attrs"/>
+      </interleave>
+    </element>
+  </define>
+  <define name="body.attrs">
+    <interleave>
+      <ref name="common.attrs"/>
+      <optional>
+        <choice>
+          <ref name="common.attrs.aria.role.application"/>
+          <ref name="common.attrs.aria.landmark.document"/>
+          <ref name="common.attrs.aria.role.presentation"/>
+          <ref name="common.attrs.aria.implicit.document"/>
+        </choice>
+      </optional>
+      <optional>
+        <ref name="body.attrs.onafterprint"/>
+      </optional>
+      <optional>
+        <ref name="body.attrs.onbeforeprint"/>
+      </optional>
+      <optional>
+        <ref name="body.attrs.onbeforeunload"/>
+      </optional>
+      <optional>
+        <ref name="body.attrs.onhashchange"/>
+      </optional>
+      <optional>
+        <ref name="body.attrs.onlanguagechange"/>
+      </optional>
+      <optional>
+        <ref name="body.attrs.onmessage"/>
+      </optional>
+      <optional>
+        <ref name="body.attrs.onmessageerror"/>
+      </optional>
+      <optional>
+        <ref name="body.attrs.onoffline"/>
+      </optional>
+      <optional>
+        <ref name="body.attrs.ononline"/>
+      </optional>
+      <optional>
+        <ref name="body.attrs.onpagehide"/>
+      </optional>
+      <optional>
+        <ref name="body.attrs.onpagereveal"/>
+      </optional>
+      <optional>
+        <ref name="body.attrs.onpageshow"/>
+      </optional>
+      <optional>
+        <ref name="body.attrs.onpageswap"/>
+      </optional>
+      <optional>
+        <ref name="body.attrs.onpopstate"/>
+      </optional>
+      <optional>
+        <ref name="body.attrs.onrejectionhandled"/>
+      </optional>
+      <optional>
+        <ref name="body.attrs.onstorage"/>
+      </optional>
+      <optional>
+        <ref name="body.attrs.onunhandledrejection"/>
+      </optional>
+      <optional>
+        <ref name="body.attrs.onunload"/>
+      </optional>
+    </interleave>
+  </define>
+  <define name="body.inner">
+    <ref name="common.inner.flow"/>
+  </define>
+  <define name="body.attrs.onafterprint">
+    <attribute>
+      <name ns="">onafterprint</name>
+      <ref name="common.data.functionbody"/>
+    </attribute>
+  </define>
+  <define name="body.attrs.onbeforeprint">
+    <attribute>
+      <name ns="">onbeforeprint</name>
+      <ref name="common.data.functionbody"/>
+    </attribute>
+  </define>
+  <define name="body.attrs.onbeforeunload">
+    <attribute>
+      <name ns="">onbeforeunload</name>
+      <ref name="common.data.functionbody"/>
+    </attribute>
+  </define>
+  <define name="body.attrs.onhashchange">
+    <attribute>
+      <name ns="">onhashchange</name>
+      <ref name="common.data.functionbody"/>
+    </attribute>
+  </define>
+  <define name="body.attrs.onlanguagechange">
+    <attribute>
+      <name ns="">onlanguagechange</name>
+      <ref name="common.data.functionbody"/>
+    </attribute>
+  </define>
+  <define name="body.attrs.onmessage">
+    <attribute>
+      <name ns="">onmessage</name>
+      <ref name="common.data.functionbody"/>
+    </attribute>
+  </define>
+  <define name="body.attrs.onmessageerror">
+    <attribute>
+      <name ns="">onmessageerror</name>
+      <ref name="common.data.functionbody"/>
+    </attribute>
+  </define>
+  <define name="body.attrs.onoffline">
+    <attribute>
+      <name ns="">onoffline</name>
+      <ref name="common.data.functionbody"/>
+    </attribute>
+  </define>
+  <define name="body.attrs.ononline">
+    <attribute>
+      <name ns="">ononline</name>
+      <ref name="common.data.functionbody"/>
+    </attribute>
+  </define>
+  <define name="body.attrs.onpagehide">
+    <attribute>
+      <name ns="">onpagehide</name>
+      <ref name="common.data.functionbody"/>
+    </attribute>
+  </define>
+  <define name="body.attrs.onpagereveal">
+    <attribute>
+      <name ns="">onpagereveal</name>
+      <ref name="common.data.functionbody"/>
+    </attribute>
+  </define>
+  <define name="body.attrs.onpageswap">
+    <attribute>
+      <name ns="">onpageswap</name>
+      <ref name="common.data.functionbody"/>
+    </attribute>
+  </define>
+  <define name="body.attrs.onpageshow">
+    <attribute>
+      <name ns="">onpageshow</name>
+      <ref name="common.data.functionbody"/>
+    </attribute>
+  </define>
+  <define name="body.attrs.onpopstate">
+    <attribute>
+      <name ns="">onpopstate</name>
+      <ref name="common.data.functionbody"/>
+    </attribute>
+  </define>
+  <define name="body.attrs.onrejectionhandled">
+    <attribute>
+      <name ns="">onrejectionhandled</name>
+      <ref name="common.data.functionbody"/>
+    </attribute>
+  </define>
+  <define name="body.attrs.onstorage">
+    <attribute>
+      <name ns="">onstorage</name>
+      <ref name="common.data.functionbody"/>
+    </attribute>
+  </define>
+  <define name="body.attrs.onunhandledrejection">
+    <attribute>
+      <name ns="">onunhandledrejection</name>
+      <ref name="common.data.functionbody"/>
+    </attribute>
+  </define>
+  <define name="body.attrs.onunload">
+    <attribute>
+      <name ns="">onunload</name>
+      <ref name="common.data.functionbody"/>
+    </attribute>
+  </define>
+  <define name="title.elem">
+    <a:documentation>Document Title: &lt;title&gt;</a:documentation>
+    <element>
+      <name ns="">title</name>
+      <interleave>
+        <ref name="title.inner"/>
+        <ref name="title.attrs"/>
+      </interleave>
+    </element>
+  </define>
+  <define name="title.attrs">
+    <ref name="common.attrs"/>
+  </define>
+  <define name="title.inner">
+    <text/>
+  </define>
+  <define name="base.elem">
+    <a:documentation>Base URI: &lt;base&gt;</a:documentation>
+    <element>
+      <name ns="">base</name>
+      <interleave>
+        <ref name="base.inner"/>
+        <ref name="base.attrs"/>
+      </interleave>
+    </element>
+  </define>
+  <define name="base.attrs">
+    <interleave>
+      <ref name="common.attrs.basic"/>
+      <ref name="common.attrs.i18n"/>
+      <ref name="common.attrs.present"/>
+      <ref name="common.attrs.other"/>
+      <choice>
+        <interleave>
+          <ref name="base.attrs.href"/>
+          <optional>
+            <ref name="base.attrs.target"/>
+          </optional>
+        </interleave>
+        <ref name="base.attrs.target"/>
+      </choice>
+    </interleave>
+  </define>
+  <define name="base.attrs.href">
+    <attribute>
+      <name ns="">href</name>
+      <ref name="common.data.uri"/>
+    </attribute>
+  </define>
+  <define name="base.attrs.target">
+    <attribute>
+      <name ns="">target</name>
+      <ref name="common.data.browsing-context-or-keyword"/>
+    </attribute>
+  </define>
+  <define name="base.inner">
+    <empty/>
+  </define>
+  <define name="link.elem">
+    <a:documentation>Global Relationships: &lt;link&gt;</a:documentation>
+    <element>
+      <name ns="">link</name>
+      <interleave>
+        <ref name="link.inner"/>
+        <ref name="link.attrs"/>
+      </interleave>
+    </element>
+  </define>
+  <define name="link.attrs">
+    <interleave>
+      <ref name="common.attrs.basic"/>
+      <ref name="common.attrs.i18n"/>
+      <ref name="common.attrs.present"/>
+      <ref name="common.attrs.other"/>
+      <ref name="link.attrs.rel"/>
+      <optional>
+        <ref name="link.attrs.href"/>
+      </optional>
+      <optional>
+        <ref name="link.attrs.as"/>
+      </optional>
+      <optional>
+        <ref name="link.attrs.integrity"/>
+      </optional>
+      <optional>
+        <ref name="shared-hyperlink.attrs.hreflang"/>
+      </optional>
+      <optional>
+        <ref name="shared-hyperlink.attrs.media"/>
+      </optional>
+      <optional>
+        <ref name="shared-hyperlink.attrs.type"/>
+      </optional>
+      <optional>
+        <ref name="referrerpolicy"/>
+      </optional>
+      <optional>
+        <ref name="link.attrs.sizes"/>
+      </optional>
+      <optional>
+        <ref name="link.attrs.color"/>
+      </optional>
+      <optional>
+        <ref name="link.attrs.disabled"/>
+      </optional>
+      <optional>
+        <ref name="link.attrs.scope"/>
+      </optional>
+      <optional>
+        <ref name="link.attrs.updateviacache"/>
+      </optional>
+      <optional>
+        <ref name="link.attrs.workertype"/>
+      </optional>
+      <optional>
+        <ref name="link.attrs.imagesrcset"/>
+      </optional>
+      <optional>
+        <ref name="link.attrs.imagesizes"/>
+      </optional>
+      <optional>
+        <ref name="common.attrs.fetchpriority"/>
+      </optional>
+      <optional>
+        <ref name="embedded.content.attrs.crossorigin"/>
+      </optional>
+      <optional>
+        <ref name="common.attrs.blocking"/>
+      </optional>
+      <optional>
+        <ref name="common.attrs.aria.role.link"/>
+      </optional>
+    </interleave>
+  </define>
+  <define name="link.attrs.href">
+    <attribute>
+      <name ns="">href</name>
+      <ref name="common.data.uri.non-empty"/>
+    </attribute>
+  </define>
+  <define name="link.attrs.rel">
+    <attribute>
+      <name ns="">rel</name>
+      <data type="rel-value" datatypeLibrary="http://whattf.org/datatype-draft"/>
+    </attribute>
+  </define>
+  <define name="link.attrs.as">
+    <attribute>
+      <name ns="">as</name>
+      <choice>
+        <value type="string" datatypeLibrary=""></value>
+        <value type="string" datatypeLibrary="">audio</value>
+        <value type="string" datatypeLibrary="">audioworklet</value>
+        <value type="string" datatypeLibrary="">document</value>
+        <value type="string" datatypeLibrary="">embed</value>
+        <value type="string" datatypeLibrary="">fetch</value>
+        <value type="string" datatypeLibrary="">font</value>
+        <value type="string" datatypeLibrary="">image</value>
+        <value type="string" datatypeLibrary="">manifest</value>
+        <value type="string" datatypeLibrary="">object</value>
+        <value type="string" datatypeLibrary="">paintworklet</value>
+        <value type="string" datatypeLibrary="">report</value>
+        <value type="string" datatypeLibrary="">script</value>
+        <value type="string" datatypeLibrary="">serviceworker</value>
+        <value type="string" datatypeLibrary="">sharedworker</value>
+        <value type="string" datatypeLibrary="">style</value>
+        <value type="string" datatypeLibrary="">track</value>
+        <value type="string" datatypeLibrary="">video</value>
+        <value type="string" datatypeLibrary="">worker</value>
+        <value type="string" datatypeLibrary="">xslt</value>
+      </choice>
+    </attribute>
+  </define>
+  <define name="link.attrs.integrity">
+    <attribute>
+      <name ns="">integrity</name>
+      <ref name="common.data.integrity"/>
+    </attribute>
+  </define>
+  <define name="link.attrs.sizes">
+    <attribute>
+      <name ns="">sizes</name>
+      <choice>
+        <value type="string" datatypeLibrary="http://whattf.org/datatype-draft">any</value>
+        <ref name="common.data.sizes"/>
+      </choice>
+    </attribute>
+  </define>
+  <define name="link.attrs.color">
+    <attribute>
+      <name ns="">color</name>
+      <ref name="common.data.color"/>
+    </attribute>
+  </define>
+  <define name="link.attrs.disabled">
+    <attribute>
+      <name ns="">disabled</name>
+      <choice>
+        <value type="string" datatypeLibrary="http://whattf.org/datatype-draft">disabled</value>
+        <value type="string" datatypeLibrary="http://whattf.org/datatype-draft"></value>
+      </choice>
+    </attribute>
+  </define>
+  <define name="link.attrs.scope">
+    <attribute>
+      <name ns="">scope</name>
+      <ref name="common.data.uri"/>
+    </attribute>
+  </define>
+  <define name="link.attrs.updateviacache">
+    <attribute>
+      <name ns="">updateviacache</name>
+      <choice>
+        <value type="string" datatypeLibrary="">imports</value>
+        <value type="string" datatypeLibrary="">all</value>
+        <value type="string" datatypeLibrary="">none</value>
+      </choice>
+    </attribute>
+  </define>
+  <define name="link.attrs.workertype">
+    <attribute>
+      <name ns="">workertype</name>
+      <choice>
+        <value type="string" datatypeLibrary="">classic</value>
+        <value type="string" datatypeLibrary="">module</value>
+      </choice>
+    </attribute>
+  </define>
+  <define name="link.attrs.imagesrcset">
+    <interleave>
+      <attribute>
+        <name ns="">imagesrcset</name>
+        <data type="string" datatypeLibrary=""/>
+      </attribute>
+      <ref name="v5only"/>
+    </interleave>
+  </define>
+  <define name="link.attrs.imagesizes">
+    <interleave>
+      <attribute>
+        <name ns="">imagesizes</name>
+        <ref name="common.data.source.size.list"/>
+      </attribute>
+      <ref name="v5only"/>
+    </interleave>
+  </define>
+  <define name="link.inner">
+    <empty/>
+  </define>
+  <define name="common.elem.metadata" combine="choice">
+    <ref name="link.elem"/>
+  </define>
+  <define name="common.elem.phrasing" combine="choice">
+    <ref name="link.elem"/>
+  </define>
+  <define name="common.elem.flow" combine="choice">
+    <ref name="link.elem"/>
+  </define>
+  <define name="style.elem">
+    <a:documentation>Global Style: &lt;style&gt;</a:documentation>
+    <element>
+      <name ns="">style</name>
+      <interleave>
+        <ref name="style.inner"/>
+        <ref name="style.attrs"/>
+      </interleave>
+    </element>
+  </define>
+  <define name="style.attrs">
+    <interleave>
+      <ref name="common.attrs"/>
+      <optional>
+        <ref name="style.attrs.media"/>
+      </optional>
+      <optional>
+        <ref name="common.attrs.blocking"/>
+      </optional>
+    </interleave>
+  </define>
+  <define name="style.attrs.media">
+    <attribute>
+      <name ns="">media</name>
+      <ref name="common.data.mediaquery"/>
+    </attribute>
+  </define>
+  <define name="style.inner">
+    <ref name="common.inner.anything"/>
+  </define>
+  <define name="common.elem.metadata" combine="choice">
+    <ref name="style.elem"/>
+  </define>
+  <define name="meta.name.elem">
+    <a:documentation>Name-Value Metadata: &lt;meta name&gt;</a:documentation>
+    <element>
+      <name ns="">meta</name>
+      <interleave>
+        <ref name="meta.inner"/>
+        <ref name="meta.name.attrs"/>
+      </interleave>
+    </element>
+  </define>
+  <define name="meta.name.attrs">
+    <interleave>
+      <ref name="common.attrs.basic"/>
+      <ref name="common.attrs.i18n"/>
+      <ref name="common.attrs.present"/>
+      <ref name="common.attrs.other"/>
+      <ref name="meta.name.attrs.name"/>
+      <ref name="meta.name.attrs.content"/>
+      <optional>
+        <ref name="common.attrs.microdata.itemref"/>
+      </optional>
+      <optional>
+        <ref name="common.attrs.microdata.itemscope"/>
+      </optional>
+      <optional>
+        <ref name="common.attrs.microdata.itemtype"/>
+      </optional>
+      <optional>
+        <ref name="common.attrs.microdata.itemid"/>
+      </optional>
+      <optional>
+        <ref name="shared-hyperlink.attrs.media"/>
+      </optional>
+    </interleave>
+  </define>
+  <define name="meta.name.attrs.name">
+    <attribute>
+      <name ns="">name</name>
+      <data type="non-empty-string" datatypeLibrary="http://whattf.org/datatype-draft"/>
+    </attribute>
+  </define>
+  <define name="meta.name.attrs.content">
+    <attribute>
+      <name ns="">content</name>
+      <data type="string" datatypeLibrary=""/>
+    </attribute>
+  </define>
+  <define name="meta.inner">
+    <empty/>
+  </define>
+  <define name="common.elem.metadata" combine="choice">
+    <ref name="meta.name.elem"/>
+  </define>
+  <define name="meta.http-equiv.refresh.elem">
+    <a:documentation>&quot;refresh&quot; pragma directive: &lt;meta http-equiv=&#x27;refresh&#x27;&gt;</a:documentation>
+    <element>
+      <name ns="">meta</name>
+      <interleave>
+        <ref name="meta.inner"/>
+        <ref name="meta.http-equiv.refresh.attrs"/>
+      </interleave>
+    </element>
+  </define>
+  <define name="meta.http-equiv.refresh.attrs">
+    <interleave>
+      <ref name="common.attrs.basic"/>
+      <ref name="common.attrs.i18n"/>
+      <ref name="common.attrs.present"/>
+      <ref name="common.attrs.other"/>
+      <ref name="meta.http-equiv.attrs.http-equiv.refresh"/>
+      <ref name="meta.http-equiv.attrs.content.refresh"/>
+    </interleave>
+  </define>
+  <define name="meta.http-equiv.attrs.http-equiv.refresh">
+    <attribute>
+      <name ns="">http-equiv</name>
+      <value type="string" datatypeLibrary="http://whattf.org/datatype-draft">refresh</value>
+    </attribute>
+  </define>
+  <define name="meta.http-equiv.attrs.content.refresh">
+    <attribute>
+      <name ns="">content</name>
+      <ref name="common.data.refresh"/>
+    </attribute>
+  </define>
+  <define name="common.elem.metadata" combine="choice">
+    <ref name="meta.http-equiv.refresh.elem"/>
+  </define>
+  <define name="meta.http-equiv.default-style.elem">
+    <a:documentation>&quot;default-style&quot; pragma directive: &lt;meta http-equiv=&#x27;default-style&#x27;&gt;</a:documentation>
+    <element>
+      <name ns="">meta</name>
+      <interleave>
+        <ref name="meta.inner"/>
+        <ref name="meta.http-equiv.default-style.attrs"/>
+      </interleave>
+    </element>
+  </define>
+  <define name="meta.http-equiv.default-style.attrs">
+    <interleave>
+      <ref name="common.attrs.basic"/>
+      <ref name="common.attrs.i18n"/>
+      <ref name="common.attrs.present"/>
+      <ref name="common.attrs.other"/>
+      <ref name="meta.http-equiv.attrs.http-equiv.default-style"/>
+      <ref name="meta.http-equiv.attrs.content.default-style"/>
+    </interleave>
+  </define>
+  <define name="meta.http-equiv.attrs.http-equiv.default-style">
+    <attribute>
+      <name ns="">http-equiv</name>
+      <value type="string" datatypeLibrary="http://whattf.org/datatype-draft">default-style</value>
+    </attribute>
+  </define>
+  <define name="meta.http-equiv.attrs.content.default-style">
+    <attribute>
+      <name ns="">content</name>
+      <ref name="common.data.default-style"/>
+    </attribute>
+  </define>
+  <define name="common.elem.metadata" combine="choice">
+    <ref name="meta.http-equiv.default-style.elem"/>
+  </define>
+  <define name="meta.http-equiv.content-security-policy.elem">
+    <a:documentation>Content Security Policy pragma directive: &lt;meta http-equiv=&#x27;content-security-policy&#x27;&gt;</a:documentation>
+    <element>
+      <name ns="">meta</name>
+      <interleave>
+        <ref name="meta.inner"/>
+        <ref name="meta.http-equiv.content-security-policy.attrs"/>
+      </interleave>
+    </element>
+  </define>
+  <define name="meta.http-equiv.content-security-policy.attrs">
+    <interleave>
+      <ref name="common.attrs.basic"/>
+      <ref name="common.attrs.i18n"/>
+      <ref name="common.attrs.present"/>
+      <ref name="common.attrs.other"/>
+      <ref name="meta.http-equiv.attrs.http-equiv.content-security-policy"/>
+      <ref name="meta.http-equiv.attrs.content.content-security-policy"/>
+    </interleave>
+  </define>
+  <define name="meta.http-equiv.attrs.http-equiv.content-security-policy">
+    <attribute>
+      <name ns="">http-equiv</name>
+      <value type="string" datatypeLibrary="http://whattf.org/datatype-draft">content-security-policy</value>
+    </attribute>
+  </define>
+  <define name="meta.http-equiv.attrs.content.content-security-policy">
+    <attribute>
+      <name ns="">content</name>
+      <ref name="common.data.content-security-policy"/>
+    </attribute>
+  </define>
+  <define name="common.elem.metadata" combine="choice">
+    <ref name="meta.http-equiv.content-security-policy.elem"/>
+  </define>
+  <define name="meta.http-equiv.x-ua-compatible.elem">
+    <a:documentation>&quot;x-ua-compatible&quot; pragma directive: &lt;meta http-equiv=&#x27;x-ua-compatible&#x27;&gt;</a:documentation>
+    <element>
+      <name ns="">meta</name>
+      <interleave>
+        <ref name="meta.inner"/>
+        <ref name="meta.http-equiv.x-ua-compatible.attrs"/>
+      </interleave>
+    </element>
+  </define>
+  <define name="meta.http-equiv.x-ua-compatible.attrs">
+    <interleave>
+      <ref name="common.attrs.basic"/>
+      <ref name="common.attrs.i18n"/>
+      <ref name="common.attrs.present"/>
+      <ref name="common.attrs.other"/>
+      <ref name="meta.http-equiv.attrs.http-equiv.x-ua-compatible"/>
+      <ref name="meta.http-equiv.attrs.content.x-ua-compatible"/>
+    </interleave>
+  </define>
+  <define name="meta.http-equiv.attrs.http-equiv.x-ua-compatible">
+    <attribute>
+      <name ns="">http-equiv</name>
+      <value type="string" datatypeLibrary="http://whattf.org/datatype-draft">x-ua-compatible</value>
+    </attribute>
+  </define>
+  <define name="meta.http-equiv.attrs.content.x-ua-compatible">
+    <attribute>
+      <name ns="">content</name>
+      <ref name="common.data.x-ua-compatible"/>
+    </attribute>
+  </define>
+  <define name="common.elem.metadata" combine="choice">
+    <ref name="meta.http-equiv.x-ua-compatible.elem"/>
+  </define>
+  <define name="meta.charset.elem">
+    <a:documentation>Inline Character Encoding Statement for HTML: &lt;meta charset&gt;</a:documentation>
+    <element>
+      <name ns="">meta</name>
+      <interleave>
+        <ref name="meta.inner"/>
+        <ref name="meta.charset.attrs"/>
+      </interleave>
+    </element>
+  </define>
+  <define name="meta.charset.attrs">
+    <interleave>
+      <ref name="common.attrs.basic"/>
+      <ref name="common.attrs.i18n"/>
+      <ref name="common.attrs.present"/>
+      <ref name="common.attrs.other"/>
+      <ref name="meta.charset.attrs.charset"/>
+    </interleave>
+  </define>
+  <define name="meta.charset.attrs.charset">
+    <attribute>
+      <name ns="">charset</name>
+      <choice>
+        <interleave>
+          <data type="string" datatypeLibrary=""/>
+          <ref name="HTMLonly"/>
+        </interleave>
+        <interleave>
+          <data type="string">
+            <param name="pattern">[uU][tT][fF]-8</param>
+          </data>
+          <ref name="XMLonly"/>
+        </interleave>
+      </choice>
+    </attribute>
+  </define>
+  <define name="meta.http-equiv.content-type.elem">
+    <a:documentation>Inline Character Encoding Statement for HTML: &lt;meta http-equiv=&#x27;content-type&#x27;&gt;</a:documentation>
+    <interleave>
+      <element>
+        <name ns="">meta</name>
+        <interleave>
+          <ref name="meta.inner"/>
+          <ref name="meta.http-equiv.content-type.attrs"/>
+        </interleave>
+      </element>
+      <ref name="HTMLonly"/>
+    </interleave>
+  </define>
+  <define name="meta.http-equiv.content-type.attrs">
+    <interleave>
+      <ref name="common.attrs.basic"/>
+      <ref name="common.attrs.i18n"/>
+      <ref name="common.attrs.present"/>
+      <ref name="common.attrs.other"/>
+      <ref name="meta.http-equiv.attrs.http-equiv.content-type"/>
+      <ref name="meta.http-equiv.attrs.content.content-type"/>
+    </interleave>
+  </define>
+  <define name="meta.http-equiv.attrs.http-equiv.content-type">
+    <attribute>
+      <name ns="">http-equiv</name>
+      <value type="string" datatypeLibrary="http://whattf.org/datatype-draft">content-type</value>
+    </attribute>
+  </define>
+  <define name="meta.http-equiv.attrs.content.content-type">
+    <attribute>
+      <name ns="">content</name>
+      <ref name="common.data.meta-charset"/>
+    </attribute>
+  </define>
+  <define name="common.elem.metadata" combine="choice">
+    <choice>
+      <ref name="meta.charset.elem"/>
+      <ref name="meta.http-equiv.content-type.elem"/>
+    </choice>
+  </define>
+</grammar>

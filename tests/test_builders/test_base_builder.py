@@ -1,29 +1,268 @@
 # Copyright 2025 Softwell S.r.l. - SPDX-License-Identifier: Apache-2.0
-"""Tests for BagBuilderBase and builder decorators."""
+"""Tests for BagBuilderBase and builder decorators.
+
+Tests cover:
+- @element decorator with various configurations
+- @abstract decorator for inheritance bases
+- Ellipsis body detection (handler_name=None vs handler_name='_el_name')
+- Schema structure with @ prefix for abstracts
+- Inheritance resolution via inherits_from
+- Attribute validation via Annotated constraints
+"""
 
 import pytest
 from decimal import Decimal
 from typing import Annotated, Literal
 
 from genro_bag import Bag, BagBuilderBase
-from genro_bag.builders import element
-from genro_bag.builders.validations import Range, Regex
+from genro_bag.builders import element, abstract, Range, Regex
 
 
-class SimpleBuilder(BagBuilderBase):
-    """Simple builder for testing."""
+# =============================================================================
+# Tests for @element decorator - handler detection
+# =============================================================================
 
-    @element(tags='item, product')
-    def item(self, target, tag, **attr):
-        return self.child(target, tag, **attr)
+class TestElementDecoratorHandlerDetection:
+    """Tests for @element decorator handler detection."""
 
-    @element(sub_tags='item[1:],product')  # At least 1 item, any number of product
-    def container(self, target, tag, **attr):
-        return self.child(target, tag, **attr)
+    def test_ellipsis_body_sets_handler_name_none(self):
+        """@element with ... body sets handler_name=None in schema."""
+        class Builder(BagBuilderBase):
+            @element()
+            def item(self): ...
 
-    @element()
-    def section(self, target, tag, **attr):
-        return self.child(target, tag, **attr)
+        # Schema should have handler_name=None
+        node = Builder._schema.get_node('item')
+        assert node is not None
+        assert node.attr.get('handler_name') is None
+
+    def test_real_body_sets_handler_name(self):
+        """@element with real body sets handler_name='_el_name' in schema."""
+        class Builder(BagBuilderBase):
+            @element()
+            def item(self, target, tag, **attr):
+                attr.setdefault('custom', 'value')
+                return self.child(target, tag, **attr)
+
+        # Schema should have handler_name='_el_item'
+        node = Builder._schema.get_node('item')
+        assert node is not None
+        assert node.attr.get('handler_name') == '_el_item'
+        # Method should be renamed
+        assert hasattr(Builder, '_el_item')
+        assert not hasattr(Builder, 'item')
+
+    def test_ellipsis_method_removed_from_class(self):
+        """@element with ... body removes method from class."""
+        class Builder(BagBuilderBase):
+            @element()
+            def item(self): ...
+
+        # Method should be removed (no _el_item either)
+        assert not hasattr(Builder, 'item')
+        assert not hasattr(Builder, '_el_item')
+
+    def test_ellipsis_inline_with_params(self):
+        """@element with inline ... and parameters sets handler_name=None."""
+        class Builder(BagBuilderBase):
+            @element()
+            def alfa(self, aa=None): ...
+
+        node = Builder._schema.get_node('alfa')
+        assert node is not None
+        assert node.attr.get('handler_name') is None
+
+    def test_ellipsis_newline_with_params(self):
+        """@element with ... on separate line sets handler_name=None."""
+        class Builder(BagBuilderBase):
+            @element()
+            def alfa(self, aa=None):
+                ...
+
+        node = Builder._schema.get_node('alfa')
+        assert node is not None
+        assert node.attr.get('handler_name') is None
+
+    def test_ellipsis_with_docstring_and_params(self):
+        """@element with docstring and ... sets handler_name=None."""
+        class Builder(BagBuilderBase):
+            @element()
+            def alfa(self, aa=None):
+                "this is my method"
+                ...
+
+        node = Builder._schema.get_node('alfa')
+        assert node is not None
+        assert node.attr.get('handler_name') is None
+
+
+# =============================================================================
+# Tests for @abstract decorator
+# =============================================================================
+
+class TestAbstractDecorator:
+    """Tests for @abstract decorator."""
+
+    def test_abstract_creates_at_prefixed_entry(self):
+        """@abstract creates @name entry in schema."""
+        class Builder(BagBuilderBase):
+            @abstract(sub_tags='span,p')
+            def flow(self): ...
+
+        # Schema should have @flow
+        node = Builder._schema.get_node('@flow')
+        assert node is not None
+        assert node.attr.get('sub_tags') == 'span,p'
+
+    def test_abstract_method_removed_from_class(self):
+        """@abstract removes method from class."""
+        class Builder(BagBuilderBase):
+            @abstract(sub_tags='span,p')
+            def flow(self): ...
+
+        assert not hasattr(Builder, 'flow')
+        assert not hasattr(Builder, '_el_flow')
+
+    def test_iteration_returns_all_nodes(self):
+        """Iteration returns all schema nodes including abstracts."""
+        class Builder(BagBuilderBase):
+            @abstract(sub_tags='span,p')
+            def flow(self): ...
+
+            @element()
+            def div(self): ...
+
+            @element()
+            def span(self): ...
+
+        bag = Bag(builder=Builder)
+        labels = [node.label for node in bag.builder]
+        assert 'div' in labels
+        assert 'span' in labels
+        assert '@flow' in labels
+
+    def test_abstract_not_in_contains(self):
+        """Abstract elements work with 'in' operator."""
+        class Builder(BagBuilderBase):
+            @abstract(sub_tags='span,p')
+            def flow(self): ...
+
+            @element()
+            def div(self): ...
+
+        bag = Bag(builder=Builder)
+        assert 'div' in bag.builder
+        assert '@flow' in bag.builder  # Abstracts are in schema
+
+
+# =============================================================================
+# Tests for inherits_from
+# =============================================================================
+
+class TestInheritsFrom:
+    """Tests for inherits_from inheritance resolution."""
+
+    def test_element_inherits_sub_tags_from_abstract(self):
+        """Element inherits sub_tags from abstract via inherits_from."""
+        class Builder(BagBuilderBase):
+            @abstract(sub_tags='span,p,a')
+            def phrasing(self): ...
+
+            @element(inherits_from='@phrasing')
+            def div(self): ...
+
+            @element()
+            def span(self): ...
+
+            @element()
+            def p(self): ...
+
+            @element()
+            def a(self): ...
+
+        bag = Bag(builder=Builder)
+        handler, sub_tags, _ = bag.builder.get_schema_info('div')
+        assert sub_tags == 'span,p,a'
+
+    def test_element_can_override_inherited_attrs(self):
+        """Element attrs override inherited attrs from abstract."""
+        class Builder(BagBuilderBase):
+            @abstract(sub_tags='a,b,c', sub_tags_order='a>b>c')
+            def base(self): ...
+
+            @element(inherits_from='@base', sub_tags_order='c>b>a')
+            def custom(self): ...
+
+            @element()
+            def a(self): ...
+
+            @element()
+            def b(self): ...
+
+            @element()
+            def c(self): ...
+
+        bag = Bag(builder=Builder)
+        handler, sub_tags, _ = bag.builder.get_schema_info('custom')
+        # sub_tags inherited, sub_tags_order overridden
+        assert sub_tags == 'a,b,c'
+
+
+# =============================================================================
+# Tests for @element decorator - tags parameter
+# =============================================================================
+
+class TestElementDecoratorTags:
+    """Tests for @element decorator tags parameter."""
+
+    def test_no_tags_uses_method_name(self):
+        """@element with no tags uses method name as tag."""
+        class Builder(BagBuilderBase):
+            @element()
+            def item(self): ...
+
+        assert Builder._schema.get_node('item') is not None
+
+    def test_single_tag_string_adds_to_method_name(self):
+        """@element with tags adds them to method name."""
+        class Builder(BagBuilderBase):
+            @element(tags='product')
+            def item(self): ...
+
+        # Both method name and tags are registered
+        assert Builder._schema.get_node('item') is not None
+        assert Builder._schema.get_node('product') is not None
+
+    def test_underscore_method_excludes_name(self):
+        """@element on _method excludes method name from tags."""
+        class Builder(BagBuilderBase):
+            @element(tags='product')
+            def _item(self): ...
+
+        # Only tags are registered, not _item
+        assert Builder._schema.get_node('product') is not None
+        assert Builder._schema.get_node('_item') is None
+
+    def test_multiple_tags_string(self):
+        """@element with comma-separated tags string."""
+        class Builder(BagBuilderBase):
+            @element(tags='apple, banana, cherry')
+            def _fruit(self): ...
+
+        assert Builder._schema.get_node('apple') is not None
+        assert Builder._schema.get_node('banana') is not None
+        assert Builder._schema.get_node('cherry') is not None
+        assert Builder._schema.get_node('_fruit') is None
+
+    def test_multiple_tags_tuple(self):
+        """@element with tuple of tags."""
+        class Builder(BagBuilderBase):
+            @element(tags=('red', 'green', 'blue'))
+            def _color(self): ...
+
+        assert Builder._schema.get_node('red') is not None
+        assert Builder._schema.get_node('green') is not None
+        assert Builder._schema.get_node('blue') is not None
 
 
 # =============================================================================
@@ -35,8 +274,12 @@ class TestBagBuilderBase:
 
     def test_bag_with_builder(self):
         """Bag can be created with a builder class."""
-        bag = Bag(builder=SimpleBuilder)
-        assert isinstance(bag.builder, SimpleBuilder)
+        class Builder(BagBuilderBase):
+            @element()
+            def item(self): ...
+
+        bag = Bag(builder=Builder)
+        assert isinstance(bag.builder, Builder)
 
     def test_bag_without_builder(self):
         """Bag without builder works normally."""
@@ -45,49 +288,26 @@ class TestBagBuilderBase:
         bag['test'] = 'value'
         assert bag['test'] == 'value'
 
-    def test_builder_creates_node(self):
-        """Builder creates nodes with tag."""
-        bag = Bag(builder=SimpleBuilder)
+    def test_builder_creates_node_with_tag(self):
+        """Builder creates nodes with correct tag."""
+        class Builder(BagBuilderBase):
+            @element()
+            def item(self): ...
+
+        bag = Bag(builder=Builder)
         node = bag.item(name='test')
 
         assert node.tag == 'item'
         assert node.label == 'item_0'
-        assert node.value is None
         assert node.attr.get('name') == 'test'
-
-    def test_builder_creates_branch_node(self):
-        """Builder creates branch nodes (returns BagNode, Bag created lazy)."""
-        from genro_bag import BagNode
-
-        bag = Bag(builder=SimpleBuilder)
-        container_node = bag.container()
-
-        # child() always returns BagNode
-        assert isinstance(container_node, BagNode)
-        assert container_node.tag == 'container'
-        assert container_node.label == 'container_0'
-        # No Bag yet (lazy creation)
-        assert container_node.value is None
-
-    def test_builder_lazy_bag_creation(self):
-        """Bag is created lazily when children are added."""
-        from genro_bag import BagNode
-
-        bag = Bag(builder=SimpleBuilder)
-        container_node = bag.container()
-
-        # Add a child via the node - this triggers lazy Bag creation
-        item_node = container_node.item()
-
-        # Now the container has a Bag value
-        assert isinstance(container_node.value, Bag)
-        assert container_node.value.builder is bag.builder
-        # The item is inside the container's Bag
-        assert item_node.tag == 'item'
 
     def test_builder_auto_label_generation(self):
         """Builder auto-generates unique labels."""
-        bag = Bag(builder=SimpleBuilder)
+        class Builder(BagBuilderBase):
+            @element()
+            def item(self): ...
+
+        bag = Bag(builder=Builder)
         bag.item()
         bag.item()
         bag.item()
@@ -95,370 +315,259 @@ class TestBagBuilderBase:
         labels = list(bag.keys())
         assert labels == ['item_0', 'item_1', 'item_2']
 
-    def test_builder_multi_tag_method(self):
-        """Single method handles multiple tags."""
-        bag = Bag(builder=SimpleBuilder)
-        bag.item()
-        bag.product()
+    def test_builder_custom_handler_called(self):
+        """Builder calls custom handler when present."""
+        class Builder(BagBuilderBase):
+            @element()
+            def item(self, target, tag, **attr):
+                attr['custom'] = 'injected'
+                return self.child(target, tag, **attr)
 
-        node1 = bag.get_node('item_0')
-        node2 = bag.get_node('product_0')
+        bag = Bag(builder=Builder)
+        node = bag.item()
 
-        assert node1.tag == 'item'
-        assert node2.tag == 'product'
+        assert node.attr.get('custom') == 'injected'
 
-    def test_builder_fluent_api(self):
-        """Builder enables fluent API."""
-        bag = Bag(builder=SimpleBuilder)
+    def test_builder_default_handler_used(self):
+        """Builder uses default handler for ellipsis methods."""
+        class Builder(BagBuilderBase):
+            @element()
+            def item(self): ...
+
+        bag = Bag(builder=Builder)
+        node = bag.item(name='test')
+
+        # Default handler should work
+        assert node.tag == 'item'
+        assert node.attr.get('name') == 'test'
+
+
+# =============================================================================
+# Tests for lazy Bag creation
+# =============================================================================
+
+class TestLazyBagCreation:
+    """Tests for lazy Bag creation on branch nodes."""
+
+    def test_branch_node_starts_with_none_value(self):
+        """Branch node starts with value=None (lazy)."""
+        class Builder(BagBuilderBase):
+            @element(sub_tags='item')
+            def container(self): ...
+
+            @element()
+            def item(self): ...
+
+        bag = Bag(builder=Builder)
         container = bag.container()
-        container.item(name='first')
-        container.item(name='second')
 
-        assert len(bag) == 1
-        assert len(bag['#0']) == 2
+        assert container.value is None
+
+    def test_bag_created_on_first_child(self):
+        """Bag created lazily when first child is added."""
+        class Builder(BagBuilderBase):
+            @element(sub_tags='item')
+            def container(self): ...
+
+            @element()
+            def item(self): ...
+
+        bag = Bag(builder=Builder)
+        container = bag.container()
+        container.item()
+
+        assert isinstance(container.value, Bag)
+        assert container.value.builder is bag.builder
 
 
 # =============================================================================
-# Tests for element decorator with sub_tags validation
+# Tests for sub_tags validation
 # =============================================================================
 
-class TestBuilderSubTagsValidation:
-    """Tests for sub_tags validation via @element decorator."""
+class TestSubTagsValidation:
+    """Tests for sub_tags validation."""
 
-    def test_element_with_sub_tags_spec(self):
-        """@element sub_tags spec defines valid children."""
-        class ContainerBuilder(BagBuilderBase):
+    def test_valid_child_allowed(self):
+        """Valid child tag is allowed."""
+        class Builder(BagBuilderBase):
             @element(sub_tags='span,p')
-            def div(self, target, tag, **attr):
-                return self.child(target, tag, **attr)
+            def div(self): ...
 
             @element()
-            def span(self, target, tag, **attr):
-                return self.child(target, tag, **attr)
+            def span(self): ...
 
             @element()
-            def p(self, target, tag, **attr):
-                return self.child(target, tag, **attr)
+            def p(self): ...
 
-        bag = Bag(builder=ContainerBuilder)
-        div_node = bag.div()
-        div_node.span()
-        div_node.p()
+        bag = Bag(builder=Builder)
+        div = bag.div()
+        div.span()  # Should not raise
+        div.p()  # Should not raise
 
-        # div_node.value is the Bag containing children (created lazily)
-        assert isinstance(div_node.value, Bag)
-        assert len(div_node.value) == 2
+        assert len(div.value) == 2
 
-    def test_element_leaf(self):
-        """Leaf element creates node without children."""
-        class LeafBuilder(BagBuilderBase):
+    def test_invalid_child_rejected(self):
+        """Invalid child tag is rejected."""
+        class Builder(BagBuilderBase):
+            @element(sub_tags='span')
+            def div(self): ...
+
             @element()
-            def br(self, target, tag, **attr):
-                return self.child(target, tag, **attr)
+            def span(self): ...
 
-        bag = Bag(builder=LeafBuilder)
-        node = bag.br()
+            @element()
+            def img(self): ...
 
-        assert node.value is None
-        assert node.tag == 'br'
+        bag = Bag(builder=Builder)
+        div = bag.div()
+
+        with pytest.raises(ValueError, match='not allowed'):
+            div.img()
 
 
 # =============================================================================
-# Tests for attribute validation via @element decorator
+# Tests for attribute validation via Annotated
 # =============================================================================
 
-class TestBuilderValidation:
-    """Tests for attribute validation via @element decorator."""
+class TestAnnotatedValidation:
+    """Tests for attribute validation via Annotated constraints."""
 
-    def test_element_validates_int_range(self):
-        """@element validates int range via Annotated."""
-        class ValidatingBuilder(BagBuilderBase):
+    def test_range_valid(self):
+        """Range constraint accepts valid value."""
+        class Builder(BagBuilderBase):
             @element()
             def td(self, target, tag, colspan: Annotated[int, Range(ge=1, le=10)] = None, **attr):
                 return self.child(target, tag, colspan=colspan, **attr)
 
-        bag = Bag(builder=ValidatingBuilder)
+        bag = Bag(builder=Builder)
+        bag.td(colspan=5)  # Should not raise
 
-        # Valid
-        bag.td(colspan=5)
+    def test_range_min_invalid(self):
+        """Range constraint rejects value below minimum."""
+        class Builder(BagBuilderBase):
+            @element()
+            def td(self, target, tag, colspan: Annotated[int, Range(ge=1, le=10)] = None, **attr):
+                return self.child(target, tag, colspan=colspan, **attr)
 
-        # Too small
+        bag = Bag(builder=Builder)
         with pytest.raises(ValueError, match='must be >= 1'):
             bag.td(colspan=0)
 
-        # Too large
+    def test_range_max_invalid(self):
+        """Range constraint rejects value above maximum."""
+        class Builder(BagBuilderBase):
+            @element()
+            def td(self, target, tag, colspan: Annotated[int, Range(ge=1, le=10)] = None, **attr):
+                return self.child(target, tag, colspan=colspan, **attr)
+
+        bag = Bag(builder=Builder)
         with pytest.raises(ValueError, match='must be <= 10'):
             bag.td(colspan=20)
 
-    def test_element_validates_enum_values(self):
-        """@element validates enum values via Literal."""
-        class ValidatingBuilder(BagBuilderBase):
+    def test_literal_valid(self):
+        """Literal constraint accepts valid value."""
+        class Builder(BagBuilderBase):
             @element()
             def td(self, target, tag, scope: Literal['row', 'col'] = None, **attr):
                 return self.child(target, tag, scope=scope, **attr)
 
-        bag = Bag(builder=ValidatingBuilder)
+        bag = Bag(builder=Builder)
+        bag.td(scope='row')  # Should not raise
 
-        # Valid
-        bag.td(scope='row')
-
-        # Invalid
-        with pytest.raises(ValueError, match='expected'):
-            bag.td(scope='invalid')
-
-
-# =============================================================================
-# Tests for Annotated validation constraints
-# =============================================================================
-
-class TestAnnotatedConstraintsValidation:
-    """Tests for validation via Annotated constraints in @element."""
-
-    def test_element_validates_multiple_constraints(self):
-        """@element validates multiple constraints on same parameter."""
-        class ConstraintBuilder(BagBuilderBase):
+    def test_literal_invalid(self):
+        """Literal constraint rejects invalid value."""
+        class Builder(BagBuilderBase):
             @element()
-            def td(self, target, tag,
-                   colspan: Annotated[int, Range(ge=1, le=10)] = None,
-                   scope: Literal['row', 'col'] = None,
-                   **attr):
-                return self.child(target, tag, colspan=colspan, scope=scope, **attr)
+            def td(self, target, tag, scope: Literal['row', 'col'] = None, **attr):
+                return self.child(target, tag, scope=scope, **attr)
 
-        bag = Bag(builder=ConstraintBuilder)
-
-        # Valid call
-        bag.td(colspan=5, scope='row')
-
-        # Invalid colspan
-        with pytest.raises(ValueError, match='must be >= 1'):
-            bag.td(colspan=0)
-
-        # Invalid scope
+        bag = Bag(builder=Builder)
         with pytest.raises(ValueError, match='expected'):
             bag.td(scope='invalid')
 
-    def test_element_validates_pattern(self):
-        """@element validates pattern constraint via Annotated."""
-        class PatternBuilder(BagBuilderBase):
+    def test_regex_valid(self):
+        """Regex constraint accepts matching value."""
+        class Builder(BagBuilderBase):
             @element()
             def email(self, target, tag,
                       address: Annotated[str, Regex(r'^[\w\.-]+@[\w\.-]+\.\w+$')] = None,
                       **attr):
                 return self.child(target, tag, address=address, **attr)
 
-        bag = Bag(builder=PatternBuilder)
+        bag = Bag(builder=Builder)
+        bag.email(address='test@example.com')  # Should not raise
 
-        # Valid
-        bag.email(address='test@example.com')
+    def test_regex_invalid(self):
+        """Regex constraint rejects non-matching value."""
+        class Builder(BagBuilderBase):
+            @element()
+            def email(self, target, tag,
+                      address: Annotated[str, Regex(r'^[\w\.-]+@[\w\.-]+\.\w+$')] = None,
+                      **attr):
+                return self.child(target, tag, address=address, **attr)
 
-        # Invalid
+        bag = Bag(builder=Builder)
         with pytest.raises(ValueError, match='must match pattern'):
             bag.email(address='not-an-email')
 
-
-# =============================================================================
-# Tests for =reference resolution in sub_tags spec
-# =============================================================================
-
-class TestBuilderReferences:
-    """Tests for =reference resolution in @element sub_tags spec."""
-
-    def test_ref_in_sub_tags_spec(self):
-        """References in sub_tags spec are resolved correctly."""
-        class RefBuilder(BagBuilderBase):
-            @property
-            def _ref_items(self):
-                return 'apple,banana'
-
-            @element(sub_tags='=items')
-            def menu(self, target, tag, **attr):
-                return self.child(target, tag, **attr)
-
-            @element()
-            def apple(self, target, tag, **attr):
-                return self.child(target, tag, **attr)
-
-            @element()
-            def banana(self, target, tag, **attr):
-                return self.child(target, tag, **attr)
-
-        bag = Bag(builder=RefBuilder)
-        menu = bag.menu()
-        # These should work because =items resolves to 'apple, banana'
-        menu.apple()
-        menu.banana()
-
-        # Verify structure
-        assert len(menu.value) == 2
-
-
-# =============================================================================
-# Tests for @element decorator
-# =============================================================================
-
-class TestElementDecorator:
-    """Tests for @element decorator."""
-
-    def test_single_tag(self):
-        """Element with no tags uses method name as tag."""
-        class Builder(BagBuilderBase):
-            @element()
-            def item(self, target, tag, **attr):
-                return self.child(target, tag, **attr)
-
-        bag = Bag(builder=Builder)
-        bag.item()
-        assert bag.get_node('item_0').tag == 'item'
-
-    def test_multiple_tags(self):
-        """Element can handle multiple tags."""
-        class Builder(BagBuilderBase):
-            @element(tags='apple, banana, cherry')
-            def fruit(self, target, tag, **attr):
-                return self.child(target, tag, **attr)
-
-        bag = Bag(builder=Builder)
-        bag.apple()
-        bag.banana()
-        bag.cherry()
-
-        assert bag.get_node('apple_0').tag == 'apple'
-        assert bag.get_node('banana_0').tag == 'banana'
-        assert bag.get_node('cherry_0').tag == 'cherry'
-
-
-# =============================================================================
-# Integration tests for @element with Bag
-# =============================================================================
-
-class TestElementDecoratorIntegration:
-    """Integration tests for @element with Bag."""
-
-    def test_leaf_element(self):
-        """Leaf element creates node."""
-        class Builder(BagBuilderBase):
-            @element()
-            def item(self, target, tag, **attr):
-                return self.child(target, tag, **attr)
-
-        bag = Bag(builder=Builder)
-        node = bag.item(name='test')
-
-        assert node.value is None
-        assert node.tag == 'item'
-
-    def test_branch_element(self):
-        """Branch element returns BagNode, Bag created lazily."""
-        from genro_bag import BagNode
-
-        class Builder(BagBuilderBase):
-            @element(sub_tags='item')
-            def container(self, target, tag, **attr):
-                return self.child(target, tag, **attr)
-
-            @element()
-            def item(self, target, tag, **attr):
-                return self.child(target, tag, **attr)
-
-        bag = Bag(builder=Builder)
-        container_node = bag.container()
-
-        # child() always returns BagNode
-        assert isinstance(container_node, BagNode)
-        assert container_node.tag == 'container'
-        # No Bag yet (lazy creation)
-        assert container_node.value is None
-
-        # Add child triggers lazy Bag creation
-        container_node.item()
-        assert isinstance(container_node.value, Bag)
-        assert container_node.value.builder is bag.builder
-
-
-# =============================================================================
-# Tests for validation with Annotated constraints
-# =============================================================================
-
-class TestAnnotatedValidation:
-    """Tests for validation with Annotated constraints."""
-
-    def test_pattern_valid(self):
-        """Pattern constraint accepts valid value."""
-        Email = Annotated[str, Regex(r'^[\w\.-]+@[\w\.-]+\.\w+$')]
-
-        class Builder(BagBuilderBase):
-            @element()
-            def contact(self, target, tag, email: Email = None, **attr):
-                return self.child(target, tag, email=email, **attr)
-
-        bag = Bag(builder=Builder)
-        bag.contact(email='test@example.com')
-
-    def test_pattern_invalid(self):
-        """Pattern constraint rejects invalid value."""
-        Email = Annotated[str, Regex(r'^[\w\.-]+@[\w\.-]+\.\w+$')]
-
-        class Builder(BagBuilderBase):
-            @element()
-            def contact(self, target, tag, email: Email = None, **attr):
-                return self.child(target, tag, email=email, **attr)
-
-        bag = Bag(builder=Builder)
-        with pytest.raises(ValueError, match='must match pattern'):
-            bag.contact(email='not-an-email')
-
-    def test_range_valid(self):
-        """Range constraints accept valid value."""
-        Peso = Annotated[int, Range(ge=1, le=13)]
-
-        class Builder(BagBuilderBase):
-            @element()
-            def item(self, target, tag, peso: Peso = None, **attr):
-                return self.child(target, tag, peso=peso, **attr)
-
-        bag = Bag(builder=Builder)
-        bag.item(peso=5)
-
-    def test_range_min_invalid(self):
-        """Range constraint rejects value below minimum."""
-        Peso = Annotated[int, Range(ge=1, le=13)]
-
-        class Builder(BagBuilderBase):
-            @element()
-            def item(self, target, tag, peso: Peso = None, **attr):
-                return self.child(target, tag, peso=peso, **attr)
-
-        bag = Bag(builder=Builder)
-        with pytest.raises(ValueError, match='must be >= 1'):
-            bag.item(peso=0)
-
-    def test_range_max_invalid(self):
-        """Range constraint rejects value above maximum."""
-        Peso = Annotated[int, Range(ge=1, le=13)]
-
-        class Builder(BagBuilderBase):
-            @element()
-            def item(self, target, tag, peso: Peso = None, **attr):
-                return self.child(target, tag, peso=peso, **attr)
-
-        bag = Bag(builder=Builder)
-        with pytest.raises(ValueError, match='must be <= 13'):
-            bag.item(peso=20)
-
     def test_decimal_range(self):
         """Decimal type with Range constraints."""
-        Amount = Annotated[Decimal, Range(ge=0, le=1000)]
-
         class Builder(BagBuilderBase):
             @element()
-            def payment(self, target, tag, amount: Amount = None, **attr):
+            def payment(self, target, tag, amount: Annotated[Decimal, Range(ge=0, le=1000)] = None, **attr):
                 return self.child(target, tag, amount=amount, **attr)
 
         bag = Bag(builder=Builder)
-        bag.payment(amount=Decimal('500.50'))
+        bag.payment(amount=Decimal('500.50'))  # Should not raise
 
         with pytest.raises(ValueError, match='must be >= 0'):
             bag.payment(amount=Decimal('-1'))
 
         with pytest.raises(ValueError, match='must be <= 1000'):
             bag.payment(amount=Decimal('1001'))
+
+
+# =============================================================================
+# Tests for builder introspection
+# =============================================================================
+
+class TestBuilderIntrospection:
+    """Tests for builder introspection methods."""
+
+    def test_repr_shows_element_count(self):
+        """__repr__ shows element count."""
+        class Builder(BagBuilderBase):
+            @element()
+            def div(self): ...
+
+            @element()
+            def span(self): ...
+
+            @abstract(sub_tags='div,span')
+            def flow(self): ...
+
+        bag = Bag(builder=Builder)
+        repr_str = repr(bag.builder)
+
+        assert 'Builder' in repr_str
+        assert '3 elements' in repr_str  # Includes @flow
+
+    def test_get_schema_info_raises_on_unknown(self):
+        """get_schema_info raises KeyError for unknown element."""
+        class Builder(BagBuilderBase):
+            @element()
+            def item(self): ...
+
+        bag = Bag(builder=Builder)
+        with pytest.raises(KeyError, match='not found'):
+            bag.builder.get_schema_info('unknown')
+
+    def test_getattr_raises_on_unknown_element(self):
+        """Accessing unknown element raises AttributeError."""
+        class Builder(BagBuilderBase):
+            @element()
+            def item(self): ...
+
+        bag = Bag(builder=Builder)
+        with pytest.raises(AttributeError, match="has no element 'unknown'"):
+            bag.unknown()

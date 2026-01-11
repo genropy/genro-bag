@@ -26,7 +26,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from .base_builder import BagBuilderBase
+from ..builder import BagBuilderBase
 
 if TYPE_CHECKING:
     from ..bagnode import BagNode

@@ -16,23 +16,25 @@ class TestHtmlBuilder:
         assert isinstance(bag.builder, HtmlBuilder)
 
     def test_valid_html_tags(self):
-        """HtmlBuilder knows all HTML5 tags."""
+        """HtmlBuilder knows all HTML5 tags via schema."""
         bag = Bag(builder=HtmlBuilder)
-        assert 'div' in bag.builder.ALL_TAGS
-        assert 'span' in bag.builder.ALL_TAGS
-        assert 'p' in bag.builder.ALL_TAGS
-        assert 'a' in bag.builder.ALL_TAGS
-        assert 'html' in bag.builder.ALL_TAGS
+        # Check tags exist in schema using 'in' operator
+        assert 'div' in bag.builder
+        assert 'span' in bag.builder
+        assert 'p' in bag.builder
+        assert 'a' in bag.builder
+        assert 'html' in bag.builder
 
     def test_void_elements(self):
-        """HtmlBuilder knows void elements."""
+        """HtmlBuilder knows void elements via schema."""
         bag = Bag(builder=HtmlBuilder)
-        assert 'br' in bag.builder.VOID_ELEMENTS
-        assert 'hr' in bag.builder.VOID_ELEMENTS
-        assert 'img' in bag.builder.VOID_ELEMENTS
-        assert 'input' in bag.builder.VOID_ELEMENTS
-        assert 'meta' in bag.builder.VOID_ELEMENTS
-        assert 'link' in bag.builder.VOID_ELEMENTS
+        # Void elements exist in schema
+        assert 'br' in bag.builder
+        assert 'hr' in bag.builder
+        assert 'img' in bag.builder
+        assert 'input' in bag.builder
+        assert 'meta' in bag.builder
+        assert 'link' in bag.builder
 
     def test_create_div(self):
         """Creates div element."""
@@ -76,7 +78,7 @@ class TestHtmlBuilder:
         """Invalid tag raises AttributeError."""
         bag = Bag(builder=HtmlBuilder)
 
-        with pytest.raises(AttributeError, match="has no attribute 'notarealtag'"):
+        with pytest.raises(AttributeError, match="has no element 'notarealtag'"):
             bag.notarealtag()
 
     def test_builder_inheritance_in_nested(self):

@@ -1,0 +1,959 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<grammar xmlns="http://relaxng.org/ns/structure/1.0"
+         xmlns:a="http://relaxng.org/ns/compatibility/annotations/1.0"
+         xmlns:xml="http://www.w3.org/XML/1998/namespace"
+         datatypeLibrary="http://www.w3.org/2001/XMLSchema-datatypes">
+  <define name="XMLonly">
+    <a:documentation> RELAX NG Schema for HTML 5: Common Definitions                    #
+ Language Parameters - redefine in inclusion block as necessary    #
+HTML vs. XHTML restrictions</a:documentation>
+    <empty/>
+  </define>
+  <define name="HTMLonly">
+    <notAllowed/>
+  </define>
+  <define name="v5only">
+    <a:documentation>HTML 4 Compatibility - set to notAllowed to disallow markup introduced in HTML 5</a:documentation>
+    <empty/>
+  </define>
+  <define name="nonRoundtrippable">
+    <a:documentation>HTML Compatibility Switches - set to notAllowed to disallow
+XML features that can&#x27;t be roundtripped HTML &lt;-&gt; XHTML</a:documentation>
+    <empty/>
+  </define>
+  <define name="nonHTMLizable">
+    <a:documentation>XML features that can&#x27;t be serialized as HTML</a:documentation>
+    <empty/>
+  </define>
+  <define name="common.attr.anything">
+    <a:documentation> Wildcards                                                         #
+Any attribute from any namespace</a:documentation>
+    <zeroOrMore>
+      <attribute>
+        <anyName/>
+        <text/>
+      </attribute>
+    </zeroOrMore>
+  </define>
+  <define name="common.elem.anything">
+    <a:documentation>Any element from any namespace</a:documentation>
+    <element>
+      <anyName/>
+      <interleave>
+        <ref name="common.inner.anything"/>
+        <ref name="common.attr.anything"/>
+      </interleave>
+    </element>
+  </define>
+  <define name="common.inner.anything">
+    <a:documentation>Any content from any namespace</a:documentation>
+    <interleave>
+      <text/>
+      <zeroOrMore>
+        <ref name="common.elem.anything"/>
+      </zeroOrMore>
+    </interleave>
+  </define>
+  <define name="common.elem.metadata">
+    <a:documentation> Common Element Classes                                            #
+Metadata Elements</a:documentation>
+    <notAllowed/>
+  </define>
+  <define name="common.elem.phrasing">
+    <a:documentation>Phrase Elements</a:documentation>
+    <notAllowed/>
+  </define>
+  <define name="common.elem.flow">
+    <a:documentation>Prose Elements</a:documentation>
+    <ref name="common.elem.phrasing"/>
+  </define>
+  <define name="common.inner.metadata">
+    <a:documentation> Common Content Models                                             #
+Metadata Content</a:documentation>
+    <zeroOrMore>
+      <ref name="common.elem.metadata"/>
+    </zeroOrMore>
+  </define>
+  <define name="common.inner.phrasing">
+    <a:documentation>Phrase Content</a:documentation>
+    <interleave>
+      <text/>
+      <zeroOrMore>
+        <ref name="common.elem.phrasing"/>
+      </zeroOrMore>
+    </interleave>
+  </define>
+  <define name="common.inner.transparent.flow">
+    <a:documentation>Prose Content</a:documentation>
+    <interleave>
+      <text/>
+      <zeroOrMore>
+        <ref name="common.elem.flow"/>
+      </zeroOrMore>
+    </interleave>
+  </define>
+  <define name="common.inner.flow">
+    <interleave>
+      <text/>
+      <zeroOrMore>
+        <ref name="common.elem.flow"/>
+      </zeroOrMore>
+    </interleave>
+  </define>
+  <define name="common.attrs">
+    <a:documentation> Common Attributes                                                 #</a:documentation>
+    <interleave>
+      <ref name="common.attrs.basic"/>
+      <ref name="common.attrs.i18n"/>
+      <ref name="common.attrs.present"/>
+      <ref name="common.attrs.other"/>
+      <optional>
+        <ref name="aria.global"/>
+      </optional>
+    </interleave>
+  </define>
+  <define name="common.attrs.basic">
+    <interleave>
+      <optional>
+        <ref name="common.attrs.id"/>
+      </optional>
+      <optional>
+        <ref name="common.attrs.class"/>
+      </optional>
+      <optional>
+        <ref name="common.attrs.title"/>
+      </optional>
+      <optional>
+        <ref name="common.attrs.base"/>
+      </optional>
+      <optional>
+        <ref name="common.attrs.space"/>
+      </optional>
+    </interleave>
+  </define>
+  <define name="common.attrs.id">
+    <attribute>
+      <name ns="">id</name>
+      <ref name="common.data.id"/>
+    </attribute>
+  </define>
+  <define name="common.attrs.class">
+    <attribute>
+      <name ns="">class</name>
+      <ref name="common.data.tokens"/>
+    </attribute>
+  </define>
+  <define name="common.attrs.title">
+    <attribute>
+      <name ns="">title</name>
+      <text/>
+    </attribute>
+  </define>
+  <define name="common.attrs.base">
+    <interleave>
+      <ref name="common.attrs.xmlbase"/>
+      <ref name="nonRoundtrippable"/>
+    </interleave>
+  </define>
+  <define name="common.attrs.xmlbase">
+    <interleave>
+      <attribute>
+        <name ns="http://www.w3.org/XML/1998/namespace">base</name>
+        <ref name="common.data.uri"/>
+      </attribute>
+      <ref name="XMLonly"/>
+    </interleave>
+  </define>
+  <define name="common.attrs.space">
+    <ref name="common.attrs.xmlspace"/>
+  </define>
+  <define name="common.attrs.xmlspace">
+    <interleave>
+      <attribute>
+        <name ns="http://www.w3.org/XML/1998/namespace">space</name>
+        <choice>
+          <value type="string" datatypeLibrary="">preserve</value>
+          <value type="string" datatypeLibrary="">default</value>
+        </choice>
+      </attribute>
+      <ref name="XMLonly"/>
+    </interleave>
+  </define>
+  <define name="common.attrs.i18n">
+    <interleave>
+      <optional>
+        <ref name="common.attrs.dir"/>
+      </optional>
+      <optional>
+        <ref name="common.attrs.language"/>
+      </optional>
+      <optional>
+        <ref name="common.attrs.translate"/>
+      </optional>
+    </interleave>
+  </define>
+  <define name="common.attrs.dir">
+    <attribute>
+      <name ns="">dir</name>
+      <choice>
+        <value type="string" datatypeLibrary="http://whattf.org/datatype-draft">ltr</value>
+        <value type="string" datatypeLibrary="http://whattf.org/datatype-draft">rtl</value>
+        <value type="string" datatypeLibrary="http://whattf.org/datatype-draft">auto</value>
+      </choice>
+    </attribute>
+  </define>
+  <define name="common.attrs.language">
+    <interleave>
+      <optional>
+        <ref name="common.attrs.xmllang"/>
+      </optional>
+      <optional>
+        <ref name="common.attrs.lang"/>
+      </optional>
+    </interleave>
+  </define>
+  <define name="common.attrs.lang">
+    <interleave>
+      <attribute>
+        <name ns="">lang</name>
+        <ref name="common.data.langcode"/>
+      </attribute>
+      <ref name="XMLonly"/>
+    </interleave>
+  </define>
+  <define name="common.attrs.xmllang">
+    <attribute>
+      <name ns="http://www.w3.org/XML/1998/namespace">lang</name>
+      <ref name="common.data.langcode"/>
+    </attribute>
+  </define>
+  <define name="common.attrs.translate">
+    <attribute>
+      <name ns="">translate</name>
+      <choice>
+        <value type="string" datatypeLibrary="http://whattf.org/datatype-draft"></value>
+        <value type="string" datatypeLibrary="http://whattf.org/datatype-draft">yes</value>
+        <value type="string" datatypeLibrary="http://whattf.org/datatype-draft">no</value>
+      </choice>
+    </attribute>
+  </define>
+  <define name="common.attrs.present">
+    <interleave>
+      <optional>
+        <ref name="common.attrs.style"/>
+      </optional>
+      <optional>
+        <ref name="common.attrs.tabindex"/>
+      </optional>
+      <optional>
+        <ref name="common.attrs.accesskey"/>
+      </optional>
+    </interleave>
+  </define>
+  <define name="common.attrs.style">
+    <attribute>
+      <name ns="">style</name>
+      <data type="string" datatypeLibrary=""/>
+    </attribute>
+  </define>
+  <define name="common.attrs.tabindex">
+    <attribute>
+      <name ns="">tabindex</name>
+      <ref name="common.data.integer"/>
+    </attribute>
+  </define>
+  <define name="common.attrs.accesskey">
+    <attribute>
+      <name ns="">accesskey</name>
+      <ref name="common.data.keylabellist"/>
+    </attribute>
+  </define>
+  <define name="common.attrs.other">
+    <interleave>
+      <optional>
+        <ref name="common.attrs.autofocus"/>
+      </optional>
+      <optional>
+        <ref name="common.attrs.nonce"/>
+      </optional>
+      <optional>
+        <ref name="common.attrs.inert"/>
+      </optional>
+    </interleave>
+  </define>
+  <define name="common.attrs.autofocus">
+    <attribute>
+      <name ns="">autofocus</name>
+      <choice>
+        <value type="string" datatypeLibrary="http://whattf.org/datatype-draft">autofocus</value>
+        <value type="string" datatypeLibrary="http://whattf.org/datatype-draft"></value>
+      </choice>
+    </attribute>
+  </define>
+  <define name="common.attrs.blocking">
+    <attribute>
+      <name ns="">blocking</name>
+      <list>
+        <value type="string" datatypeLibrary="http://whattf.org/datatype-draft">render</value>
+      </list>
+    </attribute>
+  </define>
+  <define name="common.attrs.fetchpriority">
+    <attribute>
+      <name ns="">fetchpriority</name>
+      <choice>
+        <value type="string" datatypeLibrary="http://whattf.org/datatype-draft">high</value>
+        <value type="string" datatypeLibrary="http://whattf.org/datatype-draft">low</value>
+        <value type="string" datatypeLibrary="http://whattf.org/datatype-draft">auto</value>
+      </choice>
+    </attribute>
+  </define>
+  <define name="common.attrs.nonce">
+    <attribute>
+      <name ns="">nonce</name>
+      <data type="string" datatypeLibrary=""/>
+    </attribute>
+  </define>
+  <define name="common.attrs.inert">
+    <attribute>
+      <name ns="">inert</name>
+      <choice>
+        <value type="string" datatypeLibrary="http://whattf.org/datatype-draft">inert</value>
+        <value type="string" datatypeLibrary="http://whattf.org/datatype-draft"></value>
+      </choice>
+    </attribute>
+  </define>
+  <define name="common.data.tokens">
+    <a:documentation> Common Datatypes                                                  #
+Names and Tokens</a:documentation>
+    <list>
+      <zeroOrMore>
+        <data type="token" datatypeLibrary=""/>
+      </zeroOrMore>
+    </list>
+  </define>
+  <define name="common.data.browsing-context">
+    <data type="browsing-context" datatypeLibrary="http://whattf.org/datatype-draft"/>
+  </define>
+  <define name="common.data.browsing-context-or-keyword">
+    <data type="browsing-context-or-keyword" datatypeLibrary="http://whattf.org/datatype-draft"/>
+  </define>
+  <define name="common.data.id">
+    <a:documentation>IDs and IDREFs</a:documentation>
+    <data type="ID" datatypeLibrary="http://whattf.org/datatype-draft"/>
+  </define>
+  <define name="common.data.idref">
+    <data type="IDREF" datatypeLibrary="http://whattf.org/datatype-draft"/>
+  </define>
+  <define name="common.data.idrefs">
+    <data type="IDREFS" datatypeLibrary="http://whattf.org/datatype-draft"/>
+  </define>
+  <define name="common.data.name">
+    <data type="ID" datatypeLibrary="http://whattf.org/datatype-draft"/>
+  </define>
+  <define name="common.data.hash-name">
+    <data type="hash-name" datatypeLibrary="http://whattf.org/datatype-draft"/>
+  </define>
+  <define name="common.data.integer">
+    <a:documentation>Numerical</a:documentation>
+    <data type="integer" datatypeLibrary="http://whattf.org/datatype-draft"/>
+  </define>
+  <define name="common.data.integer.positive">
+    <data type="integer-positive" datatypeLibrary="http://whattf.org/datatype-draft"/>
+  </define>
+  <define name="common.data.integer.non-negative">
+    <data type="integer-non-negative" datatypeLibrary="http://whattf.org/datatype-draft"/>
+  </define>
+  <define name="common.data.float">
+    <data type="float" datatypeLibrary="http://whattf.org/datatype-draft"/>
+  </define>
+  <define name="common.data.float.positive">
+    <data type="float-positive" datatypeLibrary="http://whattf.org/datatype-draft"/>
+  </define>
+  <define name="common.data.float.non-negative">
+    <data type="float-non-negative" datatypeLibrary="http://whattf.org/datatype-draft"/>
+  </define>
+  <define name="common.data.datetime">
+    <a:documentation>Temporal</a:documentation>
+    <data type="datetime-tz" datatypeLibrary="http://whattf.org/datatype-draft"/>
+  </define>
+  <define name="common.data.date">
+    <data type="date" datatypeLibrary="http://whattf.org/datatype-draft"/>
+  </define>
+  <define name="common.data.time-datetime">
+    <data type="time-datetime" datatypeLibrary="http://whattf.org/datatype-draft"/>
+  </define>
+  <define name="common.data.uri">
+    <a:documentation>IRIs</a:documentation>
+    <choice>
+      <data type="iri-ref" datatypeLibrary="http://whattf.org/datatype-draft"/>
+      <data type="string">
+        <param name="pattern">[ \x{0A}-\x{0D}]*</param>
+      </data>
+    </choice>
+  </define>
+  <define name="common.data.uri.non-empty">
+    <data type="iri-ref" datatypeLibrary="http://whattf.org/datatype-draft"/>
+  </define>
+  <define name="common.data.uris">
+    <list>
+      <zeroOrMore>
+        <data type="iri-ref" datatypeLibrary="http://whattf.org/datatype-draft"/>
+      </zeroOrMore>
+    </list>
+  </define>
+  <define name="common.data.uris.http.or.https">
+    <list>
+      <zeroOrMore>
+        <data type="iri-ref-http-or-https" datatypeLibrary="http://whattf.org/datatype-draft"/>
+      </zeroOrMore>
+    </list>
+  </define>
+  <define name="common.data.uri.absolute">
+    <data type="iri" datatypeLibrary="http://whattf.org/datatype-draft"/>
+  </define>
+  <define name="common.data.sizes">
+    <a:documentation>&lt;link type=&#x27;icon&#x27;&gt; sizes</a:documentation>
+    <list>
+      <oneOrMore>
+        <data type="string">
+          <param name="pattern">[1-9][0-9]*x[1-9][0-9]*</param>
+        </data>
+      </oneOrMore>
+    </list>
+  </define>
+  <define name="common.data.color">
+    <a:documentation>color for &lt;link rel=&quot;mask-icon&quot;&gt; and &lt;meta name=&quot;theme-color&quot;&gt;</a:documentation>
+    <data type="color" datatypeLibrary="http://whattf.org/datatype-draft"/>
+  </define>
+  <define name="common.data.mimetype">
+    <a:documentation>MIME types</a:documentation>
+    <data type="mime-type" datatypeLibrary="http://whattf.org/datatype-draft"/>
+  </define>
+  <define name="common.data.scripttype">
+    <a:documentation>Script type</a:documentation>
+    <data type="script-type" datatypeLibrary="http://whattf.org/datatype-draft"/>
+  </define>
+  <define name="common.data.charset">
+    <a:documentation>Encodings</a:documentation>
+    <data type="charset" datatypeLibrary="http://whattf.org/datatype-draft"/>
+  </define>
+  <define name="common.data.meta-charset">
+    <data type="meta-charset" datatypeLibrary="http://whattf.org/datatype-draft"/>
+  </define>
+  <define name="common.data.refresh">
+    <a:documentation>Refresh</a:documentation>
+    <data type="refresh" datatypeLibrary="http://whattf.org/datatype-draft"/>
+  </define>
+  <define name="common.data.default-style">
+    <a:documentation>Default style</a:documentation>
+    <data type="string" datatypeLibrary=""/>
+  </define>
+  <define name="common.data.x-ua-compatible">
+    <a:documentation>X-UA-Compatible</a:documentation>
+    <data type="string" datatypeLibrary=""/>
+  </define>
+  <define name="common.data.mediaquery">
+    <a:documentation>Media Queries</a:documentation>
+    <data type="media-query" datatypeLibrary="http://whattf.org/datatype-draft"/>
+  </define>
+  <define name="common.data.langcode">
+    <a:documentation>Language Codes</a:documentation>
+    <choice>
+      <value type="string" datatypeLibrary="http://whattf.org/datatype-draft"></value>
+      <data type="language" datatypeLibrary="http://whattf.org/datatype-draft"/>
+    </choice>
+  </define>
+  <define name="common.data.keylabellist">
+    <a:documentation>List of Key Labels</a:documentation>
+    <data type="keylabellist" datatypeLibrary="http://whattf.org/datatype-draft"/>
+  </define>
+  <define name="common.data.source.size.list">
+    <a:documentation>List of Source Sizes</a:documentation>
+    <data type="source-size-list" datatypeLibrary="http://whattf.org/datatype-draft"/>
+  </define>
+  <define name="common.data.integrity">
+    <a:documentation>Subresource Integrity</a:documentation>
+    <data type="integrity-metadata" datatypeLibrary="http://whattf.org/datatype-draft"/>
+  </define>
+  <define name="common.data.content-security-policy">
+    <a:documentation>Content Security Policy</a:documentation>
+    <data type="content-security-policy" datatypeLibrary="http://whattf.org/datatype-draft"/>
+  </define>
+  <define name="common.data.feature-policy">
+    <a:documentation>Feature Policy</a:documentation>
+    <data type="string" datatypeLibrary=""/>
+  </define>
+  <define name="common.data.sandbox-allow-list">
+    <a:documentation>List of sandbox keywords</a:documentation>
+    <choice>
+      <value type="string" datatypeLibrary="http://whattf.org/datatype-draft"></value>
+      <data type="sandbox-allow-list" datatypeLibrary="http://whattf.org/datatype-draft"/>
+    </choice>
+  </define>
+  <define name="common.data.custom.element.name">
+    <a:documentation>Custom element name</a:documentation>
+    <data type="custom-element-name" datatypeLibrary="http://whattf.org/datatype-draft"/>
+  </define>
+  <define name="common.data.microdata-properties">
+    <a:documentation>Microdata Properties</a:documentation>
+    <list>
+      <oneOrMore>
+        <data type="microdata-property" datatypeLibrary="http://whattf.org/datatype-draft"/>
+      </oneOrMore>
+    </list>
+  </define>
+  <define name="common.data.zero">
+    <a:documentation>Zero</a:documentation>
+    <data type="zero" datatypeLibrary="http://whattf.org/datatype-draft"/>
+  </define>
+  <define name="common.data.functionbody">
+    <a:documentation>ECMAScript FunctionBody</a:documentation>
+    <data type="string" datatypeLibrary=""/>
+  </define>
+  <define name="common.data.autocomplete.any">
+    <a:documentation>autocomplete</a:documentation>
+    <data type="autocomplete-any" datatypeLibrary="http://whattf.org/datatype-draft"/>
+  </define>
+  <define name="common-form.attrs.form">
+    <a:documentation> WF2 Module Hook                                                   #</a:documentation>
+    <notAllowed/>
+  </define>
+  <define name="common.elem.script-supporting">
+    <a:documentation> Script-supporting elements</a:documentation>
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria">
+    <a:documentation> ARIA Module Hooks                                                 #</a:documentation>
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.alert">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.alertdialog">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.application">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.article">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.banner">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.button">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.cell" combine="choice">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.checkbox">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.combobox">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.complementary">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.dialog">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.document">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.feed" combine="choice">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.figure" combine="choice">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.group">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.heading">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.img">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.link">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.list">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.listitem">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.log">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.listbox">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.main">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.marquee">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.menu">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.menubar">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.menuitem">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.menuitemcheckbox">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.menuitemradio">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.option">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.presentation">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.progressbar">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.radio">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.radiogroup" combine="choice">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.region">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.rowgroup" combine="choice">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.search">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.searchbox" combine="choice">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.separator">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.slider">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.spinbutton">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.status">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.switch">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.tab">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.table" combine="choice">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.tablist">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.tabpanel">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.textbox">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.toolbar">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.tree">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.treeitem">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.implicit.article">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.implicit.banner">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.implicit.button">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.implicit.cell" combine="choice">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.implicit.checkbox">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.implicit.column-or-row-header">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.implicit.combobox">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.implicit.complementary">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.implicit.contentinfo">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.implicit.dialog">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.implicit.figure" combine="choice">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.implicit.document">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.implicit.form">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.implicit.group">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.implicit.heading">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.implicit.img">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.implicit.landmark">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.implicit.link">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.implicit.list">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.implicit.listbox">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.implicit.listitem">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.implicit.main">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.implicit.math" combine="choice">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.implicit.navigation">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.implicit.option">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.implicit.progressbar">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.implicit.radio">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.implicit.region">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.implicit.row" combine="choice">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.implicit.rowgroup" combine="choice">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.implicit.search">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.implicit.searchbox" combine="choice">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.implicit.section">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.implicit.select">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.implicit.separator">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.implicit.slider">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.implicit.spinbutton">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.implicit.status">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.implicit.structure">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.implicit.table" combine="choice">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.implicit.textbox">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.implicit.toolbar">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.prop.readonly">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.landmark.banner">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.landmark.complementary">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.landmark.contentinfo">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.landmark.form">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.landmark.main">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.landmark.navigation">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.landmark.search">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.landmark.article">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.landmark.document">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.landmark.note">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.doc-abstract">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.doc-acknowledgments">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.doc-afterword">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.doc-appendix">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.doc-backlink">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.doc-biblioentry">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.doc-bibliography">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.doc-biblioref">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.doc-chapter">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.doc-colophon">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.doc-conclusion">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.doc-cover">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.doc-credit">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.doc-credits">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.doc-dedication">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.doc-endnote">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.doc-endnotes">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.doc-epigraph">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.doc-epilogue">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.doc-errata">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.doc-example">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.doc-footnote">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.doc-foreword">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.doc-glossary">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.doc-glossref">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.doc-index">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.doc-introduction">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.doc-noteref">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.doc-notice">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.doc-pagebreak">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.doc-pagelist">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.doc-part">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.doc-preface">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.doc-prologue">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.doc-pullquote">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.doc-qna">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.doc-subtitle">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.doc-tip">
+    <notAllowed/>
+  </define>
+  <define name="common.attrs.aria.role.doc-toc">
+    <notAllowed/>
+  </define>
+</grammar>

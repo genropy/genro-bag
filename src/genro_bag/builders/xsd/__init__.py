@@ -8,11 +8,10 @@ This module provides:
 
 Example:
     >>> from genro_bag import Bag
-    >>> from genro_bag.builders.xsd import XsdBuilder
+    >>> from genro_bag.builders import XsdBuilder
     >>>
-    >>> xsd_content = open('schema.xsd').read()
-    >>> schema = Bag.from_xml(xsd_content)
-    >>> builder = XsdBuilder(schema)
+    >>> bag = Bag(builder=XsdBuilder, builder_xsd_source='schema.xsd')
+    >>> doc = bag.Document()
 """
 
 from .xsd_schema import XsdBuilder

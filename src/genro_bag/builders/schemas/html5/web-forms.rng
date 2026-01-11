@@ -1,0 +1,1118 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<grammar xmlns="http://relaxng.org/ns/structure/1.0"
+         xmlns:a="http://relaxng.org/ns/compatibility/annotations/1.0"
+         datatypeLibrary="http://www.w3.org/2001/XMLSchema-datatypes">
+  <define name="common-form.attrs">
+    <a:documentation> RELAX NG Schema for HTML 5: Web Forms 1.0 markup                  #
+Shared attributes for form controls</a:documentation>
+    <interleave>
+      <optional>
+        <ref name="common-form.attrs.name"/>
+      </optional>
+      <optional>
+        <ref name="common-form.attrs.disabled"/>
+      </optional>
+    </interleave>
+  </define>
+  <define name="common-form.attrs.name">
+    <attribute>
+      <name ns="">name</name>
+      <ref name="form.data.nonemptystring"/>
+    </attribute>
+  </define>
+  <define name="common-form.attrs.disabled">
+    <attribute>
+      <name ns="">disabled</name>
+      <choice>
+        <value type="string" datatypeLibrary="http://whattf.org/datatype-draft">disabled</value>
+        <value type="string" datatypeLibrary="http://whattf.org/datatype-draft"></value>
+      </choice>
+    </attribute>
+  </define>
+  <define name="shared-form.attrs.readonly">
+    <attribute>
+      <name ns="">readonly</name>
+      <choice>
+        <value type="string" datatypeLibrary="http://whattf.org/datatype-draft">readonly</value>
+        <value type="string" datatypeLibrary="http://whattf.org/datatype-draft"></value>
+      </choice>
+    </attribute>
+  </define>
+  <define name="shared-form.attrs.maxlength">
+    <attribute>
+      <name ns="">maxlength</name>
+      <ref name="common.data.integer.non-negative"/>
+    </attribute>
+  </define>
+  <define name="shared-form.attrs.size">
+    <attribute>
+      <name ns="">size</name>
+      <ref name="common.data.integer.positive"/>
+    </attribute>
+  </define>
+  <define name="input.attrs.checked">
+    <a:documentation>Shared attributes for &lt;input&gt;</a:documentation>
+    <attribute>
+      <name ns="">checked</name>
+      <choice>
+        <value type="string" datatypeLibrary="http://whattf.org/datatype-draft">checked</value>
+        <value type="string" datatypeLibrary="http://whattf.org/datatype-draft"></value>
+      </choice>
+    </attribute>
+  </define>
+  <define name="input.text.elem">
+    <a:documentation>Text Field: &lt;input type=&#x27;text&#x27;&gt;</a:documentation>
+    <element>
+      <name ns="">input</name>
+      <ref name="input.text.attrs"/>
+    </element>
+  </define>
+  <define name="input.text.attrs">
+    <interleave>
+      <ref name="common.attrs"/>
+      <ref name="common-form.attrs"/>
+      <optional>
+        <ref name="input.text.attrs.type"/>
+      </optional>
+      <optional>
+        <ref name="shared-form.attrs.maxlength"/>
+      </optional>
+      <optional>
+        <ref name="shared-form.attrs.readonly"/>
+      </optional>
+      <optional>
+        <ref name="shared-form.attrs.size"/>
+      </optional>
+      <optional>
+        <ref name="input.text.attrs.value"/>
+      </optional>
+      <optional>
+        <choice>
+          <ref name="common.attrs.aria.implicit.textbox"/>
+          <ref name="common.attrs.aria.role.textbox"/>
+          <ref name="common.attrs.aria.role.combobox"/>
+          <ref name="common.attrs.aria.role.searchbox"/>
+          <ref name="common.attrs.aria.role.spinbutton"/>
+        </choice>
+      </optional>
+    </interleave>
+  </define>
+  <define name="input.text.attrs.type">
+    <attribute>
+      <name ns="">type</name>
+      <value type="string" datatypeLibrary="http://whattf.org/datatype-draft">text</value>
+    </attribute>
+  </define>
+  <define name="input.text.attrs.value">
+    <attribute>
+      <name ns="">value</name>
+      <ref name="form.data.stringwithoutlinebreaks"/>
+    </attribute>
+  </define>
+  <define name="input.elem">
+    <ref name="input.text.elem"/>
+  </define>
+  <define name="input.password.elem">
+    <a:documentation>Password Field: &lt;input type=&#x27;password&#x27;&gt;</a:documentation>
+    <element>
+      <name ns="">input</name>
+      <ref name="input.password.attrs"/>
+    </element>
+  </define>
+  <define name="input.password.attrs">
+    <interleave>
+      <ref name="common.attrs"/>
+      <ref name="common-form.attrs"/>
+      <ref name="input.password.attrs.type"/>
+      <optional>
+        <ref name="shared-form.attrs.maxlength"/>
+      </optional>
+      <optional>
+        <ref name="shared-form.attrs.readonly"/>
+      </optional>
+      <optional>
+        <ref name="shared-form.attrs.size"/>
+      </optional>
+      <optional>
+        <ref name="input.password.attrs.value"/>
+      </optional>
+    </interleave>
+  </define>
+  <define name="input.password.attrs.type">
+    <attribute>
+      <name ns="">type</name>
+      <value type="string" datatypeLibrary="http://whattf.org/datatype-draft">password</value>
+    </attribute>
+  </define>
+  <define name="input.password.attrs.value">
+    <attribute>
+      <name ns="">value</name>
+      <ref name="form.data.stringwithoutlinebreaks"/>
+    </attribute>
+  </define>
+  <define name="input.elem" combine="choice">
+    <ref name="input.password.elem"/>
+  </define>
+  <define name="input.checkbox.elem">
+    <a:documentation>Checkbox: &lt;input type=&#x27;checkbox&#x27;&gt;</a:documentation>
+    <element>
+      <name ns="">input</name>
+      <ref name="input.checkbox.attrs"/>
+    </element>
+  </define>
+  <define name="input.checkbox.attrs">
+    <interleave>
+      <ref name="common.attrs"/>
+      <ref name="common-form.attrs"/>
+      <ref name="input.checkbox.attrs.type"/>
+      <optional>
+        <ref name="input.attrs.checked"/>
+      </optional>
+      <optional>
+        <ref name="input.checkbox.attrs.value"/>
+      </optional>
+      <optional>
+        <choice>
+          <ref name="common.attrs.aria.implicit.checkbox"/>
+          <ref name="common.attrs.aria.role.checkbox"/>
+          <ref name="common.attrs.aria.role.button"/>
+          <ref name="common.attrs.aria.role.menuitemcheckbox-checked-not-required"/>
+          <ref name="common.attrs.aria.role.option"/>
+          <ref name="common.attrs.aria.role.switch-checked-not-required"/>
+        </choice>
+      </optional>
+    </interleave>
+  </define>
+  <define name="input.checkbox.attrs.type">
+    <attribute>
+      <name ns="">type</name>
+      <value type="string" datatypeLibrary="http://whattf.org/datatype-draft">checkbox</value>
+    </attribute>
+  </define>
+  <define name="input.checkbox.attrs.value">
+    <attribute>
+      <name ns="">value</name>
+      <data type="string" datatypeLibrary=""/>
+    </attribute>
+  </define>
+  <define name="input.elem" combine="choice">
+    <ref name="input.checkbox.elem"/>
+  </define>
+  <define name="input.radio.elem">
+    <a:documentation>Radiobutton: &lt;input type=&#x27;radio&#x27;&gt;</a:documentation>
+    <element>
+      <name ns="">input</name>
+      <ref name="input.radio.attrs"/>
+    </element>
+  </define>
+  <define name="input.radio.attrs">
+    <interleave>
+      <ref name="common.attrs"/>
+      <ref name="common-form.attrs"/>
+      <ref name="input.radio.attrs.type"/>
+      <optional>
+        <ref name="input.attrs.checked"/>
+      </optional>
+      <optional>
+        <ref name="input.radio.attrs.value"/>
+      </optional>
+      <optional>
+        <choice>
+          <ref name="common.attrs.aria.implicit.radio"/>
+          <ref name="common.attrs.aria.role.radio"/>
+          <ref name="common.attrs.aria.role.menuitemradio-checked-not-required"/>
+        </choice>
+      </optional>
+    </interleave>
+  </define>
+  <define name="input.radio.attrs.type">
+    <attribute>
+      <name ns="">type</name>
+      <value type="string" datatypeLibrary="http://whattf.org/datatype-draft">radio</value>
+    </attribute>
+  </define>
+  <define name="input.radio.attrs.value">
+    <attribute>
+      <name ns="">value</name>
+      <data type="string" datatypeLibrary=""/>
+    </attribute>
+  </define>
+  <define name="input.elem" combine="choice">
+    <ref name="input.radio.elem"/>
+  </define>
+  <define name="input.button.elem">
+    <a:documentation>Scripting Hook Button: &lt;input type=&#x27;button&#x27;&gt;</a:documentation>
+    <element>
+      <name ns="">input</name>
+      <ref name="input.button.attrs"/>
+    </element>
+  </define>
+  <define name="input.button.attrs">
+    <interleave>
+      <ref name="common.attrs"/>
+      <ref name="common-form.attrs"/>
+      <ref name="input.button.attrs.type"/>
+      <optional>
+        <ref name="input.button.attrs.value"/>
+      </optional>
+      <ref name="button.attrs.popover-controls"/>
+      <optional>
+        <choice>
+          <ref name="common.attrs.aria.implicit.button"/>
+          <ref name="common.attrs.aria.role.button"/>
+          <ref name="common.attrs.aria.role.checkbox"/>
+          <ref name="common.attrs.aria.role.combobox"/>
+          <ref name="common.attrs.aria.role.link"/>
+          <ref name="common.attrs.aria.role.menuitem"/>
+          <ref name="common.attrs.aria.role.menuitemcheckbox"/>
+          <ref name="common.attrs.aria.role.menuitemradio"/>
+          <ref name="common.attrs.aria.role.option"/>
+          <ref name="common.attrs.aria.role.radio"/>
+          <ref name="common.attrs.aria.role.separator"/>
+          <ref name="common.attrs.aria.role.switch"/>
+          <ref name="common.attrs.aria.role.tab"/>
+          <ref name="common.attrs.aria.role.gridcell"/>
+          <ref name="common.attrs.aria.role.slider"/>
+          <ref name="common.attrs.aria.role.treeitem"/>
+        </choice>
+      </optional>
+    </interleave>
+  </define>
+  <define name="input.button.attrs.type">
+    <attribute>
+      <name ns="">type</name>
+      <value type="string" datatypeLibrary="http://whattf.org/datatype-draft">button</value>
+    </attribute>
+  </define>
+  <define name="input.button.attrs.value">
+    <attribute>
+      <name ns="">value</name>
+      <data type="string" datatypeLibrary=""/>
+    </attribute>
+  </define>
+  <define name="input.elem" combine="choice">
+    <ref name="input.button.elem"/>
+  </define>
+  <define name="input.submit.elem">
+    <a:documentation>Submit Button: &lt;input type=&#x27;submit&#x27;&gt;</a:documentation>
+    <element>
+      <name ns="">input</name>
+      <ref name="input.submit.attrs"/>
+    </element>
+  </define>
+  <define name="input.submit.attrs">
+    <interleave>
+      <ref name="common.attrs"/>
+      <ref name="common-form.attrs"/>
+      <ref name="input.submit.attrs.type"/>
+      <optional>
+        <ref name="input.submit.attrs.value"/>
+      </optional>
+      <ref name="button.attrs.popover-controls"/>
+      <optional>
+        <choice>
+          <ref name="common.attrs.aria.implicit.button"/>
+          <ref name="common.attrs.aria.role.button"/>
+          <ref name="common.attrs.aria.role.checkbox"/>
+          <ref name="common.attrs.aria.role.combobox"/>
+          <ref name="common.attrs.aria.role.gridcell"/>
+          <ref name="common.attrs.aria.role.link"/>
+          <ref name="common.attrs.aria.role.menuitem"/>
+          <ref name="common.attrs.aria.role.menuitemcheckbox"/>
+          <ref name="common.attrs.aria.role.menuitemradio"/>
+          <ref name="common.attrs.aria.role.option"/>
+          <ref name="common.attrs.aria.role.radio"/>
+          <ref name="common.attrs.aria.role.slider"/>
+          <ref name="common.attrs.aria.role.switch"/>
+          <ref name="common.attrs.aria.role.tab"/>
+          <ref name="common.attrs.aria.role.treeitem"/>
+        </choice>
+      </optional>
+    </interleave>
+  </define>
+  <define name="input.submit.attrs.type">
+    <attribute>
+      <name ns="">type</name>
+      <value type="string" datatypeLibrary="http://whattf.org/datatype-draft">submit</value>
+    </attribute>
+  </define>
+  <define name="input.submit.attrs.value">
+    <attribute>
+      <name ns="">value</name>
+      <data type="string" datatypeLibrary=""/>
+    </attribute>
+  </define>
+  <define name="input.elem" combine="choice">
+    <ref name="input.submit.elem"/>
+  </define>
+  <define name="input.reset.elem">
+    <a:documentation>Reset Button: &lt;input type=&#x27;reset&#x27;&gt;</a:documentation>
+    <element>
+      <name ns="">input</name>
+      <ref name="input.reset.attrs"/>
+    </element>
+  </define>
+  <define name="input.reset.attrs">
+    <interleave>
+      <ref name="common.attrs"/>
+      <ref name="common-form.attrs"/>
+      <ref name="input.reset.attrs.type"/>
+      <optional>
+        <ref name="input.reset.attrs.value"/>
+      </optional>
+      <ref name="button.attrs.popover-controls"/>
+      <optional>
+        <choice>
+          <ref name="common.attrs.aria.implicit.button"/>
+          <ref name="common.attrs.aria.role.button"/>
+          <ref name="common.attrs.aria.role.checkbox"/>
+          <ref name="common.attrs.aria.role.combobox"/>
+          <ref name="common.attrs.aria.role.gridcell"/>
+          <ref name="common.attrs.aria.role.link"/>
+          <ref name="common.attrs.aria.role.menuitem"/>
+          <ref name="common.attrs.aria.role.menuitemcheckbox"/>
+          <ref name="common.attrs.aria.role.menuitemradio"/>
+          <ref name="common.attrs.aria.role.option"/>
+          <ref name="common.attrs.aria.role.radio"/>
+          <ref name="common.attrs.aria.role.slider"/>
+          <ref name="common.attrs.aria.role.switch"/>
+          <ref name="common.attrs.aria.role.tab"/>
+          <ref name="common.attrs.aria.role.treeitem"/>
+        </choice>
+      </optional>
+    </interleave>
+  </define>
+  <define name="input.reset.attrs.type">
+    <attribute>
+      <name ns="">type</name>
+      <value type="string" datatypeLibrary="http://whattf.org/datatype-draft">reset</value>
+    </attribute>
+  </define>
+  <define name="input.reset.attrs.value">
+    <attribute>
+      <name ns="">value</name>
+      <data type="string" datatypeLibrary=""/>
+    </attribute>
+  </define>
+  <define name="input.elem" combine="choice">
+    <ref name="input.reset.elem"/>
+  </define>
+  <define name="input.file.elem">
+    <a:documentation>File Upload: &lt;input type=&#x27;file&#x27;&gt;</a:documentation>
+    <element>
+      <name ns="">input</name>
+      <ref name="input.file.attrs"/>
+    </element>
+  </define>
+  <define name="input.file.attrs">
+    <interleave>
+      <ref name="common.attrs"/>
+      <ref name="common-form.attrs"/>
+      <ref name="input.file.attrs.type"/>
+      <optional>
+        <ref name="input.file.attrs.accept"/>
+      </optional>
+    </interleave>
+  </define>
+  <define name="input.file.attrs.type">
+    <attribute>
+      <name ns="">type</name>
+      <value type="string" datatypeLibrary="http://whattf.org/datatype-draft">file</value>
+    </attribute>
+  </define>
+  <define name="input.file.attrs.accept">
+    <attribute>
+      <name ns="">accept</name>
+      <ref name="form.data.mimetypelist"/>
+    </attribute>
+  </define>
+  <define name="input.elem" combine="choice">
+    <ref name="input.file.elem"/>
+  </define>
+  <define name="input.hidden.elem">
+    <a:documentation>Hidden String: &lt;input type=&#x27;hidden&#x27;&gt;</a:documentation>
+    <element>
+      <name ns="">input</name>
+      <ref name="input.hidden.attrs"/>
+    </element>
+  </define>
+  <define name="input.hidden.attrs">
+    <interleave>
+      <ref name="common.attrs"/>
+      <ref name="common-form.attrs"/>
+      <ref name="input.hidden.attrs.type"/>
+      <optional>
+        <ref name="input.hidden.attrs.value"/>
+      </optional>
+    </interleave>
+  </define>
+  <define name="input.hidden.attrs.type">
+    <attribute>
+      <name ns="">type</name>
+      <value type="string" datatypeLibrary="http://whattf.org/datatype-draft">hidden</value>
+    </attribute>
+  </define>
+  <define name="input.hidden.attrs.value">
+    <attribute>
+      <name ns="">value</name>
+      <data type="string" datatypeLibrary=""/>
+    </attribute>
+  </define>
+  <define name="input.elem" combine="choice">
+    <ref name="input.hidden.elem"/>
+  </define>
+  <define name="input.image.elem">
+    <a:documentation>Image Submit Button: &lt;input type=&#x27;image&#x27;&gt;</a:documentation>
+    <element>
+      <name ns="">input</name>
+      <ref name="input.image.attrs"/>
+    </element>
+  </define>
+  <define name="input.image.attrs">
+    <interleave>
+      <ref name="common.attrs"/>
+      <ref name="common-form.attrs"/>
+      <ref name="input.image.attrs.type"/>
+      <ref name="input.image.attrs.alt"/>
+      <optional>
+        <ref name="input.image.attrs.src"/>
+      </optional>
+      <ref name="button.attrs.popover-controls"/>
+      <optional>
+        <choice>
+          <ref name="common.attrs.aria.implicit.button"/>
+          <ref name="common.attrs.aria.role.button"/>
+          <ref name="common.attrs.aria.role.checkbox"/>
+          <ref name="common.attrs.aria.role.combobox"/>
+          <ref name="common.attrs.aria.role.gridcell"/>
+          <ref name="common.attrs.aria.role.link"/>
+          <ref name="common.attrs.aria.role.menuitem"/>
+          <ref name="common.attrs.aria.role.menuitemcheckbox"/>
+          <ref name="common.attrs.aria.role.menuitemradio"/>
+          <ref name="common.attrs.aria.role.option"/>
+          <ref name="common.attrs.aria.role.radio"/>
+          <ref name="common.attrs.aria.role.separator"/>
+          <ref name="common.attrs.aria.role.slider"/>
+          <ref name="common.attrs.aria.role.switch"/>
+          <ref name="common.attrs.aria.role.tab"/>
+          <ref name="common.attrs.aria.role.treeitem"/>
+        </choice>
+      </optional>
+    </interleave>
+  </define>
+  <define name="input.image.attrs.type">
+    <attribute>
+      <name ns="">type</name>
+      <value type="string" datatypeLibrary="http://whattf.org/datatype-draft">image</value>
+    </attribute>
+  </define>
+  <define name="input.image.attrs.alt">
+    <attribute>
+      <name ns="">alt</name>
+      <ref name="form.data.nonemptystring"/>
+    </attribute>
+  </define>
+  <define name="input.image.attrs.src">
+    <attribute>
+      <name ns="">src</name>
+      <ref name="common.data.uri.non-empty"/>
+    </attribute>
+  </define>
+  <define name="input.elem" combine="choice">
+    <ref name="input.image.elem"/>
+  </define>
+  <define name="common.elem.phrasing" combine="choice">
+    <ref name="input.elem"/>
+  </define>
+  <define name="textarea.elem">
+    <a:documentation>Text Area: &lt;textarea&gt;</a:documentation>
+    <element>
+      <name ns="">textarea</name>
+      <interleave>
+        <ref name="textarea.inner"/>
+        <ref name="textarea.attrs"/>
+      </interleave>
+    </element>
+  </define>
+  <define name="textarea.attrs">
+    <interleave>
+      <ref name="common.attrs"/>
+      <ref name="common-form.attrs"/>
+      <optional>
+        <ref name="shared-form.attrs.readonly"/>
+      </optional>
+      <ref name="textarea.attrs.rows-and-cols-wf1"/>
+      <optional>
+        <choice>
+          <ref name="common.attrs.aria.implicit.textbox"/>
+          <ref name="common.attrs.aria.role.textbox"/>
+        </choice>
+      </optional>
+    </interleave>
+  </define>
+  <define name="textarea.attrs.rows-and-cols-wf1">
+    <ref name="textarea.attrs.rows-and-cols-wf1.inner"/>
+  </define>
+  <define name="textarea.attrs.rows-and-cols-wf1.inner">
+    <interleave>
+      <ref name="textarea.attrs.cols"/>
+      <ref name="textarea.attrs.rows"/>
+    </interleave>
+  </define>
+  <define name="textarea.attrs.cols">
+    <attribute>
+      <name ns="">cols</name>
+      <ref name="common.data.integer.positive"/>
+    </attribute>
+  </define>
+  <define name="textarea.attrs.rows">
+    <attribute>
+      <name ns="">rows</name>
+      <ref name="common.data.integer.positive"/>
+    </attribute>
+  </define>
+  <define name="textarea.inner">
+    <text/>
+  </define>
+  <define name="common.elem.phrasing" combine="choice">
+    <ref name="textarea.elem"/>
+  </define>
+  <define name="option.elem">
+    <a:documentation>Select menu option: &lt;option selected&gt;</a:documentation>
+    <element>
+      <name ns="">option</name>
+      <interleave>
+        <ref name="option.inner"/>
+        <ref name="option.attrs"/>
+      </interleave>
+    </element>
+  </define>
+  <define name="option.attrs">
+    <interleave>
+      <ref name="common.attrs"/>
+      <optional>
+        <ref name="common-form.attrs.disabled"/>
+      </optional>
+      <optional>
+        <ref name="option.attrs.selected"/>
+      </optional>
+      <optional>
+        <ref name="option.attrs.label"/>
+      </optional>
+      <optional>
+        <ref name="option.attrs.value"/>
+      </optional>
+      <optional>
+        <choice>
+          <ref name="common.attrs.aria.implicit.option"/>
+          <ref name="common.attrs.aria.role.option"/>
+        </choice>
+      </optional>
+    </interleave>
+  </define>
+  <define name="option.attrs.selected">
+    <attribute>
+      <name ns="">selected</name>
+      <choice>
+        <value type="string" datatypeLibrary="http://whattf.org/datatype-draft">selected</value>
+        <value type="string" datatypeLibrary="http://whattf.org/datatype-draft"></value>
+      </choice>
+    </attribute>
+  </define>
+  <define name="option.attrs.label">
+    <attribute>
+      <name ns="">label</name>
+      <ref name="form.data.nonemptystring"/>
+    </attribute>
+  </define>
+  <define name="option.attrs.value">
+    <attribute>
+      <name ns="">value</name>
+      <data type="string" datatypeLibrary=""/>
+    </attribute>
+  </define>
+  <define name="option.inner">
+    <text/>
+  </define>
+  <define name="optgroup.elem">
+    <a:documentation>Option Group: &lt;optgroup&gt;</a:documentation>
+    <element>
+      <name ns="">optgroup</name>
+      <interleave>
+        <ref name="optgroup.inner"/>
+        <ref name="optgroup.attrs"/>
+      </interleave>
+    </element>
+  </define>
+  <define name="optgroup.attrs">
+    <interleave>
+      <ref name="common.attrs"/>
+      <ref name="optgroup.attrs.label"/>
+      <optional>
+        <ref name="common-form.attrs.disabled"/>
+      </optional>
+      <optional>
+        <choice>
+          <ref name="common.attrs.aria.implicit.group"/>
+          <ref name="common.attrs.aria.role.group"/>
+        </choice>
+      </optional>
+    </interleave>
+  </define>
+  <define name="optgroup.attrs.label">
+    <attribute>
+      <name ns="">label</name>
+      <data type="string" datatypeLibrary=""/>
+    </attribute>
+  </define>
+  <define name="optgroup.inner">
+    <interleave>
+      <zeroOrMore>
+        <ref name="option.elem"/>
+      </zeroOrMore>
+      <zeroOrMore>
+        <ref name="common.elem.script-supporting"/>
+      </zeroOrMore>
+    </interleave>
+  </define>
+  <define name="select.elem">
+    <a:documentation>Selection Menu: &lt;select&gt;</a:documentation>
+    <element>
+      <name ns="">select</name>
+      <interleave>
+        <ref name="select.inner"/>
+        <ref name="select.attrs"/>
+      </interleave>
+    </element>
+  </define>
+  <define name="select.attrs">
+    <interleave>
+      <ref name="common.attrs"/>
+      <ref name="common-form.attrs"/>
+      <optional>
+        <ref name="select.attrs.size"/>
+      </optional>
+      <optional>
+        <ref name="select.attrs.multiple"/>
+      </optional>
+      <optional>
+        <choice>
+          <ref name="common.attrs.aria.role.listbox"/>
+          <ref name="common.attrs.aria.role.combobox"/>
+          <ref name="common.attrs.aria.role.menu"/>
+          <ref name="common.attrs.aria.implicit.combobox"/>
+          <ref name="common.attrs.aria.implicit.listbox"/>
+        </choice>
+      </optional>
+    </interleave>
+  </define>
+  <define name="select.attrs.size">
+    <attribute>
+      <name ns="">size</name>
+      <ref name="common.data.integer.positive"/>
+    </attribute>
+  </define>
+  <define name="select.attrs.multiple">
+    <attribute>
+      <name ns="">multiple</name>
+      <choice>
+        <value type="string" datatypeLibrary="http://whattf.org/datatype-draft">multiple</value>
+        <value type="string" datatypeLibrary="http://whattf.org/datatype-draft"></value>
+      </choice>
+    </attribute>
+  </define>
+  <define name="select.inner">
+    <interleave>
+      <zeroOrMore>
+        <ref name="optgroup.elem"/>
+      </zeroOrMore>
+      <zeroOrMore>
+        <ref name="option.elem"/>
+      </zeroOrMore>
+      <zeroOrMore>
+        <ref name="hr.elem"/>
+      </zeroOrMore>
+      <zeroOrMore>
+        <ref name="common.elem.script-supporting"/>
+      </zeroOrMore>
+    </interleave>
+  </define>
+  <define name="common.elem.phrasing" combine="choice">
+    <ref name="select.elem"/>
+  </define>
+  <define name="button.attrs.command">
+    <a:documentation>Shared Definitions for Complex Button</a:documentation>
+    <attribute>
+      <name ns="">command</name>
+      <choice>
+        <value type="string" datatypeLibrary="http://whattf.org/datatype-draft">toggle-popover</value>
+        <value type="string" datatypeLibrary="http://whattf.org/datatype-draft">show-popover</value>
+        <value type="string" datatypeLibrary="http://whattf.org/datatype-draft">hide-popover</value>
+        <value type="string" datatypeLibrary="http://whattf.org/datatype-draft">close</value>
+        <value type="string" datatypeLibrary="http://whattf.org/datatype-draft">request-close</value>
+        <value type="string" datatypeLibrary="http://whattf.org/datatype-draft">show-modal</value>
+        <data type="string">
+          <param name="pattern">--.*</param>
+        </data>
+      </choice>
+    </attribute>
+  </define>
+  <define name="button.attrs.commandfor">
+    <attribute>
+      <name ns="">commandfor</name>
+      <ref name="common.data.idref"/>
+    </attribute>
+  </define>
+  <define name="button.attrs.value">
+    <attribute>
+      <name ns="">value</name>
+      <data type="string" datatypeLibrary=""/>
+    </attribute>
+  </define>
+  <define name="button.attrs.popover-controls">
+    <interleave>
+      <optional>
+        <ref name="button.attrs.popovertarget"/>
+      </optional>
+      <optional>
+        <ref name="button.attrs.popovertargetaction"/>
+      </optional>
+    </interleave>
+  </define>
+  <define name="button.attrs.popovertarget">
+    <attribute>
+      <name ns="">popovertarget</name>
+      <ref name="common.data.idref"/>
+    </attribute>
+  </define>
+  <define name="button.attrs.popovertargetaction">
+    <attribute>
+      <name ns="">popovertargetaction</name>
+      <choice>
+        <value type="string" datatypeLibrary="http://whattf.org/datatype-draft">hide</value>
+        <value type="string" datatypeLibrary="http://whattf.org/datatype-draft">show</value>
+        <value type="string" datatypeLibrary="http://whattf.org/datatype-draft">toggle</value>
+      </choice>
+    </attribute>
+  </define>
+  <define name="button.inner">
+    <ref name="common.inner.phrasing"/>
+  </define>
+  <define name="button.submit.elem">
+    <a:documentation>Complex Submit Button: &lt;button type=&#x27;submit&#x27;&gt;</a:documentation>
+    <element>
+      <name ns="">button</name>
+      <interleave>
+        <ref name="button.inner"/>
+        <ref name="button.submit.attrs"/>
+      </interleave>
+    </element>
+  </define>
+  <define name="button.submit.attrs">
+    <interleave>
+      <ref name="common.attrs"/>
+      <ref name="common-form.attrs"/>
+      <optional>
+        <ref name="button.submit.attrs.type"/>
+      </optional>
+      <optional>
+        <ref name="button.attrs.command"/>
+      </optional>
+      <optional>
+        <ref name="button.attrs.commandfor"/>
+      </optional>
+      <optional>
+        <ref name="button.attrs.value"/>
+      </optional>
+      <ref name="button.attrs.popover-controls"/>
+      <optional>
+        <choice>
+          <ref name="common.attrs.aria.implicit.button"/>
+          <ref name="common.attrs.aria.role.button"/>
+          <ref name="common.attrs.aria.role.checkbox"/>
+          <ref name="common.attrs.aria.role.combobox"/>
+          <ref name="common.attrs.aria.role.link"/>
+          <ref name="common.attrs.aria.role.menuitem"/>
+          <ref name="common.attrs.aria.role.menuitemcheckbox"/>
+          <ref name="common.attrs.aria.role.menuitemradio"/>
+          <ref name="common.attrs.aria.role.option"/>
+          <ref name="common.attrs.aria.role.radio"/>
+          <ref name="common.attrs.aria.role.separator"/>
+          <ref name="common.attrs.aria.role.tab"/>
+          <ref name="common.attrs.aria.role.gridcell"/>
+          <ref name="common.attrs.aria.role.slider"/>
+          <ref name="common.attrs.aria.role.treeitem"/>
+        </choice>
+      </optional>
+    </interleave>
+  </define>
+  <define name="button.submit.attrs.type">
+    <attribute>
+      <name ns="">type</name>
+      <value type="string" datatypeLibrary="http://whattf.org/datatype-draft">submit</value>
+    </attribute>
+  </define>
+  <define name="button.elem">
+    <ref name="button.submit.elem"/>
+  </define>
+  <define name="button.reset.elem">
+    <a:documentation>Complex Reset Button: &lt;button type=&#x27;reset&#x27;&gt;</a:documentation>
+    <element>
+      <name ns="">button</name>
+      <interleave>
+        <ref name="button.inner"/>
+        <ref name="button.reset.attrs"/>
+      </interleave>
+    </element>
+  </define>
+  <define name="button.reset.attrs">
+    <interleave>
+      <ref name="common.attrs"/>
+      <ref name="common-form.attrs"/>
+      <ref name="button.reset.attrs.type"/>
+      <optional>
+        <ref name="button.attrs.command"/>
+      </optional>
+      <optional>
+        <ref name="button.attrs.commandfor"/>
+      </optional>
+      <optional>
+        <ref name="button.attrs.value"/>
+      </optional>
+      <ref name="button.attrs.popover-controls"/>
+      <optional>
+        <choice>
+          <ref name="common.attrs.aria.implicit.button"/>
+          <ref name="common.attrs.aria.role.button"/>
+          <ref name="common.attrs.aria.role.checkbox"/>
+          <ref name="common.attrs.aria.role.combobox"/>
+          <ref name="common.attrs.aria.role.link"/>
+          <ref name="common.attrs.aria.role.menuitem"/>
+          <ref name="common.attrs.aria.role.menuitemcheckbox"/>
+          <ref name="common.attrs.aria.role.menuitemradio"/>
+          <ref name="common.attrs.aria.role.option"/>
+          <ref name="common.attrs.aria.role.radio"/>
+          <ref name="common.attrs.aria.role.separator"/>
+          <ref name="common.attrs.aria.role.switch"/>
+          <ref name="common.attrs.aria.role.gridcell"/>
+          <ref name="common.attrs.aria.role.slider"/>
+          <ref name="common.attrs.aria.role.treeitem"/>
+        </choice>
+      </optional>
+    </interleave>
+  </define>
+  <define name="button.reset.attrs.type">
+    <attribute>
+      <name ns="">type</name>
+      <value type="string" datatypeLibrary="http://whattf.org/datatype-draft">reset</value>
+    </attribute>
+  </define>
+  <define name="button.elem" combine="choice">
+    <ref name="button.reset.elem"/>
+  </define>
+  <define name="button.button.elem">
+    <a:documentation>Complex Push Button: &lt;button type=&#x27;button&#x27;&gt;</a:documentation>
+    <element>
+      <name ns="">button</name>
+      <interleave>
+        <ref name="button.inner"/>
+        <ref name="button.button.attrs"/>
+      </interleave>
+    </element>
+  </define>
+  <define name="button.button.attrs">
+    <interleave>
+      <ref name="common.attrs"/>
+      <ref name="common-form.attrs"/>
+      <ref name="button.button.attrs.type"/>
+      <optional>
+        <ref name="button.attrs.command"/>
+      </optional>
+      <optional>
+        <ref name="button.attrs.commandfor"/>
+      </optional>
+      <optional>
+        <ref name="button.attrs.value"/>
+      </optional>
+      <ref name="button.attrs.popover-controls"/>
+      <optional>
+        <choice>
+          <ref name="common.attrs.aria.implicit.button"/>
+          <ref name="common.attrs.aria.role.button"/>
+          <ref name="common.attrs.aria.role.checkbox"/>
+          <ref name="common.attrs.aria.role.combobox"/>
+          <ref name="common.attrs.aria.role.link"/>
+          <ref name="common.attrs.aria.role.menuitem"/>
+          <ref name="common.attrs.aria.role.menuitemcheckbox"/>
+          <ref name="common.attrs.aria.role.menuitemradio"/>
+          <ref name="common.attrs.aria.role.option"/>
+          <ref name="common.attrs.aria.role.radio"/>
+          <ref name="common.attrs.aria.role.separator"/>
+          <ref name="common.attrs.aria.role.switch"/>
+          <ref name="common.attrs.aria.role.tab"/>
+          <ref name="common.attrs.aria.role.gridcell"/>
+          <ref name="common.attrs.aria.role.slider"/>
+          <ref name="common.attrs.aria.role.treeitem"/>
+        </choice>
+      </optional>
+    </interleave>
+  </define>
+  <define name="button.button.attrs.type">
+    <attribute>
+      <name ns="">type</name>
+      <value type="string" datatypeLibrary="http://whattf.org/datatype-draft">button</value>
+    </attribute>
+  </define>
+  <define name="button.elem" combine="choice">
+    <ref name="button.button.elem"/>
+  </define>
+  <define name="common.elem.phrasing" combine="choice">
+    <ref name="button.elem"/>
+  </define>
+  <define name="form.elem">
+    <a:documentation>Form: &lt;form&gt;</a:documentation>
+    <element>
+      <name ns="">form</name>
+      <interleave>
+        <ref name="form.inner"/>
+        <ref name="form.attrs"/>
+      </interleave>
+    </element>
+  </define>
+  <define name="form.attrs">
+    <interleave>
+      <ref name="common.attrs"/>
+      <optional>
+        <ref name="form.attrs.action"/>
+      </optional>
+      <optional>
+        <ref name="form.attrs.method"/>
+      </optional>
+      <optional>
+        <ref name="form.attrs.enctype"/>
+      </optional>
+      <optional>
+        <ref name="common-form.attrs.name"/>
+      </optional>
+      <optional>
+        <ref name="form.attrs.accept-charset"/>
+      </optional>
+      <optional>
+        <choice>
+          <ref name="common.attrs.aria.implicit.form"/>
+          <ref name="common.attrs.aria.landmark.form"/>
+          <ref name="common.attrs.aria.landmark.search"/>
+          <ref name="common.attrs.aria.role.presentation"/>
+        </choice>
+      </optional>
+    </interleave>
+  </define>
+  <define name="form.attrs.action">
+    <attribute>
+      <name ns="">action</name>
+      <ref name="common.data.uri.non-empty"/>
+    </attribute>
+  </define>
+  <define name="form.attrs.method">
+    <attribute>
+      <name ns="">method</name>
+      <ref name="form.attrs.method.data"/>
+    </attribute>
+  </define>
+  <define name="form.attrs.method.data">
+    <choice>
+      <value type="string" datatypeLibrary="http://whattf.org/datatype-draft">get</value>
+      <value type="string" datatypeLibrary="http://whattf.org/datatype-draft">post</value>
+      <value type="string" datatypeLibrary="http://whattf.org/datatype-draft">dialog</value>
+    </choice>
+  </define>
+  <define name="form.attrs.enctype">
+    <attribute>
+      <name ns="">enctype</name>
+      <ref name="form.attrs.enctype.data"/>
+    </attribute>
+  </define>
+  <define name="form.attrs.enctype.data">
+    <choice>
+      <value type="string" datatypeLibrary="http://whattf.org/datatype-draft">application/x-www-form-urlencoded</value>
+      <value type="string" datatypeLibrary="http://whattf.org/datatype-draft">multipart/form-data</value>
+    </choice>
+  </define>
+  <define name="form.attrs.accept-charset">
+    <attribute>
+      <name ns="">accept-charset</name>
+      <data type="string" datatypeLibrary=""/>
+    </attribute>
+  </define>
+  <define name="form.inner">
+    <ref name="common.inner.flow"/>
+  </define>
+  <define name="common.elem.flow" combine="choice">
+    <ref name="form.elem"/>
+  </define>
+  <define name="fieldset.elem">
+    <a:documentation>Fieldset: &lt;fieldset&gt;</a:documentation>
+    <element>
+      <name ns="">fieldset</name>
+      <interleave>
+        <ref name="fieldset.inner"/>
+        <ref name="fieldset.attrs"/>
+      </interleave>
+    </element>
+  </define>
+  <define name="fieldset.attrs">
+    <interleave>
+      <ref name="common.attrs"/>
+      <optional>
+        <choice>
+          <ref name="common.attrs.aria.implicit.group"/>
+          <ref name="common.attrs.aria.role.group"/>
+          <ref name="common.attrs.aria.role.radiogroup"/>
+          <ref name="common.attrs.aria.role.presentation"/>
+        </choice>
+      </optional>
+    </interleave>
+  </define>
+  <define name="fieldset.inner">
+    <optional>
+      <ref name="legend.elem"/>
+    </optional>
+    <ref name="common.inner.flow"/>
+  </define>
+  <define name="common.elem.flow" combine="choice">
+    <ref name="fieldset.elem"/>
+  </define>
+  <define name="label.elem">
+    <a:documentation>Label: &lt;label&gt;</a:documentation>
+    <element>
+      <name ns="">label</name>
+      <interleave>
+        <ref name="label.inner"/>
+        <ref name="label.attrs"/>
+      </interleave>
+    </element>
+  </define>
+  <define name="label.attrs">
+    <interleave>
+      <ref name="common.attrs"/>
+      <optional>
+        <ref name="common.attrs.aria"/>
+      </optional>
+      <optional>
+        <ref name="label.attrs.for"/>
+      </optional>
+    </interleave>
+  </define>
+  <define name="label.attrs.for">
+    <attribute>
+      <name ns="">for</name>
+      <ref name="common.data.idref"/>
+    </attribute>
+  </define>
+  <define name="label.inner">
+    <ref name="common.inner.phrasing"/>
+  </define>
+  <define name="common.elem.phrasing" combine="choice">
+    <ref name="label.elem"/>
+  </define>
+</grammar>

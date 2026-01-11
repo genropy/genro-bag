@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<grammar xmlns="http://relaxng.org/ns/structure/1.0"
+         xmlns:a="http://relaxng.org/ns/compatibility/annotations/1.0">
+  <define name="form.data.mimetypelist">
+    <a:documentation> RELAX NG Schema for HTML 5: Datatypes related to forms            #
+MIME types</a:documentation>
+    <data type="mime-type-list" datatypeLibrary="http://whattf.org/datatype-draft"/>
+  </define>
+  <define name="form.data.pattern">
+    <a:documentation>ECMAScript Regular Expression</a:documentation>
+    <data type="string" datatypeLibrary=""/>
+  </define>
+  <define name="form.data.datetime-local">
+    <a:documentation>Temporal</a:documentation>
+    <data type="datetime-local" datatypeLibrary="http://whattf.org/datatype-draft"/>
+  </define>
+  <define name="form.data.date">
+    <data type="date" datatypeLibrary="http://whattf.org/datatype-draft"/>
+  </define>
+  <define name="form.data.month">
+    <data type="month" datatypeLibrary="http://whattf.org/datatype-draft"/>
+  </define>
+  <define name="form.data.week">
+    <data type="week" datatypeLibrary="http://whattf.org/datatype-draft"/>
+  </define>
+  <define name="form.data.time">
+    <data type="time" datatypeLibrary="http://whattf.org/datatype-draft"/>
+  </define>
+  <define name="form.data.emailaddress">
+    <a:documentation>Email</a:documentation>
+    <data type="email-address" datatypeLibrary="http://whattf.org/datatype-draft"/>
+  </define>
+  <define name="form.data.emailaddresslist">
+    <data type="email-address-list" datatypeLibrary="http://whattf.org/datatype-draft"/>
+  </define>
+  <define name="form.data.color">
+    <a:documentation>Color</a:documentation>
+    <data type="simple-color" datatypeLibrary="http://whattf.org/datatype-draft"/>
+  </define>
+  <define name="form.data.stringwithoutlinebreaks">
+    <a:documentation>Text without line breaks</a:documentation>
+    <data type="string-without-line-breaks" datatypeLibrary="http://whattf.org/datatype-draft"/>
+  </define>
+  <define name="form.data.nonemptystring">
+    <a:documentation>Non-empty string</a:documentation>
+    <data type="non-empty-string" datatypeLibrary="http://whattf.org/datatype-draft"/>
+  </define>
+</grammar>

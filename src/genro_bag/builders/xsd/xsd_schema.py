@@ -14,10 +14,10 @@ Schema structure::
     # node.attr = {leaf, attrs, _type_ref}
 
 Example:
-    >>> from genro_bag.builders import XsdBuilder
-    >>> builder = XsdBuilder('pain.001.001.12.xsd')
     >>> from genro_bag import Bag
-    >>> bag = Bag(builder=builder)
+    >>> from genro_bag.builders import XsdBuilder
+    >>>
+    >>> bag = Bag(builder=XsdBuilder, builder_xsd_source='pain.001.001.12.xsd')
     >>> doc = bag.Document()
 """
 
@@ -27,7 +27,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from genro_bag.builders.base_builder import BagBuilderBase
+from genro_bag.builder import BagBuilderBase
 
 if TYPE_CHECKING:
     from genro_bag import Bag, BagNode
