@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any, TypeVar, cast
 
 from genro_toolbox import smartasync, smartawait, smartsplit
@@ -127,10 +128,13 @@ class Bag(BagParser, BagSerializer, BagQuery):
         if source:
             self.fill_from(source)
 
-    def fill_from(self, source: dict[str, Any] | str | Bag) -> None:
-        """Fill bag from a source.
+    def fill_from(
+        self, source: dict[str, Any] | str | Bag | None = None, format: str | None = None
+    ) -> Bag:
+        """Fill bag from a source and return self for chaining.
 
         Populates the bag with data from various sources:
+        - None: No-op, returns self unchanged
         - dict: Keys become labels, values become node values
         - str (file path): Load from file based on extension:
             - .xml: Parse as XML
@@ -138,70 +142,90 @@ class Bag(BagParser, BagSerializer, BagQuery):
             - .bag.mp: Parse as TYTX MessagePack
         - Bag: Copy nodes from another Bag
 
-        Existing nodes are cleared first.
+        Existing nodes are cleared first (except when source is None).
 
         Args:
-            source: Data source (dict, file path, or Bag).
+            source: Data source (dict, file path, Bag, or None).
+            format: Force format for file loading ('xml', 'json', 'msgpack').
+                If None, format is detected from file extension.
+
+        Returns:
+            Self for method chaining.
 
         Example:
-            >>> bag = Bag()
-            >>> bag.fill_from({'x': 1, 'y': {'z': 2}})
+            >>> bag = Bag().fill_from({'x': 1, 'y': {'z': 2}})
             >>> bag['y.z']
             2
             >>>
-            >>> bag2 = Bag()
-            >>> bag2.fill_from('/path/to/data.bag.json')
+            >>> bag2 = Bag().fill_from('/path/to/data.bag.json')
+            >>>
+            >>> bag3 = Bag().fill_from(None)  # returns empty bag
+            >>>
+            >>> # Force XML format regardless of extension
+            >>> bag4 = Bag().fill_from('/path/to/schema.xsd', format='xml')
         """
-        if isinstance(source, str):
-            self._fill_from_file(source)
+        if source is None:
+            return self
+        if isinstance(source, (str, Path)):
+            self._fill_from_file(str(source), format=format)
         elif isinstance(source, Bag):
             self._fill_from_bag(source)
         elif isinstance(source, dict):
             self._fill_from_dict(source)
         else:
-            raise TypeError(f"fill_from expects str, Bag, or dict, got {type(source).__name__}")
+            raise TypeError(f"fill_from expects str, Path, Bag, dict, or None, got {type(source).__name__}")
+        return self
 
-    def _fill_from_file(self, path: str) -> None:
+    def _fill_from_file(self, path: str, format: str | None = None) -> None:
         """Load bag contents from a file.
 
-        Detects format from file extension:
+        Detects format from file extension (unless format is specified):
         - .bag.json: TYTX JSON format
         - .bag.mp: TYTX MessagePack format
         - .xml: XML format (with auto-detect for legacy GenRoBag)
 
         Args:
             path: Path to the file to load.
+            format: Force format ('xml', 'json', 'msgpack'). If None, detect from extension.
 
         Raises:
             FileNotFoundError: If file does not exist.
-            ValueError: If file extension is not recognized.
+            ValueError: If file extension is not recognized and format not specified.
         """
         if not os.path.isfile(path):
             raise FileNotFoundError(f"File not found: {path}")
 
-        # Detect format from extension
-        if path.endswith(".bag.json"):
+        # Determine format: explicit or from extension
+        if format is None:
+            if path.endswith(".bag.json"):
+                format = "json"
+            elif path.endswith(".bag.mp"):
+                format = "msgpack"
+            elif path.endswith(".xml"):
+                format = "xml"
+            else:
+                raise ValueError(
+                    f"Unrecognized file extension: {path}. Supported: .bag.json, .bag.mp, .xml"
+                )
+
+        # Load based on format
+        if format == "json":
             with open(path, encoding="utf-8") as f:
                 data = f.read()
             loaded = Bag.from_tytx(data, transport="json")
             self._fill_from_bag(loaded)
 
-        elif path.endswith(".bag.mp"):
+        elif format == "msgpack":
             with open(path, "rb") as f:
                 data_bytes = f.read()
             loaded = Bag.from_tytx(data_bytes, transport="msgpack")
             self._fill_from_bag(loaded)
 
-        elif path.endswith(".xml"):
+        elif format == "xml":
             with open(path, encoding="utf-8") as f:
                 data = f.read()
             loaded = Bag.from_xml(data)
             self._fill_from_bag(loaded)
-
-        else:
-            raise ValueError(
-                f"Unrecognized file extension: {path}. Supported: .bag.json, .bag.mp, .xml"
-            )
 
     def _fill_from_bag(self, other: Bag) -> None:
         """Copy nodes from another Bag.
@@ -381,7 +405,8 @@ class Bag(BagParser, BagSerializer, BagQuery):
         if name.startswith("_"):
             raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
-        if self._builder is not None and name in self._builder:
+        if self._builder is not None:
+            # Delegate to builder - let it raise specific error for unknown elements
             handler = getattr(self._builder, name)
 
             # Return callable bound to this Bag
