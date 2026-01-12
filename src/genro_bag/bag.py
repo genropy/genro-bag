@@ -410,12 +410,12 @@ class Bag(BagParser, BagSerializer, BagQuery):
             handler = getattr(self._builder, name)
 
             # Return callable bound to this Bag
-            # API: bag.foo('John') -> __value__='John', node_label=auto, tag='foo'
+            # API: bag.foo('John') -> node_value='John', node_label=auto, tag='foo'
             #      bag.foo('John', node_label='x') -> explicit label
             #      bag.foo('John', node_position='<first') -> insertion position
-            # NOTE: First positional arg maps to __value__ (node content), passed as keyword
-            return lambda __value__=None, node_label=None, node_position=None, **attr: handler(
-                self, _tag=name, __value__=__value__, node_label=node_label, node_position=node_position, **attr
+            # NOTE: First positional arg maps to node_value (node content), passed as keyword
+            return lambda node_value=None, node_label=None, node_position=None, **attr: handler(
+                self, _tag=name, node_value=node_value, node_label=node_label, node_position=node_position, **attr
             )
 
         raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")

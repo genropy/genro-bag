@@ -491,6 +491,20 @@ class TestBagBackref:
         for node in bag:
             assert node.parent_bag is None
 
+    def test_nested_bag_gets_parent_node_with_backref(self):
+        """When setting a Bag as value with backref, the Bag gets parent_node."""
+        bag = Bag()
+        bag.set_backref()
+        # First set to None, then to Bag - tests the overwrite case
+        bag['alfa'] = None
+        bag['alfa'] = Bag()
+        alfa_node = bag.node('alfa')
+        inner_bag = alfa_node.value
+        assert isinstance(inner_bag, Bag)
+        assert inner_bag.parent_node is not None
+        assert inner_bag.parent_node.label == 'alfa'
+
+
 
 class TestBagSubscribe:
     """Test subscribe and unsubscribe for events."""

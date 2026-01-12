@@ -165,8 +165,8 @@ class BagNode:
         builder = self._parent_bag._builder if self._parent_bag is not None else None
 
         if builder is not None:
-            return lambda node_position=None, **attrs: builder._command_on_node(
-                self, name, node_position=node_position, **attrs
+            return lambda node_value=None, node_position=None, **attrs: builder._command_on_node(
+                self, name, node_position=node_position, node_value=node_value, **attrs
             )
 
         raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
@@ -826,7 +826,7 @@ class BagNodeContainer:
         if label in self._dict:
             node = self._dict[label]
             node.set_value(
-                value or resolver,
+                resolver if value is None else value,
                 _attributes=attr,
                 _updattr=_updattr,
                 _remove_null_attributes=_remove_null_attributes,

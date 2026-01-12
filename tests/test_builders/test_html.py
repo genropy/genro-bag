@@ -103,7 +103,7 @@ class TestHtmlBuilderCompile:
     def test_compile_simple(self):
         """compile() generates HTML string."""
         bag = Bag(builder=HtmlBuilder)
-        bag.p(value='Hello')
+        bag.p('Hello')
 
         html = bag.builder.compile()
 
@@ -113,7 +113,7 @@ class TestHtmlBuilderCompile:
         """compile() handles nested elements."""
         bag = Bag(builder=HtmlBuilder)
         div = bag.div(id='main')
-        div.p(value='Content')
+        div.p('Content')
 
         html = bag.builder.compile()
 
@@ -137,7 +137,7 @@ class TestHtmlBuilderCompile:
     def test_compile_to_file(self, tmp_path):
         """compile() can save to file."""
         bag = Bag(builder=HtmlBuilder)
-        bag.p(value='Content')
+        bag.p('Content')
 
         dest = tmp_path / 'test.html'
         result = bag.builder.compile(destination=dest)
@@ -150,10 +150,10 @@ class TestHtmlBuilderCompile:
         """compile() generates complete page structure."""
         page = Bag(builder=HtmlBuilder)
         head = page.head()
-        head.title(value='Test')
+        head.title('Test')
         head.meta(charset='utf-8')
         body = page.body()
-        body.div(id='main').p(value='Hello')
+        body.div(id='main').p('Hello')
 
         html = page.builder.compile()
 
@@ -176,30 +176,30 @@ class TestHtmlBuilderIntegration:
         # Head
         head = page.head()
         head.meta(charset='utf-8')
-        head.title(value='My Website')
+        head.title('My Website')
         head.link(rel='stylesheet', href='style.css')
 
         # Body
         body = page.body()
         header = body.header(id='header')
-        header.h1(value='Welcome')
+        header.h1('Welcome')
         nav = header.nav()
         ul = nav.ul()
-        ul.li(value='Home')
-        ul.li(value='About')
-        ul.li(value='Contact')
+        ul.li('Home')
+        ul.li('About')
+        ul.li('Contact')
 
         main = body.main(id='content')
         article = main.article()
-        article.h2(value='Article Title')
-        article.p(value='Article content goes here.')
+        article.h2('Article Title')
+        article.p('Article content goes here.')
 
         footer = body.footer()
-        footer.p(value='Copyright 2025')
+        footer.p('Copyright 2025')
 
         # Verify structure
-        assert len(head) == 3
-        assert len(body) == 3  # header, main, footer
+        assert len(head.value) == 3
+        assert len(body.value) == 3  # header, main, footer
 
         html = page.builder.compile()
         assert '<header id="header">' in html

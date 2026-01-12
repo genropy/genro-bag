@@ -18,9 +18,9 @@ Schema conventions:
     - Use inherits_from='@abstract' to inherit sub_tags
 
 sub_tags cardinality syntax:
-    foo      -> exactly 1
+    foo      -> any number (0..N)
+    foo[1]   -> exactly 1
     foo[3]   -> exactly 3
-    foo[]    -> any number (0..N)
     foo[0:]  -> 0 or more
     foo[:2]  -> 0 to 2
     foo[1:3] -> 1 to 3
@@ -59,6 +59,7 @@ from __future__ import annotations
 
 import inspect
 import re
+import sys
 import types
 from abc import ABC
 from collections.abc import Callable
@@ -299,7 +300,7 @@ class BagBuilderBase(ABC):
 
         def wrapper(destination_bag: Bag, *args: Any, _tag: str = name, **kwargs: Any) -> Any:
             try:
-                method = self._get_method(_tag, destination_bag, kwargs)
+                method = self._get_method(_tag)
             except KeyError as err:
                 raise AttributeError(f"'{type(self).__name__}' has no element '{_tag}'") from err
             kwargs["tag"] = _tag
@@ -309,78 +310,250 @@ class BagBuilderBase(ABC):
     def _default_element(
         self,
         _target: Bag,
-        tag: str,
-        __value__: Any = None,
+        node_value: Any = None,
         node_label: str | None = None,
+        tag: str = "",
         **attr: Any,
     ) -> BagNode:
         """Default handler for elements without custom handler.
 
         Args:
             _target: The destination Bag.
-            tag: The tag name for the element.
-            __value__: Node content (positional). Becomes node.value.
+            node_value: Node content (positional). Becomes node.value.
             node_label: Optional explicit label for the node.
+            tag: The tag name for the element (passed via kwargs).
             **attr: Node attributes.
         """
-        return self.child(_target, tag, node_label=node_label, value=__value__, **attr)
+        return self.child(_target, tag, node_value, node_label=node_label, **attr)
 
     def child(
         self,
         _target: Bag,
         _tag: str,
+        node_value: Any = None,
         node_label: str | None = None,
-        value: Any = None,
         node_position: str | None = None,
         **attr: Any,
     ) -> BagNode:
-        """Create a child node in the target Bag."""
-        if node_label is None:
-            n = 0
-            while f"{_tag}_{n}" in _target._nodes:
-                n += 1
-            node_label = f"{_tag}_{n}"
+        """Create a child node in the target Bag with validation.
 
-        node = _target.set_item(node_label, value, _position=node_position, **attr)
-        node.tag = _tag
+        Raises ValueError if validation fails, KeyError if parent tag not in schema.
+        """
+        target_node = _target._parent_node
+        if target_node:
+            target_info = self.get_schema_info(target_node.tag)
+            self._accept_child(target_node, target_info, _tag, node_position)
 
-        return node
+        child_info = self.get_schema_info(_tag)
+        self._validate_call_args(child_info, node_value, attr)
+
+        node_label = node_label or self._auto_label(_target, _tag)
+        child_node = _target.set_item(node_label, node_value, _position=node_position, **attr)
+        child_node.tag = _tag
+
+        if target_node:
+            self._validate_sub_tags(target_node, target_info)
+
+        if isinstance(node_value, Bag):
+            self._validate_sub_tags(child_node, child_info)
+
+        return child_node
+
+    def _auto_label(self, _target: Bag, _tag: str) -> str:
+        """Generate unique label for a node: tag_0, tag_1, ..."""
+        n = 0
+        while f"{_tag}_{n}" in _target._nodes:
+            n += 1
+        return f"{_tag}_{n}"
+
+    def _validate_call_args(
+        self,
+        info: dict,
+        node_value: Any,
+        attr: dict[str, Any],
+    ) -> None:
+        """Validate attributes and node_value. Raises ValueError if invalid."""
+        call_args_validations = info.get("call_args_validations")
+        if not call_args_validations:
+            return
+
+        errors: list[str] = []
+        all_args = dict(attr)
+        if node_value is not None:
+            all_args["node_value"] = node_value
+
+        for attr_name, (base_type, validators, default) in call_args_validations.items():
+            attr_value = all_args.get(attr_name)
+
+            # Required check
+            if default is inspect.Parameter.empty and attr_value is None:
+                errors.append(f"required attribute '{attr_name}' is missing")
+                continue
+
+            if attr_value is None:
+                continue
+
+            # Type check
+            if not _check_type(attr_value, base_type):
+                errors.append(f"'{attr_name}': expected {base_type}, got {type(attr_value).__name__}")
+                continue
+
+            # Validator checks (Regex, Range, etc.)
+            for v in validators:
+                try:
+                    v(attr_value)
+                except Exception as e:
+                    errors.append(f"'{attr_name}': {e}")
+
+        if errors:
+            raise ValueError("Validation failed: " + "; ".join(errors))
+
+    def _validate_children_tags(
+        self,
+        node_tag: str,
+        sub_tags_compiled: dict[str, tuple[int, int]],
+        sub_tags_order: str | list[str] | None,
+        children_tags: list[str],
+    ) -> list[str]:
+        """Validate a list of child tags against sub_tags spec.
+
+        Args:
+            node_tag: Tag of parent node (for error messages)
+            sub_tags_compiled: Compiled sub_tags dict {tag: (min, max)}
+            sub_tags_order: Order spec (optional)
+            children_tags: List of child tags to validate
+
+        Returns:
+            List of invalid_reasons (missing required tags)
+
+        Raises:
+            ValueError: if tag not allowed, max exceeded, or order violated
+        """
+        bounds = {tag: list(minmax) for tag, minmax in sub_tags_compiled.items()}
+        for tag in children_tags:
+            minmax = bounds.get(tag)
+            if minmax is None:
+                raise ValueError(f"'{tag}' not allowed as child of '{node_tag}'")
+            minmax[1] -= 1
+            if minmax[1] < 0:
+                raise ValueError(f"Too many '{tag}' in '{node_tag}'")
+            minmax[0] -= 1
+
+        # Check order if specified
+        if sub_tags_order:
+            order_spec = _parse_sub_tags_order(sub_tags_order)
+            if isinstance(sub_tags_order, str):
+                # Grouped ordering (legacy string format)
+                if not _validate_sub_tags_order(children_tags, order_spec):  # type: ignore[arg-type]
+                    raise ValueError(f"Order violated in '{node_tag}'")
+            else:
+                # Pattern ordering (list format)
+                if not _validate_sub_tags_order_pattern(children_tags, order_spec):  # type: ignore[arg-type]
+                    raise ValueError(f"Order violated in '{node_tag}'")
+
+        # Warnings for missing required elements (min > 0 after decrement)
+        return [tag for tag, (n_min, _) in bounds.items() if n_min > 0]
+
+    def _validate_sub_tags(self, node: BagNode, info: dict) -> None:
+        """Validate sub_tags constraints on node's existing children.
+
+        Gets children_tags from node's actual children, calls _validate_children_tags,
+        and sets node._invalid_reasons.
+
+        Args:
+            node: The node to validate.
+            info: Schema info dict from get_schema_info().
+        """
+        node_tag = node.tag
+        if not node_tag:
+            node._invalid_reasons = []
+            return
+
+        sub_tags_compiled = info.get("sub_tags_compiled")
+        if not sub_tags_compiled:
+            node._invalid_reasons = []
+            return
+
+        sub_tags_order = info.get("sub_tags_order")
+        children_tags = [n.tag for n in node.value.nodes]
+
+        node._invalid_reasons = self._validate_children_tags(
+            node_tag, sub_tags_compiled, sub_tags_order, children_tags
+        )
+
+    def _accept_child(
+        self,
+        target_node: BagNode,
+        info: dict,
+        child_tag: str,
+        node_position: str | None,
+    ) -> None:
+        """Check if target_node can accept child_tag at node_position.
+
+        Builds children_tags = current tags + new tag, calls _validate_children_tags.
+        Raises ValueError if not valid.
+        """
+        sub_tags_compiled = info.get("sub_tags_compiled")
+        sub_tags_order = info.get("sub_tags_order")
+        if not sub_tags_compiled and not sub_tags_order:
+            return
+
+        # Build children_tags = current + new
+        children_tags = [n.tag for n in target_node.value.nodes]
+
+        # Insert new tag at correct position
+        idx = target_node.value._nodes._parse_position(node_position)
+        children_tags.insert(idx, child_tag)
+
+        self._validate_children_tags(target_node.tag, sub_tags_compiled, sub_tags_order, children_tags)
+
+    def _check_order(
+        self,
+        children_bag: Bag,
+        child_tag: str,
+        node_position: str | None,
+        sub_tags_order: str | list[str],
+        parent_tag: str,
+    ) -> None:
+        """Check if adding child_tag violates order constraints. Raises if violated."""
+        # Get existing tags in order
+        existing_tags = [
+            child.tag for child in children_bag.values()
+            if hasattr(child, "tag") and child.tag
+        ]
+
+        # Parse order spec
+        order_spec = _parse_sub_tags_order(sub_tags_order)
+
+        # For grouped ordering (list of sets)
+        if order_spec and isinstance(order_spec[0], set):
+            # Find group index for each tag
+            def get_group_index(tag: str) -> int:
+                for i, group in enumerate(order_spec):
+                    if tag in group:
+                        return i
+                return len(order_spec)  # Unknown tags go last
+
+            child_group = get_group_index(child_tag)
+
+            # If inserting at end, check that no earlier group tags come after
+            if node_position is None:
+                for existing_tag in existing_tags:
+                    existing_group = get_group_index(existing_tag)
+                    if existing_group > child_group:
+                        raise ValueError(
+                            f"'{child_tag}' must come before '{existing_tag}' in '{parent_tag}'"
+                        )
 
     def _command_on_node(
         self, node: BagNode, child_tag: str, node_position: str | int | None = None, **attrs: Any
     ) -> BagNode:
-        """Add a child to a node with STRICT/SOFT validation.
-
-        Handles __value__ specially: it's extracted from attrs and passed to
-        child() as value parameter (node content), not as an attribute.
-        """
-        if not self._can_add_child(node, child_tag, node_position=node_position):
-            pattern = self._sub_tags_validation_pattern(node)
-            raise ValueError(
-                f"'{child_tag}' not allowed as child of '{node.tag}' (pattern: {pattern!r})"
-            )
-
-        call_args_validations = self._get_call_args_validations(child_tag)
-
-        # HARD validation (type/pattern/range) - raises on error
-        self._validate_call_args(attrs, call_args_validations)
-
-        # SOFT validation (required check) - BEFORE pop, to include __value__
-        soft_errors: list[str] = []
-        if call_args_validations:
-            soft_errors = self._check_required_attrs(attrs, call_args_validations)
-
-        # Extract __value__ for node content (not an attribute)
-        node_value = attrs.pop("__value__", None)
-
+        """Add a child to a node. Validation is delegated to child()."""
         if not isinstance(node.value, Bag):
             node.value = Bag()
             node.value._builder = self
 
-        child_node = self.child(node.value, child_tag, node_position=node_position, value=node_value, **attrs)
-        child_node._invalid_reasons.extend(soft_errors)
-
-        return child_node
+        return self.child(node.value, child_tag, node_position=node_position, **attrs)
 
     # -------------------------------------------------------------------------
     # Schema access
@@ -395,29 +568,42 @@ class BagBuilderBase(ABC):
         """Check if element exists in schema."""
         return self.schema.get_node(name) is not None
 
-    def get_schema_info(self, name: str) -> tuple[str | None, str | None, dict | None]:
-        """Return (handler_name, sub_tags, call_args_validations) for an element."""
-        attrs = self.schema.get_attr(name)
-        if attrs is None:
+    def get_schema_info(self, name: str) -> dict:
+        """Return info dict for an element.
+
+        Returns dict with keys:
+            - handler_name: str | None
+            - sub_tags: str | None
+            - sub_tags_order: str | list[str] | None
+            - sub_tags_compiled: dict[str, tuple[int, int]] | None
+            - call_args_validations: dict | None
+
+        Raises KeyError if element not in schema.
+        """
+        schema_node = self.schema.get_node(name)
+        if schema_node is None:
             raise KeyError(f"Element '{name}' not found in schema")
 
-        result = dict(attrs)
+        cached = schema_node.attr.get("_cached_info")
+        if cached is not None:
+            return cached
+
+        result = dict(schema_node.attr)
         inherits_from = result.pop("inherits_from", None)
 
         if inherits_from:
             abstract_attrs = self.schema.get_attr(inherits_from)
             if abstract_attrs:
-                merged = dict(abstract_attrs)
-                for k, v in result.items():
-                    if v:
-                        merged[k] = v
-                result = merged
+                for k, v in abstract_attrs.items():
+                    if k not in result or not result[k]:
+                        result[k] = v
 
-        return (
-            result.get("handler_name"),
-            result.get("sub_tags"),
-            result.get("call_args_validations"),
-        )
+        sub_tags = result.get("sub_tags")
+        if sub_tags:
+            result["sub_tags_compiled"] = _parse_sub_tags_spec(sub_tags)
+
+        schema_node.attr["_cached_info"] = result
+        return result
 
     def __iter__(self):
         """Iterate over schema nodes."""
@@ -496,82 +682,18 @@ class BagBuilderBase(ABC):
         sub_tags, _ = self._get_sub_tags_spec(node)
         return sub_tags
 
-    def _can_add_child(
-        self, node: BagNode, child_tag: str, node_position: str | int | None = None
-    ) -> bool:
-        """Check if node accepts child_tag as child."""
-        sub_tags, sub_tags_order = self._get_sub_tags_spec(node)
-
-        if not isinstance(node.value, Bag):
-            return self._validate_sub_tags(sub_tags, sub_tags_order, [child_tag])
-
-        idx = node.value._nodes._parse_position(node_position)
-        current_tags = [n.tag for n in node.value]
-        new_tags = current_tags[:idx] + [child_tag] + current_tags[idx:]
-        return self._validate_sub_tags(sub_tags, sub_tags_order, new_tags)
-
-    def _validate_sub_tags(
-        self,
-        sub_tags: str | None,
-        sub_tags_order: str | list[str] | None,
-        tags: list[str],
-    ) -> bool:
-        """Validate list of child tags against sub_tags spec and order."""
-        if sub_tags == "":
-            return len(tags) == 0
-
-        if sub_tags is None:
-            return True
-
-        spec = _parse_sub_tags_spec(sub_tags)
-        if not _validate_sub_tags_cardinality(tags, spec):
-            return False
-
-        if sub_tags_order:
-            order_spec = _parse_sub_tags_order(sub_tags_order)
-            if isinstance(sub_tags_order, str):
-                if not _validate_sub_tags_order(tags, order_spec):  # type: ignore[arg-type]
-                    return False
-            else:
-                if not _validate_sub_tags_order_pattern(tags, order_spec):  # type: ignore[arg-type]
-                    return False
-
-        return True
-
-    def _accept_child(
-        self, destination_bag: Bag, child_tag: str, node_position: str | int | None = None
-    ) -> None:
-        """Verify destination accepts child_tag. Raises ValueError if not allowed."""
-        parent_node = destination_bag.parent_node
-        if parent_node is None:
-            return
-
-        schema_node = self._schema.node(parent_node.tag)
-        if schema_node is None:
-            return
-
-        sub_tags = schema_node.attr.get("sub_tags")
-        sub_tags_order = schema_node.attr.get("sub_tags_order")
-
-        if sub_tags is None:
-            return
-
-        current_tags = [n.tag for n in destination_bag]
-        idx = destination_bag._nodes._parse_position(node_position)
-        new_tags = current_tags[:idx] + [child_tag] + current_tags[idx:]
-
-        if not self._validate_sub_tags(sub_tags, sub_tags_order, new_tags):
-            raise ValueError(f"'{child_tag}' not allowed as child of '{parent_node.tag}'")
 
     # -------------------------------------------------------------------------
     # Call args validation (internal)
     # -------------------------------------------------------------------------
 
-    def _get_method(self, tag: str, destination_bag: Bag, kwargs: dict) -> Callable:
-        """Get handler method after validation. Raises KeyError if tag not in schema."""
-        handler_name, _, call_args_validations = self.get_schema_info(tag)
-        self._validate_call_args(kwargs, call_args_validations)
-        self._accept_child(destination_bag, tag, kwargs.get("node_position"))
+    def _get_method(self, tag: str) -> Callable:
+        """Get handler method. Raises KeyError if tag not in schema.
+
+        Validation is now delegated to child().
+        """
+        info = self.get_schema_info(tag)
+        handler_name = info.get("handler_name")
         return getattr(self, handler_name) if handler_name else self._default_element
 
     def _get_call_args_validations(self, tag: str) -> dict[str, tuple[Any, list, Any]] | None:
@@ -581,46 +703,6 @@ class BagBuilderBase(ABC):
             return None
         return schema_node.attr.get("call_args_validations")
 
-    def _validate_call_args(
-        self,
-        args: dict[str, Any],
-        spec: dict[str, tuple[Any, list, Any]] | None,
-    ) -> None:
-        """Validate type/pattern/range - raise on error."""
-        if not spec:
-            return
-
-        errors = []
-
-        for attr_name, (base_type, validators, _default) in spec.items():
-            value = args.get(attr_name)
-            if value is None:
-                continue
-
-            if not _check_type(value, base_type):
-                errors.append(f"'{attr_name}': expected {base_type}, got {type(value).__name__}")
-                continue
-
-            for v in validators:
-                try:
-                    v(value)
-                except Exception as e:
-                    errors.append(f"'{attr_name}': {e}")
-
-        if errors:
-            raise ValueError("Attribute validation failed: " + "; ".join(errors))
-
-    def _check_required_attrs(
-        self,
-        args: dict[str, Any],
-        spec: dict[str, tuple[Any, list, Any]],
-    ) -> list[str]:
-        """Return list of errors for missing required attrs (SOFT)."""
-        errors: list[str] = []
-        for attr_name, (_base_type, _validators, default) in spec.items():
-            if default is inspect.Parameter.empty and args.get(attr_name) is None:
-                errors.append(f"required attribute '{attr_name}' is missing")
-        return errors
 
 
 # =============================================================================
@@ -743,18 +825,19 @@ def _extract_validators_from_signature(fn: Callable) -> dict[str, tuple[Any, lis
 # =============================================================================
 
 
-def _parse_sub_tags_spec(spec: str) -> dict[str, tuple[int, int | None]]:
+def _parse_sub_tags_spec(spec: str) -> dict[str, tuple[int, int]]:
     """Parse sub_tags spec into dict of {tag: (min, max)}.
 
     Cardinality syntax:
-        foo      -> exactly 1 (min=1, max=1)
+        foo      -> any number 0..N (min=0, max=sys.maxsize)
+        foo[1]   -> exactly 1 (min=1, max=1)
         foo[3]   -> exactly 3 (min=3, max=3)
-        foo[]    -> any number 0..N (min=0, max=None)
-        foo[0:]  -> 0 or more (min=0, max=None)
+        foo[0:]  -> 0 or more (min=0, max=sys.maxsize)
         foo[:2]  -> 0 to 2 (min=0, max=2)
         foo[1:3] -> 1 to 3 (min=1, max=3)
+        foo[]    -> ERROR (invalid syntax)
     """
-    result: dict[str, tuple[int, int | None]] = {}
+    result: dict[str, tuple[int, int]] = {}
     for item in spec.split(","):
         item = item.strip()
         if not item:
@@ -764,7 +847,7 @@ def _parse_sub_tags_spec(spec: str) -> dict[str, tuple[int, int | None]]:
         if match:
             tag = match.group(1)
             min_val = int(match.group(2)) if match.group(2) else 0
-            max_val = int(match.group(3)) if match.group(3) else None
+            max_val = int(match.group(3)) if match.group(3) else sys.maxsize
             result[tag] = (min_val, max_val)
             continue
         # Try [n] format (exactly n)
@@ -774,17 +857,15 @@ def _parse_sub_tags_spec(spec: str) -> dict[str, tuple[int, int | None]]:
             n = int(match.group(2))
             result[tag] = (n, n)
             continue
-        # Try [] format (any number)
+        # Check for invalid [] format
         match = re.match(r"([a-zA-Z_][a-zA-Z0-9_]*)\[\]$", item)
         if match:
-            tag = match.group(1)
-            result[tag] = (0, None)
-            continue
-        # Plain tag name (exactly 1)
+            raise ValueError(f"Invalid sub_tags syntax: '{item}' - use 'foo' for 0..N or 'foo[n]' for exact count")
+        # Plain tag name (0..N)
         match = re.match(r"([a-zA-Z_][a-zA-Z0-9_]*)$", item)
         if match:
             tag = match.group(1)
-            result[tag] = (1, 1)
+            result[tag] = (0, sys.maxsize)
     return result
 
 
@@ -816,38 +897,6 @@ def _parse_sub_tags_order(
         else:
             tokens.append(_OrderToken(kind="regex", raw=item, regex=re.compile(item)))
     return tokens
-
-
-def _validate_sub_tags_cardinality(
-    tags: list[str], spec: dict[str, tuple[int, int | None]], partial: bool = True
-) -> bool:
-    """Check tag counts match cardinality constraints.
-
-    Args:
-        tags: List of tag names to validate.
-        spec: Dict of {tag: (min, max)} constraints.
-        partial: If True, allows counts below minimum (for incremental building).
-                 Maximum is always enforced. Unknown tags always rejected.
-    """
-    from collections import Counter
-
-    counts = Counter(tags)
-
-    # Unknown tags are always rejected
-    for tag in counts:
-        if tag not in spec:
-            return False
-
-    for tag, (min_count, max_count) in spec.items():
-        count = counts.get(tag, 0)
-        # Minimum only enforced in complete mode
-        if not partial and count < min_count:
-            return False
-        # Maximum always enforced
-        if max_count is not None and count > max_count:
-            return False
-
-    return True
 
 
 def _validate_sub_tags_order(tags: list[str], order_groups: list[set[str]]) -> bool:

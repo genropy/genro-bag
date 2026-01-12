@@ -181,8 +181,8 @@ class TestInheritsFrom:
             def a(self): ...
 
         bag = Bag(builder=Builder)
-        handler, sub_tags, _ = bag.builder.get_schema_info('div')
-        assert sub_tags == 'span,p,a'
+        info = bag.builder.get_schema_info('div')
+        assert info.get('sub_tags') == 'span,p,a'
 
     def test_element_can_override_inherited_attrs(self):
         """Element attrs override inherited attrs from abstract."""
@@ -203,9 +203,9 @@ class TestInheritsFrom:
             def c(self): ...
 
         bag = Bag(builder=Builder)
-        handler, sub_tags, _ = bag.builder.get_schema_info('custom')
+        info = bag.builder.get_schema_info('custom')
         # sub_tags inherited, sub_tags_order overridden
-        assert sub_tags == 'a,b,c'
+        assert info.get('sub_tags') == 'a,b,c'
 
 
 # =============================================================================
@@ -620,7 +620,7 @@ class TestSubTagsOrderPattern:
         page = bag.page()
 
         # footer as first element violates pattern (must start with header)
-        with pytest.raises(ValueError, match='not allowed'):
+        with pytest.raises(ValueError, match='Order violated'):
             page.footer()
 
     def test_pattern_wildcard_at_start(self):
@@ -651,7 +651,7 @@ class TestSubTagsOrderPattern:
     def test_pattern_wildcard_at_end(self):
         """Pattern ['^header$', '*'] allows anything after header."""
         class Builder(BagBuilderBase):
-            @element(sub_tags='header,a[],b[]', sub_tags_order=['^header$', '*'])
+            @element(sub_tags='header,a,b', sub_tags_order=['^header$', '*'])
             def page(self): ...
 
             @element()
@@ -719,13 +719,13 @@ class TestSubTagsOrderPattern:
         assert len(single.value) == 1
 
         # Try to add a second - should fail (pattern expects exactly 1)
-        with pytest.raises(ValueError, match='not allowed'):
+        with pytest.raises(ValueError, match='Order violated'):
             single.y()
 
     def test_pattern_empty_wildcard_only(self):
         """Pattern ['*'] matches any sequence (0..N)."""
         class Builder(BagBuilderBase):
-            @element(sub_tags='a[],b[]', sub_tags_order=['*'])
+            @element(sub_tags='a,b', sub_tags_order=['*'])
             def any_seq(self): ...
 
             @element()
@@ -772,43 +772,43 @@ class TestSubTagsOrderPattern:
 
 
 # =============================================================================
-# Tests for __value__ validation (node content vs attributes)
+# Tests for node_value validation (node content vs attributes)
 # =============================================================================
 
 class TestValueValidation:
-    """Tests for __value__ validation for node content."""
+    """Tests for node_value validation for node content."""
 
     def test_value_positional_basic(self):
-        """__value__ passed positionally becomes node.value."""
+        """node_value passed positionally becomes node.value."""
         class Builder(BagBuilderBase):
             @element()
-            def item(self, target, tag, __value__=None, **attr):
-                return self.child(target, tag, value=__value__, **attr)
+            def item(self, target, tag, node_value=None, **attr):
+                return self.child(target, tag, node_value, **attr)
 
         bag = Bag(builder=Builder)
         node = bag.item("contenuto")
         assert node.value == "contenuto"
 
     def test_value_keyword_basic(self):
-        """__value__ can also be passed as keyword."""
+        """node_value can also be passed as keyword."""
         class Builder(BagBuilderBase):
             @element()
-            def item(self, target, tag, __value__=None, **attr):
-                return self.child(target, tag, value=__value__, **attr)
+            def item(self, target, tag, node_value=None, **attr):
+                return self.child(target, tag, node_value, **attr)
 
         bag = Bag(builder=Builder)
-        node = bag.item(__value__="contenuto")
+        node = bag.item(node_value="contenuto")
         assert node.value == "contenuto"
 
     def test_value_and_attr_disambiguation(self):
-        """__value__ (content) and arbitrary attr are separate."""
+        """node_value (content) and arbitrary attr are separate."""
         class Builder(BagBuilderBase):
             @element()
-            def input(self, target, tag, __value__=None, *, default=None, **attr):
-                # default è un attributo, __value__ è il contenuto
+            def input(self, target, tag, node_value=None, *, default=None, **attr):
+                # default è un attributo, node_value è il contenuto
                 if default is not None:
                     attr['default'] = default
-                return self.child(target, tag, value=__value__, **attr)
+                return self.child(target, tag, node_value, **attr)
 
         bag = Bag(builder=Builder)
         node = bag.input("node content", default="attr value")
@@ -816,11 +816,11 @@ class TestValueValidation:
         assert node.attr['default'] == "attr value"
 
     def test_value_validation_type(self):
-        """__value__ type is validated."""
+        """node_value type is validated."""
         class Builder(BagBuilderBase):
             @element()
-            def number(self, target, tag, __value__: int = None, **attr):
-                return self.child(target, tag, value=__value__, **attr)
+            def number(self, target, tag, node_value: int = None, **attr):
+                return self.child(target, tag, node_value, **attr)
 
         bag = Bag(builder=Builder)
         node = bag.number(42)
@@ -830,13 +830,13 @@ class TestValueValidation:
             bag.number("not a number")
 
     def test_value_validation_annotated_range(self):
-        """__value__ with Annotated Range validator."""
+        """node_value with Annotated Range validator."""
         class Builder(BagBuilderBase):
             @element()
             def amount(self, target, tag,
-                       __value__: Annotated[Decimal, Range(ge=0)] = None,
+                       node_value: Annotated[Decimal, Range(ge=0)] = None,
                        **attr):
-                return self.child(target, tag, value=__value__, **attr)
+                return self.child(target, tag, node_value, **attr)
 
         bag = Bag(builder=Builder)
         node = bag.amount(Decimal("10"))
@@ -846,13 +846,13 @@ class TestValueValidation:
             bag.amount(Decimal("-5"))
 
     def test_value_validation_annotated_regex(self):
-        """__value__ with Annotated Regex validator."""
+        """node_value with Annotated Regex validator."""
         class Builder(BagBuilderBase):
             @element()
             def code(self, target, tag,
-                     __value__: Annotated[str, Regex(r'^[A-Z]{3}$')] = None,
+                     node_value: Annotated[str, Regex(r'^[A-Z]{3}$')] = None,
                      **attr):
-                return self.child(target, tag, value=__value__, **attr)
+                return self.child(target, tag, node_value, **attr)
 
         bag = Bag(builder=Builder)
         node = bag.code("ABC")
@@ -862,7 +862,7 @@ class TestValueValidation:
             bag.code("abc")
 
     def test_value_default_element_positional(self):
-        """Default element handler accepts __value__ positionally."""
+        """Default element handler accepts node_value positionally."""
         class Builder(BagBuilderBase):
             @element()
             def item(self): ...
