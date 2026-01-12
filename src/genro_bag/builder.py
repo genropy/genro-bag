@@ -310,12 +310,20 @@ class BagBuilderBase(ABC):
         self,
         _target: Bag,
         tag: str,
+        __value__: Any = None,
         node_label: str | None = None,
-        value: Any = None,
         **attr: Any,
     ) -> BagNode:
-        """Default handler for elements without custom handler."""
-        return self.child(_target, tag, node_label=node_label, value=value, **attr)
+        """Default handler for elements without custom handler.
+
+        Args:
+            _target: The destination Bag.
+            tag: The tag name for the element.
+            __value__: Node content (positional). Becomes node.value.
+            node_label: Optional explicit label for the node.
+            **attr: Node attributes.
+        """
+        return self.child(_target, tag, node_label=node_label, value=__value__, **attr)
 
     def child(
         self,
@@ -341,7 +349,11 @@ class BagBuilderBase(ABC):
     def _command_on_node(
         self, node: BagNode, child_tag: str, node_position: str | int | None = None, **attrs: Any
     ) -> BagNode:
-        """Add a child to a node with STRICT/SOFT validation."""
+        """Add a child to a node with STRICT/SOFT validation.
+
+        Handles __value__ specially: it's extracted from attrs and passed to
+        child() as value parameter (node content), not as an attribute.
+        """
         if not self._can_add_child(node, child_tag, node_position=node_position):
             pattern = self._sub_tags_validation_pattern(node)
             raise ValueError(
@@ -349,17 +361,24 @@ class BagBuilderBase(ABC):
             )
 
         call_args_validations = self._get_call_args_validations(child_tag)
+
+        # HARD validation (type/pattern/range) - raises on error
         self._validate_call_args(attrs, call_args_validations)
+
+        # SOFT validation (required check) - BEFORE pop, to include __value__
+        soft_errors: list[str] = []
+        if call_args_validations:
+            soft_errors = self._check_required_attrs(attrs, call_args_validations)
+
+        # Extract __value__ for node content (not an attribute)
+        node_value = attrs.pop("__value__", None)
 
         if not isinstance(node.value, Bag):
             node.value = Bag()
             node.value._builder = self
 
-        child_node = self.child(node.value, child_tag, node_position=node_position, **attrs)
-
-        if call_args_validations:
-            soft_errors = self._check_required_attrs(attrs, call_args_validations)
-            child_node._invalid_reasons.extend(soft_errors)
+        child_node = self.child(node.value, child_tag, node_position=node_position, value=node_value, **attrs)
+        child_node._invalid_reasons.extend(soft_errors)
 
         return child_node
 
@@ -693,7 +712,7 @@ def _check_type(value: Any, tp: Any) -> bool:
 
 def _extract_validators_from_signature(fn: Callable) -> dict[str, tuple[Any, list, Any]]:
     """Extract type hints with validators from function signature."""
-    skip_params = {"self", "target", "tag", "label", "value", "_target", "_tag", "_label"}
+    skip_params = {"self", "target", "tag", "label", "_target", "_tag", "_label", "node_label", "node_position"}
 
     try:
         hints = get_type_hints(fn, include_extras=True)

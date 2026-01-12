@@ -769,3 +769,121 @@ class TestSubTagsOrderPattern:
         leg.c()
 
         assert len(leg.value) == 3
+
+
+# =============================================================================
+# Tests for __value__ validation (node content vs attributes)
+# =============================================================================
+
+class TestValueValidation:
+    """Tests for __value__ validation for node content."""
+
+    def test_value_positional_basic(self):
+        """__value__ passed positionally becomes node.value."""
+        class Builder(BagBuilderBase):
+            @element()
+            def item(self, target, tag, __value__=None, **attr):
+                return self.child(target, tag, value=__value__, **attr)
+
+        bag = Bag(builder=Builder)
+        node = bag.item("contenuto")
+        assert node.value == "contenuto"
+
+    def test_value_keyword_basic(self):
+        """__value__ can also be passed as keyword."""
+        class Builder(BagBuilderBase):
+            @element()
+            def item(self, target, tag, __value__=None, **attr):
+                return self.child(target, tag, value=__value__, **attr)
+
+        bag = Bag(builder=Builder)
+        node = bag.item(__value__="contenuto")
+        assert node.value == "contenuto"
+
+    def test_value_and_attr_disambiguation(self):
+        """__value__ (content) and arbitrary attr are separate."""
+        class Builder(BagBuilderBase):
+            @element()
+            def input(self, target, tag, __value__=None, *, default=None, **attr):
+                # default è un attributo, __value__ è il contenuto
+                if default is not None:
+                    attr['default'] = default
+                return self.child(target, tag, value=__value__, **attr)
+
+        bag = Bag(builder=Builder)
+        node = bag.input("node content", default="attr value")
+        assert node.value == "node content"
+        assert node.attr['default'] == "attr value"
+
+    def test_value_validation_type(self):
+        """__value__ type is validated."""
+        class Builder(BagBuilderBase):
+            @element()
+            def number(self, target, tag, __value__: int = None, **attr):
+                return self.child(target, tag, value=__value__, **attr)
+
+        bag = Bag(builder=Builder)
+        node = bag.number(42)
+        assert node.value == 42
+
+        with pytest.raises(ValueError, match=r"expected.*int"):
+            bag.number("not a number")
+
+    def test_value_validation_annotated_range(self):
+        """__value__ with Annotated Range validator."""
+        class Builder(BagBuilderBase):
+            @element()
+            def amount(self, target, tag,
+                       __value__: Annotated[Decimal, Range(ge=0)] = None,
+                       **attr):
+                return self.child(target, tag, value=__value__, **attr)
+
+        bag = Bag(builder=Builder)
+        node = bag.amount(Decimal("10"))
+        assert node.value == Decimal("10")
+
+        with pytest.raises(ValueError, match="must be >= 0"):
+            bag.amount(Decimal("-5"))
+
+    def test_value_validation_annotated_regex(self):
+        """__value__ with Annotated Regex validator."""
+        class Builder(BagBuilderBase):
+            @element()
+            def code(self, target, tag,
+                     __value__: Annotated[str, Regex(r'^[A-Z]{3}$')] = None,
+                     **attr):
+                return self.child(target, tag, value=__value__, **attr)
+
+        bag = Bag(builder=Builder)
+        node = bag.code("ABC")
+        assert node.value == "ABC"
+
+        with pytest.raises(ValueError, match="must match pattern"):
+            bag.code("abc")
+
+    def test_value_default_element_positional(self):
+        """Default element handler accepts __value__ positionally."""
+        class Builder(BagBuilderBase):
+            @element()
+            def item(self): ...
+
+        bag = Bag(builder=Builder)
+        node = bag.item("my value")
+        assert node.value == "my value"
+
+    def test_attr_validated_when_typed(self):
+        """Typed attributes are validated."""
+        class Builder(BagBuilderBase):
+            @element()
+            def input(self, target, tag, default: str = None, **attr):
+                # default è un attributo con validazione tipo
+                if default is not None:
+                    attr['default'] = default
+                return self.child(target, tag, **attr)
+
+        bag = Bag(builder=Builder)
+        node = bag.input(default="text")
+        assert node.attr['default'] == "text"
+
+        with pytest.raises(ValueError, match=r"expected.*str"):
+            bag.input(default=123)
