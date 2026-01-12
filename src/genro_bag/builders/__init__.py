@@ -7,8 +7,9 @@ like HTML, XML schemas, etc.
 
 Builder Types:
     - **BagBuilderBase**: Abstract base class for custom builders
+    - **SchemaBuilder**: Builder for creating schemas programmatically
     - **HtmlBuilder**: HTML5 document builder with element validation
-    - **XsdBuilder**: Dynamic builder from XML Schema (XSD) files
+    - **XsdBuilder**: Dynamic builder from XSD schema
 
 Example:
     >>> from genro_bag import Bag
@@ -18,20 +19,18 @@ Example:
     >>> body = store.body()
     >>> div = body.div(id='main')
     >>> div.p(value='Hello, World!')
-
-XSD Example:
-    >>> from genro_bag import Bag
-    >>> from genro_bag.builders import XsdBuilder
-    >>>
-    >>> invoice = Bag(builder=XsdBuilder, builder_xsd_source='invoice.xsd')
-    >>> invoice.Invoice().Header().Date(value='2025-01-01')
 """
 
-from genro_bag.builder import BagBuilderBase, Range, Regex, abstract, element
+from genro_bag.builder import (
+    BagBuilderBase,
+    Range,
+    Regex,
+    SchemaBuilder,
+    abstract,
+    element,
+)
 from genro_bag.builders.html import HtmlBuilder
-from genro_bag.builders.rng_converter import RngConverter
-from genro_bag.builders.schema_builder import SchemaBuilder
-from genro_bag.builders.xsd import XsdBuilder
+from genro_bag.builders.xsd import XsdSchemaBuilder
 
 __all__ = [
     "BagBuilderBase",
@@ -40,7 +39,6 @@ __all__ = [
     "Range",
     "Regex",
     "HtmlBuilder",
-    "RngConverter",
     "SchemaBuilder",
-    "XsdBuilder",
+    "XsdSchemaBuilder",
 ]

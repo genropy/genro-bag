@@ -16,7 +16,7 @@ Every builder extends `BagBuilderBase` and defines elements using either:
 >>> class RecipeBuilder(BagBuilderBase):
 ...     """Builder for cooking recipes."""
 ...
-...     @element(children='ingredient, step')
+...     @element(sub_tags='ingredient,step')
 ...     def recipe(self, target, tag, title=None, **attr):
 ...         """Create a recipe container."""
 ...         if title:
@@ -37,7 +37,7 @@ Every builder extends `BagBuilderBase` and defines elements using either:
 ...         """Add a cooking step."""
 ...         return self.child(target, tag, value=value or '', **attr)
 
->>> bag = Bag(builder=RecipeBuilder())
+>>> bag = Bag(builder=RecipeBuilder)
 >>> recipe = bag.recipe(title='Pasta Carbonara')
 >>> recipe.ingredient(value='Spaghetti', amount='400', unit='g')  # doctest: +ELLIPSIS
 BagNode : ... at ...
@@ -65,7 +65,7 @@ The simplest form just marks a method as an element handler:
 ...     def item(self, target, tag, value=None, **attr):
 ...         return self.child(target, tag, value=value, **attr)
 
->>> bag = Bag(builder=SimpleBuilder())
+>>> bag = Bag(builder=SimpleBuilder)
 >>> bag.item(value='test')  # doctest: +ELLIPSIS
 BagNode : ... at ...
 ```
@@ -86,7 +86,7 @@ Use `tags` to handle multiple tag names with one method:
 ...             attr['brand'] = brand
 ...         return self.child(target, tag, value='', **attr)
 
->>> bag = Bag(builder=KitchenBuilder())
+>>> bag = Bag(builder=KitchenBuilder)
 >>> bag.fridge(brand='Samsung')  # doctest: +ELLIPSIS
 BagNode : ... at ...
 >>> bag.oven(brand='Bosch')  # doctest: +ELLIPSIS
@@ -101,18 +101,18 @@ BagNode : ... at ...
 
 ### Specifying Valid Children
 
-Use `children` to define what child elements are allowed:
+Use `sub_tags` to define what child elements are allowed:
 
 ```{doctest}
 >>> from genro_bag import Bag
 >>> from genro_bag.builders import BagBuilderBase, element
 
 >>> class DocumentBuilder(BagBuilderBase):
-...     @element(children='section, paragraph')
+...     @element(sub_tags='section,paragraph')
 ...     def document(self, target, tag, **attr):
 ...         return self.child(target, tag, **attr)
 ...
-...     @element(children='paragraph, list')
+...     @element(sub_tags='paragraph,list')
 ...     def section(self, target, tag, title=None, **attr):
 ...         if title:
 ...             attr['title'] = title
@@ -122,7 +122,7 @@ Use `children` to define what child elements are allowed:
 ...     def paragraph(self, target, tag, value=None, **attr):
 ...         return self.child(target, tag, value=value or '', **attr)
 ...
-...     @element(children='item')
+...     @element(sub_tags='item')
 ...     def list(self, target, tag, **attr):
 ...         return self.child(target, tag, **attr)
 ...
@@ -130,7 +130,7 @@ Use `children` to define what child elements are allowed:
 ...     def item(self, target, tag, value=None, **attr):
 ...         return self.child(target, tag, value=value or '', **attr)
 
->>> bag = Bag(builder=DocumentBuilder())
+>>> bag = Bag(builder=DocumentBuilder)
 >>> doc = bag.document()
 >>> sec = doc.section(title='Introduction')
 >>> sec.paragraph(value='Welcome!')  # doctest: +ELLIPSIS
@@ -142,26 +142,37 @@ BagNode : ... at ...
 BagNode : ... at ...
 ```
 
-## Using _schema Dictionary
+## Defining Multiple Elements Simply
 
-For simpler cases, use a declarative `_schema`:
+For elements without custom logic, use empty method bodies:
 
 ```{doctest}
 >>> from genro_bag import Bag
->>> from genro_bag.builders import BagBuilderBase
+>>> from genro_bag.builders import BagBuilderBase, element
 
 >>> class TableBuilder(BagBuilderBase):
-...     _schema = {
-...         'table': {'children': 'thead, tbody, tfoot, tr'},
-...         'thead': {'children': 'tr'},
-...         'tbody': {'children': 'tr'},
-...         'tfoot': {'children': 'tr'},
-...         'tr': {'children': 'th, td'},
-...         'th': {},      # Branch by default
-...         'td': {},
-...     }
+...     @element(sub_tags='thead[:1],tbody,tfoot[:1],tr[]')
+...     def table(self): ...
+...
+...     @element(sub_tags='tr[]')
+...     def thead(self): ...
+...
+...     @element(sub_tags='tr[]')
+...     def tbody(self): ...
+...
+...     @element(sub_tags='tr[]')
+...     def tfoot(self): ...
+...
+...     @element(sub_tags='th[],td[]')
+...     def tr(self): ...
+...
+...     @element()
+...     def th(self): ...
+...
+...     @element()
+...     def td(self): ...
 
->>> bag = Bag(builder=TableBuilder())
+>>> bag = Bag(builder=TableBuilder)
 >>> table = bag.table()
 >>> thead = table.thead()
 >>> tr = thead.tr()
@@ -178,58 +189,56 @@ BagNode : ... at ...
 BagNode : ... at ...
 ```
 
-### Schema Options
+### Void Elements (No Children)
 
-The `_schema` dictionary supports these keys:
-
-| Key | Type | Description |
-|-----|------|-------------|
-| `children` | str | Comma-separated valid child tags |
-| `leaf` | bool | If `True`, element has no children (value='') |
-| `attrs` | dict | Attribute validation specs (see [Validation](validation.md)) |
+Use `sub_tags=''` to define void elements that cannot have children:
 
 ```{doctest}
 >>> from genro_bag import Bag
->>> from genro_bag.builders import BagBuilderBase
+>>> from genro_bag.builders import BagBuilderBase, element
 
 >>> class FormBuilder(BagBuilderBase):
-...     _schema = {
-...         'form': {'children': 'input, button, label'},
-...         'input': {'leaf': True},   # Self-closing, no children
-...         'button': {},              # Can have text content
-...         'label': {},
-...     }
+...     @element(sub_tags='input[],button[],label[]')
+...     def form(self): ...
+...
+...     @element(sub_tags='')  # Void element - no children allowed
+...     def input(self): ...
+...
+...     @element()
+...     def button(self): ...
+...
+...     @element()
+...     def label(self): ...
 
->>> bag = Bag(builder=FormBuilder())
+>>> bag = Bag(builder=FormBuilder)
 >>> form = bag.form()
->>> # input is a leaf (void element)
->>> inp = form.input(type='text', name='email')
->>> inp.value
-''
->>> # button can have text
->>> btn = form.button(value='Submit', type='submit')
->>> btn.value
-'Submit'
+>>> form.input(type='text', name='email')  # doctest: +ELLIPSIS
+BagNode : ... at ...
+>>> form.button(value='Submit', type='submit')  # doctest: +ELLIPSIS
+BagNode : ... at ...
 ```
 
-## Combining Both Approaches
+## Combining Simple and Custom Elements
 
-You can use `@element` methods and `_schema` together:
+Mix simple elements (empty body) with custom logic elements:
 
 ```{doctest}
 >>> from genro_bag import Bag
 >>> from genro_bag.builders import BagBuilderBase, element
 
 >>> class HybridBuilder(BagBuilderBase):
-...     # Simple elements via schema
-...     _schema = {
-...         'container': {'children': 'header, content, footer'},
-...         'header': {},
-...         'footer': {},
-...     }
+...     # Simple elements with empty body (uses default handler)
+...     @element(sub_tags='header,content,footer')
+...     def container(self): ...
 ...
-...     # Complex element with custom logic via decorator
-...     @element(children='section, aside')
+...     @element()
+...     def header(self): ...
+...
+...     @element()
+...     def footer(self): ...
+...
+...     # Custom element with logic
+...     @element(sub_tags='section,aside')
 ...     def content(self, target, tag, layout='default', **attr):
 ...         """Content area with layout option."""
 ...         attr['data-layout'] = layout
@@ -243,7 +252,7 @@ You can use `@element` methods and `_schema` together:
 ...     def aside(self, target, tag, value=None, **attr):
 ...         return self.child(target, tag, value=value, **attr)
 
->>> bag = Bag(builder=HybridBuilder())
+>>> bag = Bag(builder=HybridBuilder)
 >>> container = bag.container()
 >>> container.header()  # doctest: +ELLIPSIS
 <genro_bag.bag.Bag object at ...>
@@ -294,7 +303,7 @@ def child(
 ...         # With value = leaf
 ...         return self.child(target, tag, value=value, **attr)
 
->>> bag = Bag(builder=TestBuilder())
+>>> bag = Bag(builder=TestBuilder)
 >>> b = bag.branch()
 >>> type(b).__name__
 'Bag'
@@ -327,7 +336,7 @@ def link(self, target, tag, **attr):
 Use docstrings to explain purpose and usage:
 
 ```python
-@element(children='item, divider')
+@element(sub_tags='item,divider')
 def menu(self, target, tag, **attr):
     """Create a navigation menu.
 
@@ -351,10 +360,10 @@ Follow conventions from your domain:
 
 ### 4. Validate at Build Time
 
-Use `children` to catch structural errors early (see [Validation](validation.md)):
+Use `sub_tags` to catch structural errors early (see [Validation](validation.md)):
 
 ```python
-@element(children='head[1], body[1]')  # Exactly one of each
+@element(sub_tags='head,body')  # Exactly one of each
 def html(self, target, tag, **attr):
     return self.child(target, tag, **attr)
 ```

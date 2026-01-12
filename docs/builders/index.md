@@ -20,7 +20,7 @@ With a builder, the same structure becomes natural and readable:
 ```{doctest}
 >>> from genro_bag import Bag
 >>> from genro_bag.builders import HtmlBuilder
->>> bag = Bag(builder=HtmlBuilder())
+>>> bag = Bag(builder=HtmlBuilder)
 >>> div = bag.div(id='main')
 >>> p = div.p(value='Hello World')
 >>> p.tag
@@ -39,7 +39,7 @@ Builders use the **fluent API pattern**: each method returns something you can c
 ```{doctest}
 >>> from genro_bag import Bag
 >>> from genro_bag.builders import HtmlBuilder
->>> bag = Bag(builder=HtmlBuilder())
+>>> bag = Bag(builder=HtmlBuilder)
 >>> # div() returns a Bag (branch) - you can add children
 >>> container = bag.div()
 >>> type(container).__name__
@@ -60,7 +60,7 @@ Every node has both a **label** (unique identifier) and a **tag** (semantic type
 ```{doctest}
 >>> from genro_bag import Bag
 >>> from genro_bag.builders import HtmlBuilder
->>> bag = Bag(builder=HtmlBuilder())
+>>> bag = Bag(builder=HtmlBuilder)
 >>> div1 = bag.div()
 >>> div2 = bag.div()
 >>> # Access by label path
@@ -87,23 +87,26 @@ Builders support two complementary approaches:
    from genro_bag.builders import BagBuilderBase, element
 
    class MenuBuilder(BagBuilderBase):
-       @element(children='item, separator')
+       @element(sub_tags='item,separator')
        def menu(self, target, tag, **attr):
            return self.child(target, tag, **attr)
    ```
 
-2. **Schema Dictionary** - Using `_schema` for declarative definitions:
+2. **Simple Elements** - Using empty method bodies for elements without custom logic:
 
    ```python
    class TableBuilder(BagBuilderBase):
-       _schema = {
-           'table': {'children': 'tr'},
-           'tr': {'children': 'td, th'},
-           'td': {'leaf': False},
-       }
+       @element(sub_tags='tr[]')
+       def table(self): ...
+
+       @element(sub_tags='td[],th[]')
+       def tr(self): ...
+
+       @element()
+       def td(self): ...
    ```
 
-Both can be combined in the same builder.
+Both approaches can be combined in the same builder.
 
 ## Built-in Builders
 

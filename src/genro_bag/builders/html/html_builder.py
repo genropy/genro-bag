@@ -26,10 +26,10 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from ..builder import BagBuilderBase
+from ...builder import BagBuilderBase
 
 if TYPE_CHECKING:
-    from ..bagnode import BagNode
+    from ...bagnode import BagNode
 
 
 class HtmlBuilder(BagBuilderBase):
@@ -44,7 +44,7 @@ class HtmlBuilder(BagBuilderBase):
         >>> bag.ul().li(value='Item 1')
     """
 
-    schema_path = Path(__file__).parent / "schemas" / "html5_schema.bag.mp"
+    schema_path = Path(__file__).parent / "html5_schema.bag.mp"
 
     def compile(self, destination: str | Path | None = None) -> str:
         """Compile the bag to HTML.
@@ -67,7 +67,7 @@ class HtmlBuilder(BagBuilderBase):
 
     def _node_to_html(self, node: BagNode, indent: int = 0) -> str:
         """Recursively convert a node to HTML."""
-        from ..bag import Bag
+        from ...bag import Bag
 
         tag = node.tag or node.label
         attrs = " ".join(f'{k}="{v}"' for k, v in node.attr.items() if not k.startswith("_"))
@@ -78,7 +78,8 @@ class HtmlBuilder(BagBuilderBase):
         is_leaf = not isinstance(node_value, Bag)
 
         if is_leaf:
-            if node_value == "":
+            # Void elements: empty string or None value
+            if node_value == "" or node_value is None:
                 return f"{spaces}<{tag}{attrs_str}>"
             return f"{spaces}<{tag}{attrs_str}>{node_value}</{tag}>"
 

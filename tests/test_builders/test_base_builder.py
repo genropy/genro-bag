@@ -32,7 +32,7 @@ class TestElementDecoratorHandlerDetection:
             def item(self): ...
 
         # Schema should have handler_name=None
-        node = Builder._schema.get_node('item')
+        node = Builder._class_schema.get_node('item')
         assert node is not None
         assert node.attr.get('handler_name') is None
 
@@ -45,7 +45,7 @@ class TestElementDecoratorHandlerDetection:
                 return self.child(target, tag, **attr)
 
         # Schema should have handler_name='_el_item'
-        node = Builder._schema.get_node('item')
+        node = Builder._class_schema.get_node('item')
         assert node is not None
         assert node.attr.get('handler_name') == '_el_item'
         # Method should be renamed
@@ -68,7 +68,7 @@ class TestElementDecoratorHandlerDetection:
             @element()
             def alfa(self, aa=None): ...
 
-        node = Builder._schema.get_node('alfa')
+        node = Builder._class_schema.get_node('alfa')
         assert node is not None
         assert node.attr.get('handler_name') is None
 
@@ -79,7 +79,7 @@ class TestElementDecoratorHandlerDetection:
             def alfa(self, aa=None):
                 ...
 
-        node = Builder._schema.get_node('alfa')
+        node = Builder._class_schema.get_node('alfa')
         assert node is not None
         assert node.attr.get('handler_name') is None
 
@@ -91,7 +91,7 @@ class TestElementDecoratorHandlerDetection:
                 "this is my method"
                 ...
 
-        node = Builder._schema.get_node('alfa')
+        node = Builder._class_schema.get_node('alfa')
         assert node is not None
         assert node.attr.get('handler_name') is None
 
@@ -110,7 +110,7 @@ class TestAbstractDecorator:
             def flow(self): ...
 
         # Schema should have @flow
-        node = Builder._schema.get_node('@flow')
+        node = Builder._class_schema.get_node('@flow')
         assert node is not None
         assert node.attr.get('sub_tags') == 'span,p'
 
@@ -221,7 +221,7 @@ class TestElementDecoratorTags:
             @element()
             def item(self): ...
 
-        assert Builder._schema.get_node('item') is not None
+        assert Builder._class_schema.get_node('item') is not None
 
     def test_single_tag_string_adds_to_method_name(self):
         """@element with tags adds them to method name."""
@@ -230,8 +230,8 @@ class TestElementDecoratorTags:
             def item(self): ...
 
         # Both method name and tags are registered
-        assert Builder._schema.get_node('item') is not None
-        assert Builder._schema.get_node('product') is not None
+        assert Builder._class_schema.get_node('item') is not None
+        assert Builder._class_schema.get_node('product') is not None
 
     def test_underscore_method_excludes_name(self):
         """@element on _method excludes method name from tags."""
@@ -240,8 +240,8 @@ class TestElementDecoratorTags:
             def _item(self): ...
 
         # Only tags are registered, not _item
-        assert Builder._schema.get_node('product') is not None
-        assert Builder._schema.get_node('_item') is None
+        assert Builder._class_schema.get_node('product') is not None
+        assert Builder._class_schema.get_node('_item') is None
 
     def test_multiple_tags_string(self):
         """@element with comma-separated tags string."""
@@ -249,10 +249,10 @@ class TestElementDecoratorTags:
             @element(tags='apple, banana, cherry')
             def _fruit(self): ...
 
-        assert Builder._schema.get_node('apple') is not None
-        assert Builder._schema.get_node('banana') is not None
-        assert Builder._schema.get_node('cherry') is not None
-        assert Builder._schema.get_node('_fruit') is None
+        assert Builder._class_schema.get_node('apple') is not None
+        assert Builder._class_schema.get_node('banana') is not None
+        assert Builder._class_schema.get_node('cherry') is not None
+        assert Builder._class_schema.get_node('_fruit') is None
 
     def test_multiple_tags_tuple(self):
         """@element with tuple of tags."""
@@ -260,9 +260,9 @@ class TestElementDecoratorTags:
             @element(tags=('red', 'green', 'blue'))
             def _color(self): ...
 
-        assert Builder._schema.get_node('red') is not None
-        assert Builder._schema.get_node('green') is not None
-        assert Builder._schema.get_node('blue') is not None
+        assert Builder._class_schema.get_node('red') is not None
+        assert Builder._class_schema.get_node('green') is not None
+        assert Builder._class_schema.get_node('blue') is not None
 
 
 # =============================================================================
@@ -571,3 +571,201 @@ class TestBuilderIntrospection:
         bag = Bag(builder=Builder)
         with pytest.raises(AttributeError, match="has no element 'unknown'"):
             bag.unknown()
+
+
+# =============================================================================
+# Tests for sub_tags_order pattern validation (list[str] format)
+# =============================================================================
+
+class TestSubTagsOrderPattern:
+    """Tests for sub_tags_order with pattern list format."""
+
+    def test_pattern_header_any_footer(self):
+        """Pattern ['^header$', '*', '^footer$'] requires header first, footer last."""
+        class Builder(BagBuilderBase):
+            @element(sub_tags='header,content,footer', sub_tags_order=['^header$', '*', '^footer$'])
+            def page(self): ...
+
+            @element()
+            def header(self): ...
+
+            @element()
+            def content(self): ...
+
+            @element()
+            def footer(self): ...
+
+        bag = Bag(builder=Builder)
+        page = bag.page()
+
+        page.header()
+        page.content()
+        page.footer()
+
+        assert len(page.value) == 3
+
+    def test_pattern_rejects_wrong_order(self):
+        """Pattern rejects elements in wrong order."""
+        class Builder(BagBuilderBase):
+            @element(sub_tags='header,footer', sub_tags_order=['^header$', '^footer$'])
+            def page(self): ...
+
+            @element()
+            def header(self): ...
+
+            @element()
+            def footer(self): ...
+
+        bag = Bag(builder=Builder)
+        page = bag.page()
+
+        # footer as first element violates pattern (must start with header)
+        with pytest.raises(ValueError, match='not allowed'):
+            page.footer()
+
+    def test_pattern_wildcard_at_start(self):
+        """Pattern ['*', '^footer$'] allows anything before footer."""
+        class Builder(BagBuilderBase):
+            @element(sub_tags='a[0:],b[0:],footer', sub_tags_order=['*', '^footer$'])
+            def page(self): ...
+
+            @element()
+            def a(self): ...
+
+            @element()
+            def b(self): ...
+
+            @element()
+            def footer(self): ...
+
+        bag = Bag(builder=Builder)
+        page = bag.page()
+
+        page.a()
+        page.b()
+        page.a()
+        page.footer()
+
+        assert len(page.value) == 4
+
+    def test_pattern_wildcard_at_end(self):
+        """Pattern ['^header$', '*'] allows anything after header."""
+        class Builder(BagBuilderBase):
+            @element(sub_tags='header,a[],b[]', sub_tags_order=['^header$', '*'])
+            def page(self): ...
+
+            @element()
+            def header(self): ...
+
+            @element()
+            def a(self): ...
+
+            @element()
+            def b(self): ...
+
+        bag = Bag(builder=Builder)
+        page = bag.page()
+
+        page.header()
+        page.a()
+        page.b()
+        page.a()
+
+        assert len(page.value) == 4
+
+    def test_pattern_exact_sequence(self):
+        """Pattern ['^a$', '^b$', '^c$'] requires exact sequence."""
+        class Builder(BagBuilderBase):
+            @element(sub_tags='a,b,c', sub_tags_order=['^a$', '^b$', '^c$'])
+            def seq(self): ...
+
+            @element()
+            def a(self): ...
+
+            @element()
+            def b(self): ...
+
+            @element()
+            def c(self): ...
+
+        bag = Bag(builder=Builder)
+        seq = bag.seq()
+
+        seq.a()
+        seq.b()
+        seq.c()
+
+        assert len(seq.value) == 3
+
+    def test_pattern_regex_any_single_tag(self):
+        """Pattern ['.*'] matches exactly one tag of any name."""
+        class Builder(BagBuilderBase):
+            @element(sub_tags='x,y,z', sub_tags_order=['.*'])
+            def single(self): ...
+
+            @element()
+            def x(self): ...
+
+            @element()
+            def y(self): ...
+
+            @element()
+            def z(self): ...
+
+        bag = Bag(builder=Builder)
+        single = bag.single()
+
+        single.x()
+        assert len(single.value) == 1
+
+        # Try to add a second - should fail (pattern expects exactly 1)
+        with pytest.raises(ValueError, match='not allowed'):
+            single.y()
+
+    def test_pattern_empty_wildcard_only(self):
+        """Pattern ['*'] matches any sequence (0..N)."""
+        class Builder(BagBuilderBase):
+            @element(sub_tags='a[],b[]', sub_tags_order=['*'])
+            def any_seq(self): ...
+
+            @element()
+            def a(self): ...
+
+            @element()
+            def b(self): ...
+
+        bag = Bag(builder=Builder)
+        seq = bag.any_seq()
+
+        # Empty is ok
+        assert seq.value is None
+
+        seq.a()
+        seq.b()
+        seq.a()
+
+        assert len(seq.value) == 3
+
+    def test_legacy_string_still_works(self):
+        """Legacy string format 'a>b>c' still works."""
+        class Builder(BagBuilderBase):
+            @element(sub_tags='a,b,c', sub_tags_order='a>b>c')
+            def legacy(self): ...
+
+            @element()
+            def a(self): ...
+
+            @element()
+            def b(self): ...
+
+            @element()
+            def c(self): ...
+
+        bag = Bag(builder=Builder)
+        leg = bag.legacy()
+
+        leg.a()
+        leg.b()
+        leg.c()
+
+        assert len(leg.value) == 3

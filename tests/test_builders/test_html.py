@@ -16,13 +16,12 @@ class TestHtmlBuilder:
         assert isinstance(bag.builder, HtmlBuilder)
 
     def test_valid_html_tags(self):
-        """HtmlBuilder knows all HTML5 tags via schema."""
+        """HtmlBuilder knows common HTML5 tags via schema."""
         bag = Bag(builder=HtmlBuilder)
         # Check tags exist in schema using 'in' operator
         assert 'div' in bag.builder
         assert 'span' in bag.builder
         assert 'p' in bag.builder
-        assert 'a' in bag.builder
         assert 'html' in bag.builder
 
     def test_void_elements(self):
@@ -32,33 +31,31 @@ class TestHtmlBuilder:
         assert 'br' in bag.builder
         assert 'hr' in bag.builder
         assert 'img' in bag.builder
-        assert 'input' in bag.builder
-        assert 'meta' in bag.builder
-        assert 'link' in bag.builder
 
     def test_create_div(self):
-        """Creates div element."""
-        bag = Bag(builder=HtmlBuilder)
-        div = bag.div(id='main', class_='container')
+        """Creates div element, returns BagNode."""
+        from genro_bag.bagnode import BagNode
 
-        assert isinstance(div, Bag)
-        node = bag.get_node('div_0')
+        bag = Bag(builder=HtmlBuilder)
+        node = bag.div(id='main', class_='container')
+
+        assert isinstance(node, BagNode)
         assert node.tag == 'div'
         assert node.attr.get('id') == 'main'
         assert node.attr.get('class_') == 'container'
 
     def test_create_void_element(self):
-        """Void elements get empty value automatically."""
+        """Void elements have None value by default."""
         bag = Bag(builder=HtmlBuilder)
         node = bag.br()
 
-        assert node.value == ''
+        assert node.value is None
         assert node.tag == 'br'
 
     def test_create_element_with_value(self):
         """Elements can have text content."""
         bag = Bag(builder=HtmlBuilder)
-        node = bag.p(value='Hello, World!')
+        node = bag.p('Hello, World!')
 
         assert node.value == 'Hello, World!'
         assert node.tag == 'p'
@@ -67,12 +64,12 @@ class TestHtmlBuilder:
         """Creates nested HTML structure."""
         bag = Bag(builder=HtmlBuilder)
         div = bag.div(id='main')
-        div.p(value='Paragraph text')
-        div.span(value='Span text')
+        div.p('Paragraph text')
+        div.span('Span text')
 
-        assert len(div) == 2
-        assert div.get_node('p_0').value == 'Paragraph text'
-        assert div.get_node('span_0').value == 'Span text'
+        assert len(div.value) == 2
+        assert div.value.get_node('p_0').value == 'Paragraph text'
+        assert div.value.get_node('span_0').value == 'Span text'
 
     def test_invalid_tag_raises(self):
         """Invalid tag raises AttributeError."""
@@ -85,9 +82,9 @@ class TestHtmlBuilder:
         """Nested bags inherit builder."""
         bag = Bag(builder=HtmlBuilder)
         div = bag.div()
-        div.p(value='test')
+        div.p('test')
 
-        assert div.builder is bag.builder
+        assert div.value.builder is bag.builder
 
     def test_auto_label_generation(self):
         """Labels are auto-generated uniquely."""

@@ -8,6 +8,7 @@ Exports:
     element: Decorator to mark methods as element handlers
     abstract: Decorator to define abstract elements (for inheritance only)
     BagBuilderBase: Abstract base class for all builders
+    SchemaBuilder: Builder for creating schemas programmatically
     Regex: Regex pattern constraint for string validation
     Range: Range constraint for numeric validation
 
@@ -15,6 +16,22 @@ Schema conventions:
     - Elements stored by name: 'div', 'span'
     - Abstracts prefixed with '@': '@flow', '@phrasing'
     - Use inherits_from='@abstract' to inherit sub_tags
+
+sub_tags cardinality syntax:
+    foo      -> exactly 1
+    foo[3]   -> exactly 3
+    foo[]    -> any number (0..N)
+    foo[0:]  -> 0 or more
+    foo[:2]  -> 0 to 2
+    foo[1:3] -> 1 to 3
+
+sub_tags_order syntax:
+    String format (legacy, grouped ordering):
+        'a,b>c,d' -> a and b must come before c and d
+
+    List format (pattern matching with regex):
+        ['^header$', '*', '^footer$'] -> header first, footer last, anything between
+        Each element is a regex (fullmatch) or '*' wildcard (0..N tags).
 
 Constraint classes for use with Annotated:
     Regex: regex pattern for strings
@@ -26,6 +43,16 @@ Type hints supported:
     - list[T], dict[K, V], tuple[...], set[T] for generics
     - X | None for optional
     - Annotated[T, validator...] for validators
+
+SchemaBuilder Example:
+    >>> from genro_bag import Bag
+    >>> from genro_bag.builder import SchemaBuilder
+    >>>
+    >>> schema = Bag(builder=SchemaBuilder)
+    >>> schema.item('@flow', sub_tags='p,div,span')
+    >>> schema.item('div', inherits_from='@flow')
+    >>> schema.item('br', sub_tags='')  # void element
+    >>> schema.builder.compile('schema.msgpack')
 """
 
 from __future__ import annotations
@@ -37,6 +64,7 @@ from abc import ABC
 from collections.abc import Callable
 from dataclasses import dataclass
 from decimal import Decimal
+from pathlib import Path
 from typing import (
     TYPE_CHECKING,
     Annotated,
@@ -61,16 +89,26 @@ if TYPE_CHECKING:
 def element(
     tags: str | tuple[str, ...] | None = None,
     sub_tags: str | tuple[str, ...] | None = None,
-    sub_tags_order: str | None = None,
+    sub_tags_order: str | list[str] | None = None,
     inherits_from: str | None = None,
 ) -> Callable:
     """Decorator to mark a method as element handler.
 
     Args:
-        tags: Tag names this method handles.
-        sub_tags: Valid child tags with optional cardinality.
-        sub_tags_order: Optional ordering constraint.
-        inherits_from: Abstract element to inherit sub_tags from.
+        tags: Tag names this method handles. If None, uses method name.
+        sub_tags: Valid child tags with cardinality. Syntax:
+            'a,b,c'     -> a, b, c each exactly once
+            'a[],b[]'   -> a and b any number of times
+            'a[2],b[0:]' -> a exactly twice, b zero or more
+            '' (empty)  -> no children allowed (void element)
+        sub_tags_order: Ordering constraint for children. Two formats:
+            String: 'a,b>c,d' -> grouped ordering (a,b before c,d)
+            List: ['^a$', '*', '^b$'] -> pattern with regex and '*' wildcard
+        inherits_from: Abstract element name to inherit sub_tags from.
+
+    Example:
+        @element(sub_tags='header,content[],footer', sub_tags_order=['^header$', '*', '^footer$'])
+        def page(self): ...
     """
 
     def decorator(func: Callable) -> Callable:
@@ -89,9 +127,24 @@ def element(
 
 def abstract(
     sub_tags: str | tuple[str, ...] = "",
-    sub_tags_order: str = "",
+    sub_tags_order: str | list[str] = "",
 ) -> Callable:
-    """Decorator to define an abstract element (for inheritance only)."""
+    """Decorator to define an abstract element (for inheritance only).
+
+    Abstract elements are stored with '@' prefix and cannot be instantiated.
+    They define sub_tags that can be inherited by concrete elements.
+
+    Args:
+        sub_tags: Valid child tags with cardinality (see element decorator).
+        sub_tags_order: Ordering constraint (see element decorator).
+
+    Example:
+        @abstract(sub_tags='span,a,em,strong')
+        def phrasing(self): ...
+
+        @element(inherits_from='@phrasing')
+        def p(self): ...
+    """
 
     def decorator(func: Callable) -> Callable:
         func._decorator = {  # type: ignore[attr-defined]
@@ -145,6 +198,21 @@ class Range:
             raise ValueError(f"must be < {self.lt}")
 
 
+@dataclass(frozen=True)
+class _OrderToken:
+    """Token for pattern-based sub_tags_order validation.
+
+    Attributes:
+        kind: "wildcard" (matches 0..N tags) or "regex" (matches exactly 1 tag).
+        raw: Original string from the pattern list.
+        regex: Compiled regex pattern (None for wildcard tokens).
+    """
+
+    kind: str  # "wildcard" | "regex"
+    raw: str
+    regex: re.Pattern[str] | None = None
+
+
 # =============================================================================
 # BagBuilderBase
 # =============================================================================
@@ -154,29 +222,37 @@ class BagBuilderBase(ABC):
     """Abstract base class for Bag builders.
 
     A builder provides domain-specific methods for creating nodes in a Bag.
-    All element definitions are stored in a unified _schema Bag.
+    Each instance has its own _schema Bag (instance-level, not class-level).
 
     Schema conventions:
         - Elements: stored directly by name (e.g., 'div', 'span')
         - Abstracts: prefixed with '@' (e.g., '@flow', '@phrasing')
         - Abstracts define sub_tags for inheritance, cannot be used directly
 
+    Schema loading priority:
+        1. schema_path passed to constructor (builder_schema_path='...')
+        2. schema_path class attribute
+        3. @element decorated methods
+
     Usage:
         >>> bag = Bag(builder=MyBuilder)
         >>> bag.div()  # looks up 'div' in _schema, calls handler
+        >>> # With custom schema:
+        >>> bag = Bag(builder=MyBuilder, builder_schema_path='custom.bag.mp')
     """
 
-    _schema: Bag  # type: ignore[assignment]
+    _class_schema: Bag  # Schema built from decorators at class definition
+    schema_path: str | Path | None = None  # Default schema path (class attribute)
 
     # -------------------------------------------------------------------------
     # Initialization
     # -------------------------------------------------------------------------
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
-        """Build _schema Bag from @element decorated methods."""
+        """Build _class_schema Bag from @element decorated methods."""
         super().__init_subclass__(**kwargs)
 
-        cls._schema = Bag().fill_from(getattr(cls, "schema_path", None))
+        cls._class_schema = Bag().fill_from(getattr(cls, "schema_path", None))
 
         for tag_list, handler_name, obj, decorator_info in _pop_decorated_methods(cls):
             if handler_name:
@@ -188,7 +264,7 @@ class BagBuilderBase(ABC):
             call_args_validations = _extract_validators_from_signature(obj)
 
             for tag in tag_list:
-                cls._schema.set_item(tag, None,
+                cls._class_schema.set_item(tag, None,
                     handler_name=handler_name,
                     sub_tags=sub_tags,
                     sub_tags_order=sub_tags_order,
@@ -196,10 +272,21 @@ class BagBuilderBase(ABC):
                     call_args_validations=call_args_validations,
                 )
 
-    def __init__(self, bag: Bag) -> None:
-        """Bind builder to bag. Enables node.parent navigation."""
+    def __init__(self, bag: Bag, schema_path: str | Path | None = None) -> None:
+        """Bind builder to bag. Enables node.parent navigation.
+
+        Args:
+            bag: The Bag instance this builder is attached to.
+            schema_path: Optional path to load schema from. If not provided,
+                uses the class-level schema (_class_schema).
+        """
         self.bag = bag
         self.bag.set_backref()
+
+        if schema_path is not None:
+            self._schema = Bag().fill_from(schema_path)
+        else:
+            self._schema = type(self)._class_schema
 
     # -------------------------------------------------------------------------
     # Element dispatch
@@ -282,15 +369,15 @@ class BagBuilderBase(ABC):
 
     @property
     def schema(self) -> Bag:
-        """Return the class schema."""
-        return type(self)._schema
+        """Return the instance schema."""
+        return self._schema
 
     def __contains__(self, name: str) -> bool:
         """Check if element exists in schema."""
         return self.schema.get_node(name) is not None
 
     def get_schema_info(self, name: str) -> tuple[str | None, str | None, dict | None]:
-        """Return schema info for an element."""
+        """Return (handler_name, sub_tags, call_args_validations) for an element."""
         attrs = self.schema.get_attr(name)
         if attrs is None:
             raise KeyError(f"Element '{name}' not found in schema")
@@ -364,16 +451,17 @@ class BagBuilderBase(ABC):
         if format == "xml":
             result = self.bag.to_xml()
             return result if result is not None else ""
-        elif format == "json":
+        if format == "json":
             return self.bag.to_json()
-        else:
-            raise ValueError(f"Unknown format: {format}")
+        raise ValueError(f"Unknown format: {format}")
 
     # -------------------------------------------------------------------------
     # Sub-tags validation (internal)
     # -------------------------------------------------------------------------
 
-    def _get_sub_tags_spec(self, node: BagNode) -> tuple[str | None, str | None]:
+    def _get_sub_tags_spec(
+        self, node: BagNode
+    ) -> tuple[str | None, str | list[str] | None]:
         """Return (sub_tags, sub_tags_order) for the node's tag."""
         tag = node.tag
         schema_node = self._schema.node(tag)
@@ -404,7 +492,10 @@ class BagBuilderBase(ABC):
         return self._validate_sub_tags(sub_tags, sub_tags_order, new_tags)
 
     def _validate_sub_tags(
-        self, sub_tags: str | None, sub_tags_order: str | None, tags: list[str]
+        self,
+        sub_tags: str | None,
+        sub_tags_order: str | list[str] | None,
+        tags: list[str],
     ) -> bool:
         """Validate list of child tags against sub_tags spec and order."""
         if sub_tags == "":
@@ -418,9 +509,13 @@ class BagBuilderBase(ABC):
             return False
 
         if sub_tags_order:
-            order_groups = _parse_sub_tags_order(sub_tags_order)
-            if not _validate_sub_tags_order(tags, order_groups):
-                return False
+            order_spec = _parse_sub_tags_order(sub_tags_order)
+            if isinstance(sub_tags_order, str):
+                if not _validate_sub_tags_order(tags, order_spec):  # type: ignore[arg-type]
+                    return False
+            else:
+                if not _validate_sub_tags_order_pattern(tags, order_spec):  # type: ignore[arg-type]
+                    return False
 
         return True
 
@@ -630,47 +725,106 @@ def _extract_validators_from_signature(fn: Callable) -> dict[str, tuple[Any, lis
 
 
 def _parse_sub_tags_spec(spec: str) -> dict[str, tuple[int, int | None]]:
-    """Parse sub_tags spec into dict of {tag: (min, max)}."""
+    """Parse sub_tags spec into dict of {tag: (min, max)}.
+
+    Cardinality syntax:
+        foo      -> exactly 1 (min=1, max=1)
+        foo[3]   -> exactly 3 (min=3, max=3)
+        foo[]    -> any number 0..N (min=0, max=None)
+        foo[0:]  -> 0 or more (min=0, max=None)
+        foo[:2]  -> 0 to 2 (min=0, max=2)
+        foo[1:3] -> 1 to 3 (min=1, max=3)
+    """
     result: dict[str, tuple[int, int | None]] = {}
     for item in spec.split(","):
         item = item.strip()
         if not item:
             continue
-        match = re.match(r"([a-zA-Z_][a-zA-Z0-9_]*)(?:\[(\d*):(\d*)\])?$", item)
+        # Try [min:max] format first
+        match = re.match(r"([a-zA-Z_][a-zA-Z0-9_]*)\[(\d*):(\d*)\]$", item)
         if match:
             tag = match.group(1)
             min_val = int(match.group(2)) if match.group(2) else 0
             max_val = int(match.group(3)) if match.group(3) else None
             result[tag] = (min_val, max_val)
+            continue
+        # Try [n] format (exactly n)
+        match = re.match(r"([a-zA-Z_][a-zA-Z0-9_]*)\[(\d+)\]$", item)
+        if match:
+            tag = match.group(1)
+            n = int(match.group(2))
+            result[tag] = (n, n)
+            continue
+        # Try [] format (any number)
+        match = re.match(r"([a-zA-Z_][a-zA-Z0-9_]*)\[\]$", item)
+        if match:
+            tag = match.group(1)
+            result[tag] = (0, None)
+            continue
+        # Plain tag name (exactly 1)
+        match = re.match(r"([a-zA-Z_][a-zA-Z0-9_]*)$", item)
+        if match:
+            tag = match.group(1)
+            result[tag] = (1, 1)
     return result
 
 
-def _parse_sub_tags_order(order: str) -> list[set[str]]:
-    """Parse sub_tags order spec into list of tag groups."""
-    result: list[set[str]] = []
-    for group in order.split(">"):
-        tags = {t.strip() for t in group.split(",") if t.strip()}
-        if tags:
-            result.append(tags)
-    return result
+def _parse_sub_tags_order(
+    order: str | list[str],
+) -> list[set[str]] | list[_OrderToken]:
+    """Parse sub_tags order spec.
+
+    Args:
+        order: Either legacy string format or pattern list.
+
+    Returns:
+        - str format 'a,b>c,d' -> list[set[str]] (grouped ordering)
+        - list format ['^a$', '*', '^b$'] -> list[_OrderToken] (pattern matching)
+          where '*' is wildcard (0..N tags), others are regex.
+    """
+    if isinstance(order, str):
+        result: list[set[str]] = []
+        for group in order.split(">"):
+            tags = {t.strip() for t in group.split(",") if t.strip()}
+            if tags:
+                result.append(tags)
+        return result
+
+    tokens: list[_OrderToken] = []
+    for item in order:
+        if item == "*":
+            tokens.append(_OrderToken(kind="wildcard", raw="*"))
+        else:
+            tokens.append(_OrderToken(kind="regex", raw=item, regex=re.compile(item)))
+    return tokens
 
 
 def _validate_sub_tags_cardinality(
-    tags: list[str], spec: dict[str, tuple[int, int | None]]
+    tags: list[str], spec: dict[str, tuple[int, int | None]], partial: bool = True
 ) -> bool:
-    """Check tag counts match cardinality constraints."""
+    """Check tag counts match cardinality constraints.
+
+    Args:
+        tags: List of tag names to validate.
+        spec: Dict of {tag: (min, max)} constraints.
+        partial: If True, allows counts below minimum (for incremental building).
+                 Maximum is always enforced. Unknown tags always rejected.
+    """
     from collections import Counter
 
     counts = Counter(tags)
 
+    # Unknown tags are always rejected
     for tag in counts:
         if tag not in spec:
             return False
 
     for tag, (min_count, max_count) in spec.items():
         count = counts.get(tag, 0)
-        if count < min_count:
+        # Minimum only enforced in complete mode
+        if not partial and count < min_count:
             return False
+        # Maximum always enforced
         if max_count is not None and count > max_count:
             return False
 
@@ -678,7 +832,16 @@ def _validate_sub_tags_cardinality(
 
 
 def _validate_sub_tags_order(tags: list[str], order_groups: list[set[str]]) -> bool:
-    """Check tags respect group ordering."""
+    """Check tags respect group ordering (legacy string format).
+
+    Args:
+        tags: List of tag names to validate.
+        order_groups: List of tag sets from parsing 'a,b>c,d' format.
+            Tags in earlier groups must appear before tags in later groups.
+
+    Returns:
+        True if ordering is valid, False otherwise.
+    """
     current_group_idx = 0
     for tag in tags:
         tag_group_idx = None
@@ -696,6 +859,59 @@ def _validate_sub_tags_order(tags: list[str], order_groups: list[set[str]]) -> b
         current_group_idx = tag_group_idx
 
     return True
+
+
+def _validate_sub_tags_order_pattern(
+    tags: list[str], pattern: list[_OrderToken], partial: bool = True
+) -> bool:
+    """Validate tags against full-sequence pattern.
+
+    Semantics:
+        - regex token consumes exactly 1 tag (fullmatch)
+        - '*' wildcard consumes 0..N tags
+
+    Args:
+        tags: List of tag names to validate.
+        pattern: List of _OrderToken (regex or wildcard).
+        partial: If True, allows partial matches (sequence could be extended).
+                 If False, requires complete match.
+    """
+    seen: set[tuple[int, int]] = set()
+
+    def rec(i: int, j: int) -> bool:
+        key = (i, j)
+        if key in seen:
+            return False
+        seen.add(key)
+
+        # All tags consumed
+        if i == len(tags):
+            if partial:
+                # Partial mode: ok if remaining pattern can match empty
+                # (all remaining tokens are wildcards or we're at end)
+                for k in range(j, len(pattern)):
+                    if pattern[k].kind != "wildcard":
+                        return True  # Can still be extended
+                return True
+            # Complete mode: pattern must also be exhausted
+            return j == len(pattern)
+
+        # Tags remain but pattern exhausted
+        if j == len(pattern):
+            return False
+
+        tok = pattern[j]
+
+        if tok.kind == "wildcard":
+            return rec(i, j + 1) or rec(i + 1, j)
+
+        if tok.regex is None:
+            return False
+        if tok.regex.fullmatch(tags[i]) is None:
+            return False
+        return rec(i + 1, j + 1)
+
+    return rec(0, 0)
 
 
 # =============================================================================
@@ -740,3 +956,56 @@ def _pop_decorated_methods(cls: type):
                         tag_list.extend(tags_raw)
                 handler_name = None if _is_empty_body(obj) else f"_el_{tag_list[0]}"
                 yield tag_list, handler_name, obj, decorator_info
+
+
+# =============================================================================
+# SchemaBuilder
+# =============================================================================
+
+
+class SchemaBuilder(BagBuilderBase):
+    """Builder for creating builder schemas.
+
+    Creates schema nodes with the structure expected by BagBuilderBase:
+    - node.label = element name (e.g., 'div') or abstract (e.g., '@flow')
+    - node.value = None
+    - node.attr = {sub_tags, sub_tags_order, inherits_from, ...}
+
+    Schema conventions:
+        - Elements: stored by name (e.g., 'div', 'span')
+        - Abstracts: prefixed with '@' (e.g., '@flow', '@phrasing')
+        - Use inherits_from='@abstract' to inherit sub_tags
+
+    Usage:
+        schema = Bag(builder=SchemaBuilder)
+        schema.item('@flow', sub_tags='p,span')
+        schema.item('div', inherits_from='@flow')
+        schema.item('br', sub_tags='')  # void element
+        schema.builder.compile('schema.msgpack')
+    """
+
+    @element()
+    def item(self, target: Bag, tag: str, value=None, **attr: Any) -> BagNode:
+        """Define a schema item (element definition).
+
+        Args:
+            target: The destination Bag.
+            tag: Ignored (overwritten by value).
+            value: Element name (e.g., 'div', '@flow').
+            **attr: Schema attributes (sub_tags, sub_tags_order, inherits_from).
+
+        Returns:
+            The created schema node.
+        """
+        tag = value
+        attr['node_label'] = value
+        return self.child(target, tag, **attr)
+
+    def compile(self, destination: str | Path) -> None:  # type: ignore[override]
+        """Save schema to MessagePack file for later loading by builders.
+
+        Args:
+            destination: Path to the output .msgpack file.
+        """
+        msgpack_data = self.bag.to_tytx(transport="msgpack")
+        Path(destination).write_bytes(msgpack_data)

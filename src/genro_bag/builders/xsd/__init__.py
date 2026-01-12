@@ -1,19 +1,21 @@
-# Copyright 2025 Softwell S.r.l. - Genropy Team
-# SPDX-License-Identifier: Apache-2.0
+# Copyright 2025 Softwell S.r.l. - SPDX-License-Identifier: Apache-2.0
 
 """XSD (XML Schema Definition) builder for Bag.
 
 This module provides:
-- XsdBuilder: Dynamic builder from XSD schema
+- XsdBuilder: Abstract base for XSD-based builders
 
 Example:
     >>> from genro_bag import Bag
-    >>> from genro_bag.builders import XsdBuilder
+    >>> from genro_bag.builders.xsd import XsdBuilder
     >>>
-    >>> bag = Bag(builder=XsdBuilder, builder_xsd_source='schema.xsd')
+    >>> class PainBuilder(XsdBuilder):
+    ...     xsd_source = 'pain.001.001.12.xsd'
+    ...
+    >>> bag = Bag(builder=PainBuilder)
     >>> doc = bag.Document()
 """
 
-from .xsd_schema import XsdBuilder
+from .xsd_schema_builder import XsdSchemaBuilder
 
-__all__ = ["XsdBuilder"]
+__all__ = ["XsdSchemaBuilder"]

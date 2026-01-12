@@ -19,7 +19,7 @@ Let's create a simple menu structure:
 >>> class MenuBuilder(BagBuilderBase):
 ...     """Builder for navigation menus."""
 ...
-...     @element(children='item, separator')
+...     @element(sub_tags='item,separator')
 ...     def menu(self, target, tag, **attr):
 ...         """Create a menu container."""
 ...         return self.child(target, tag, **attr)
@@ -35,7 +35,7 @@ Let's create a simple menu structure:
 ...         return self.child(target, tag, value='---', **attr)
 
 >>> # Use the builder
->>> bag = Bag(builder=MenuBuilder())
+>>> bag = Bag(builder=MenuBuilder)
 >>> menu = bag.menu(id='main-nav')
 >>> menu.item(value='Home', href='/')  # doctest: +ELLIPSIS
 BagNode : ... at ...
@@ -63,7 +63,7 @@ For HTML, use the built-in `HtmlBuilder`:
 >>> from genro_bag import Bag
 >>> from genro_bag.builders import HtmlBuilder
 
->>> bag = Bag(builder=HtmlBuilder())
+>>> bag = Bag(builder=HtmlBuilder)
 >>> div = bag.div(id='content', class_='container')
 >>> div.h1(value='Welcome')  # doctest: +ELLIPSIS
 BagNode : ... at ...
@@ -132,7 +132,7 @@ Pass attributes as keyword arguments. Use `class_` for the `class` attribute (si
 >>> from genro_bag import Bag
 >>> from genro_bag.builders import HtmlBuilder
 
->>> bag = Bag(builder=HtmlBuilder())
+>>> bag = Bag(builder=HtmlBuilder)
 >>> a = bag.a(value='Click here', href='https://example.com', target='_blank')
 >>> bag['a_0?href']
 'https://example.com'
@@ -152,7 +152,7 @@ Understanding when you get a `Bag` vs a `BagNode` is key:
 >>> from genro_bag import Bag
 >>> from genro_bag.builders import HtmlBuilder
 
->>> bag = Bag(builder=HtmlBuilder())
+>>> bag = Bag(builder=HtmlBuilder)
 
 >>> # Branch: returns Bag, can add children
 >>> div = bag.div()
