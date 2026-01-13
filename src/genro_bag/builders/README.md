@@ -42,7 +42,7 @@ W3C Validator RELAX NG files.
 To regenerate (from project root):
 
 ```bash
-python -m genro_bag.builders.html.html5_schema_builder \
+python tools/html5_schema_builder.py \
     --url https://github.com/nickhutchinson/html5-validator/tree/master/schema \
     -o src/genro_bag/builders/html/html5_schema.bag.mp
 ```
@@ -55,7 +55,9 @@ builders/
 ├── html/
 │   ├── __init__.py
 │   ├── html_builder.py  # HtmlBuilder
-│   ├── html5_schema_builder.py  # Schema generator script
 │   └── html5_schema.bag.mp  # Pre-compiled schema
 └── README.md
+
+tools/
+└── html5_schema_builder.py  # Schema generator script (requires lxml)
 ```

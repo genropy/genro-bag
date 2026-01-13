@@ -85,8 +85,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
     """
 
     @extract_kwargs(builder=True)
-    def __init__(self, source: dict[str, Any] | None = None, builder=None,
-                 builder_kwargs=None):
+    def __init__(self, source: dict[str, Any] | None = None, builder=None, builder_kwargs=None):
         """Create a new Bag.
 
         Args:
@@ -129,7 +128,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
             self.fill_from(source)
 
     def fill_from(
-        self, source: dict[str, Any] | str | Bag | None = None, format: str | None = None
+        self, source: dict[str, Any] | str | Path | Bag | None = None, format: str | None = None
     ) -> Bag:
         """Fill bag from a source and return self for chaining.
 
@@ -173,7 +172,9 @@ class Bag(BagParser, BagSerializer, BagQuery):
         elif isinstance(source, dict):
             self._fill_from_dict(source)
         else:
-            raise TypeError(f"fill_from expects str, Path, Bag, dict, or None, got {type(source).__name__}")
+            raise TypeError(
+                f"fill_from expects str, Path, Bag, dict, or None, got {type(source).__name__}"
+            )
         return self
 
     def _fill_from_file(self, path: str, format: str | None = None) -> None:
@@ -415,7 +416,12 @@ class Bag(BagParser, BagSerializer, BagQuery):
             #      bag.foo('John', node_position='<first') -> insertion position
             # NOTE: First positional arg maps to node_value (node content), passed as keyword
             return lambda node_value=None, node_label=None, node_position=None, **attr: handler(
-                self, _tag=name, node_value=node_value, node_label=node_label, node_position=node_position, **attr
+                self,
+                _tag=name,
+                node_value=node_value,
+                node_label=node_label,
+                node_position=node_position,
+                **attr,
             )
 
         raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
@@ -721,7 +727,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
         path: str,
         value: Any,
         _attributes: dict | None = None,
-        _position: str | None = None,
+        _position: str | int | None = None,
         _updattr: bool = False,
         _remove_null_attributes: bool = True,
         _reason: str | None = None,

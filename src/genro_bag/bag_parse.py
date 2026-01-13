@@ -90,7 +90,9 @@ class BagParser:
             >>> 'section' in bag['grammar']  # dot creates hierarchy
             True
         """
-        handler = _BagXmlHandler(cls, empty=empty, raise_on_error=raise_on_error, tag_attribute=tag_attribute)
+        handler = _BagXmlHandler(
+            cls, empty=empty, raise_on_error=raise_on_error, tag_attribute=tag_attribute
+        )
         if isinstance(source, bytes):
             source = source.decode()
 

@@ -102,11 +102,13 @@ def element(
 
     def decorator(func: Callable) -> Callable:
         func._decorator = {  # type: ignore[attr-defined]
-            k: v for k, v in {
+            k: v
+            for k, v in {
                 "tags": tags,
                 "sub_tags": sub_tags,
                 "inherits_from": inherits_from,
-            }.items() if v is not None
+            }.items()
+            if v is not None
         }
         return func
 
@@ -233,7 +235,9 @@ class BagBuilderBase(ABC):
             call_args_validations = _extract_validators_from_signature(obj)
 
             for tag in tag_list:
-                cls._class_schema.set_item(tag, None,
+                cls._class_schema.set_item(
+                    tag,
+                    None,
                     handler_name=handler_name,
                     sub_tags=sub_tags,
                     inherits_from=inherits_from,
@@ -272,6 +276,7 @@ class BagBuilderBase(ABC):
                 raise AttributeError(f"'{type(self).__name__}' has no element '{_tag}'") from err
             kwargs["tag"] = _tag
             return method(destination_bag, *args, **kwargs)
+
         return wrapper
 
     def _default_element(
@@ -299,7 +304,7 @@ class BagBuilderBase(ABC):
         _tag: str,
         node_value: Any = None,
         node_label: str | None = None,
-        node_position: str | None = None,
+        node_position: str | int | None = None,
         **attr: Any,
     ) -> BagNode:
         """Create a child node in the target Bag with validation.
@@ -307,7 +312,7 @@ class BagBuilderBase(ABC):
         Raises ValueError if validation fails, KeyError if parent tag not in schema.
         """
         target_node = _target._parent_node
-        if target_node:
+        if target_node and target_node.tag:
             target_info = self.get_schema_info(target_node.tag)
             self._accept_child(target_node, target_info, _tag, node_position)
 
@@ -361,7 +366,9 @@ class BagBuilderBase(ABC):
 
             # Type check
             if not _check_type(attr_value, base_type):
-                errors.append(f"'{attr_name}': expected {base_type}, got {type(attr_value).__name__}")
+                errors.append(
+                    f"'{attr_name}': expected {base_type}, got {type(attr_value).__name__}"
+                )
                 continue
 
             # Validator checks (Regex, Range, etc.)
@@ -429,7 +436,7 @@ class BagBuilderBase(ABC):
         children_tags = [n.tag for n in node.value.nodes] if isinstance(node.value, Bag) else []
 
         node._invalid_reasons = self._validate_children_tags(
-            node_tag, sub_tags_compiled, children_tags
+            node_tag, sub_tags_compiled, children_tags  # type: ignore[arg-type]
         )
 
     def _accept_child(
@@ -437,7 +444,7 @@ class BagBuilderBase(ABC):
         target_node: BagNode,
         info: dict,
         child_tag: str,
-        node_position: str | None,
+        node_position: str | int | None,
     ) -> None:
         """Check if target_node can accept child_tag at node_position.
 
@@ -449,13 +456,19 @@ class BagBuilderBase(ABC):
             return
 
         # Build children_tags = current + new
-        children_tags = [n.tag for n in target_node.value.nodes] if isinstance(target_node.value, Bag) else []
+        children_tags = (
+            [n.tag for n in target_node.value.nodes] if isinstance(target_node.value, Bag) else []
+        )
 
         # Insert new tag at correct position
-        idx = target_node.value._nodes._parse_position(node_position) if isinstance(target_node.value, Bag) else 0
+        idx = (
+            target_node.value._nodes._parse_position(node_position)
+            if isinstance(target_node.value, Bag)
+            else 0
+        )
         children_tags.insert(idx, child_tag)
 
-        self._validate_children_tags(target_node.tag, sub_tags_compiled, children_tags)
+        self._validate_children_tags(target_node.tag, sub_tags_compiled, children_tags)  # type: ignore[arg-type]
 
     def _command_on_node(
         self, node: BagNode, child_tag: str, node_position: str | int | None = None, **attrs: Any
@@ -497,7 +510,7 @@ class BagBuilderBase(ABC):
 
         cached = schema_node.attr.get("_cached_info")
         if cached is not None:
-            return cached
+            return cached  # type: ignore[no-any-return]
 
         result = dict(schema_node.attr)
         inherits_from = result.pop("inherits_from", None)
@@ -593,7 +606,6 @@ class BagBuilderBase(ABC):
         return schema_node.attr.get("call_args_validations")
 
 
-
 # =============================================================================
 # Type hint parsing utilities (internal)
 # =============================================================================
@@ -629,6 +641,7 @@ def _check_type(value: Any, tp: Any) -> bool:
 
     try:
         from typing import Union
+
         if origin is Union:
             return any(_check_type(value, t) for t in args)
     except ImportError:
@@ -683,7 +696,17 @@ def _check_type(value: Any, tp: Any) -> bool:
 
 def _extract_validators_from_signature(fn: Callable) -> dict[str, tuple[Any, list, Any]]:
     """Extract type hints with validators from function signature."""
-    skip_params = {"self", "target", "tag", "label", "_target", "_tag", "_label", "node_label", "node_position"}
+    skip_params = {
+        "self",
+        "target",
+        "tag",
+        "label",
+        "_target",
+        "_tag",
+        "_label",
+        "node_label",
+        "node_position",
+    }
 
     try:
         hints = get_type_hints(fn, include_extras=True)
@@ -749,7 +772,9 @@ def _parse_sub_tags_spec(spec: str) -> dict[str, tuple[int, int]]:
         # Check for invalid [] format
         match = re.match(r"([a-zA-Z_][a-zA-Z0-9_]*)\[\]$", item)
         if match:
-            raise ValueError(f"Invalid sub_tags syntax: '{item}' - use 'foo' for 0..N or 'foo[n]' for exact count")
+            raise ValueError(
+                f"Invalid sub_tags syntax: '{item}' - use 'foo' for 0..N or 'foo[n]' for exact count"
+            )
         # Plain tag name (0..N)
         match = re.match(r"([a-zA-Z_][a-zA-Z0-9_]*)$", item)
         if match:
@@ -842,7 +867,7 @@ class SchemaBuilder(BagBuilderBase):
             The created schema node.
         """
         tag = value
-        attr['node_label'] = value
+        attr["node_label"] = value
         return self.child(target, tag, **attr)
 
     def compile(self, destination: str | Path) -> None:  # type: ignore[override]
@@ -852,4 +877,4 @@ class SchemaBuilder(BagBuilderBase):
             destination: Path to the output .msgpack file.
         """
         msgpack_data = self.bag.to_tytx(transport="msgpack")
-        Path(destination).write_bytes(msgpack_data)
+        Path(destination).write_bytes(msgpack_data)  # type: ignore[arg-type]

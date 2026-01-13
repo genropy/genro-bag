@@ -342,9 +342,7 @@ class XsdSchemaBuilder:
         # Normal model group
         children_seq.extend(self._parse_model_group(node))
 
-        return ComplexSpec(
-            children_seq=children_seq, attrs=attrs, simple_content=None, mixed=mixed
-        )
+        return ComplexSpec(children_seq=children_seq, attrs=attrs, simple_content=None, mixed=mixed)
 
     def _resolve_complex(self, type_qname: str | None) -> ComplexSpec | None:
         """Resolve a complex type by name."""
@@ -383,9 +381,7 @@ class XsdSchemaBuilder:
                 return self._parse_group(group, mode=group_tag)
         return []
 
-    def _parse_group(
-        self, group: ET.Element, mode: str
-    ) -> list[ChildSpec | list[ChildSpec]]:
+    def _parse_group(self, group: ET.Element, mode: str) -> list[ChildSpec | list[ChildSpec]]:
         """Parse a specific model group."""
         steps: list[ChildSpec | list[ChildSpec]] = []
 
@@ -537,9 +533,7 @@ class XsdSchemaBuilder:
                 else:
                     schema.item(child_name, sub_tags="")
 
-    def _collect_child_names(
-        self, steps: list[ChildSpec | list[ChildSpec]]
-    ) -> set[str]:
+    def _collect_child_names(self, steps: list[ChildSpec | list[ChildSpec]]) -> set[str]:
         """Collect all child names from steps."""
         out: set[str] = set()
         for step in steps:
@@ -550,9 +544,7 @@ class XsdSchemaBuilder:
                 out.add(step.name)
         return out
 
-    def _render_children(
-        self, steps: list[ChildSpec | list[ChildSpec]]
-    ) -> str:
+    def _render_children(self, steps: list[ChildSpec | list[ChildSpec]]) -> str:
         """Render children to sub_tags string."""
         if not steps:
             return ""

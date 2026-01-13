@@ -310,7 +310,10 @@ class DirectoryResolver(BagResolver):
             # Verify that resolved path is still within the base directory
             if not self._kw["follow_symlinks"]:
                 real_fullpath = os.path.realpath(fullpath)
-                if not real_fullpath.startswith(base_realpath + os.sep) and real_fullpath != base_realpath:
+                if (
+                    not real_fullpath.startswith(base_realpath + os.sep)
+                    and real_fullpath != base_realpath
+                ):
                     # Path escapes base directory via symlink - skip it
                     continue
 
@@ -501,9 +504,9 @@ class DirectoryResolver(BagResolver):
             bool: True if file appears to be XML.
         """
         try:
-            with open(path, 'rb') as f:
+            with open(path, "rb") as f:
                 start = f.read(100).lstrip()
-            return start.startswith(b'<?xml') or start.startswith(b'<')
+            return start.startswith(b"<?xml") or start.startswith(b"<")
         except OSError:
             return False
 
