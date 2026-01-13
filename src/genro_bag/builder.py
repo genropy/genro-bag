@@ -612,11 +612,29 @@ class BagBuilderBase(ABC):
 
 
 def _split_annotated(tp: Any) -> tuple[Any, list]:
-    """Split Annotated type into base type and validators."""
+    """Split Annotated type into base type and validators.
+
+    Handles Optional[Annotated[T, ...]] which appears as Union[Annotated[T, ...], None].
+    """
     if get_origin(tp) is Annotated:
         base, *meta = get_args(tp)
         validators = [m for m in meta if callable(m)]
         return base, validators
+
+    # Handle Optional[Annotated[...]] -> Union[Annotated[...], None]
+    from typing import Union
+
+    if get_origin(tp) is Union:
+        args = get_args(tp)
+        # Check if it's Optional (Union with NoneType)
+        non_none_args = [a for a in args if a is not type(None)]
+        if len(non_none_args) == 1:
+            inner = non_none_args[0]
+            if get_origin(inner) is Annotated:
+                base, *meta = get_args(inner)
+                validators = [m for m in meta if callable(m)]
+                return base, validators
+
     return tp, []
 
 
