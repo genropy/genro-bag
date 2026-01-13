@@ -5,7 +5,6 @@
 This module parses XSD (XML Schema Definition) files and generates a schema
 compatible with BagBuilderBase. It extracts:
 - Element definitions with children (sub_tags)
-- Child ordering constraints (sub_tags_order)
 - Cardinality constraints ([min:max])
 - Attribute definitions with validations
 - SimpleType restrictions (pattern, enum, length, range)
@@ -29,7 +28,6 @@ Usage:
 Output format:
     The schema contains elements with:
     - sub_tags: allowed children with cardinality, e.g., 'Nm[1:1],Id[0:1],Tp[0:*]'
-    - sub_tags_order: ordering constraint, e.g., 'Nm>Id>Tp' or 'A|B|C' for choice
     - call_args_validations: type/pattern/enum constraints for value and attributes
 """
 
@@ -512,8 +510,8 @@ class XsdSchemaBuilder:
         if inline_st is not None:
             value_spec = self._parse_simple_type(inline_st)
 
-        # Build sub_tags and order
-        sub_tags, sub_tags_order = self._render_children(children_steps)
+        # Build sub_tags
+        sub_tags = self._render_children(children_steps)
 
         # Build validations
         call_args_validations: dict[str, Any] = {}
@@ -526,8 +524,6 @@ class XsdSchemaBuilder:
 
         # Build output attributes
         attrs_out: dict[str, Any] = {"sub_tags": sub_tags}
-        if sub_tags_order:
-            attrs_out["sub_tags_order"] = sub_tags_order
         if call_args_validations:
             attrs_out["call_args_validations"] = call_args_validations
 
@@ -556,25 +552,21 @@ class XsdSchemaBuilder:
 
     def _render_children(
         self, steps: list[ChildSpec | list[ChildSpec]]
-    ) -> tuple[str, str]:
-        """Render children to sub_tags and sub_tags_order strings."""
+    ) -> str:
+        """Render children to sub_tags string."""
         if not steps:
-            return "", ""
+            return ""
 
         merged: dict[str, tuple[int, int | None]] = {}
-        order_groups: list[str] = []
 
         for step in steps:
             if isinstance(step, list):
                 # Choice or 'all' group
-                names = [c.name for c in step]
-                order_groups.append("|".join(names))
                 for child in step:
                     merged[child.name] = self._merge_occ(
                         merged.get(child.name), (child.min_occurs, child.max_occurs)
                     )
             else:
-                order_groups.append(step.name)
                 merged[step.name] = self._merge_occ(
                     merged.get(step.name), (step.min_occurs, step.max_occurs)
                 )
@@ -585,12 +577,8 @@ class XsdSchemaBuilder:
             min_o, max_o = merged[name]
             card = self._fmt_card(min_o, max_o)
             sub_tags_parts.append(f"{name}{card}")
-        sub_tags = ",".join(sub_tags_parts)
 
-        # Build sub_tags_order
-        sub_tags_order = ">".join(order_groups)
-
-        return sub_tags, sub_tags_order
+        return ",".join(sub_tags_parts)
 
     def _render_simple_spec(self, spec: SimpleSpec) -> dict[str, Any]:
         """Render SimpleSpec to validation dict."""

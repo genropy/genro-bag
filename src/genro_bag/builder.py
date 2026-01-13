@@ -25,14 +25,6 @@ sub_tags cardinality syntax:
     foo[:2]  -> 0 to 2
     foo[1:3] -> 1 to 3
 
-sub_tags_order syntax:
-    String format (legacy, grouped ordering):
-        'a,b>c,d' -> a and b must come before c and d
-
-    List format (pattern matching with regex):
-        ['^header$', '*', '^footer$'] -> header first, footer last, anything between
-        Each element is a regex (fullmatch) or '*' wildcard (0..N tags).
-
 Constraint classes for use with Annotated:
     Regex: regex pattern for strings
     Range: min/max value constraints for numbers (ge, le, gt, lt)
@@ -90,7 +82,6 @@ if TYPE_CHECKING:
 def element(
     tags: str | tuple[str, ...] | None = None,
     sub_tags: str | tuple[str, ...] | None = None,
-    sub_tags_order: str | list[str] | None = None,
     inherits_from: str | None = None,
 ) -> Callable:
     """Decorator to mark a method as element handler.
@@ -102,13 +93,10 @@ def element(
             'a[],b[]'   -> a and b any number of times
             'a[2],b[0:]' -> a exactly twice, b zero or more
             '' (empty)  -> no children allowed (void element)
-        sub_tags_order: Ordering constraint for children. Two formats:
-            String: 'a,b>c,d' -> grouped ordering (a,b before c,d)
-            List: ['^a$', '*', '^b$'] -> pattern with regex and '*' wildcard
         inherits_from: Abstract element name to inherit sub_tags from.
 
     Example:
-        @element(sub_tags='header,content[],footer', sub_tags_order=['^header$', '*', '^footer$'])
+        @element(sub_tags='header,content[],footer')
         def page(self): ...
     """
 
@@ -117,7 +105,6 @@ def element(
             k: v for k, v in {
                 "tags": tags,
                 "sub_tags": sub_tags,
-                "sub_tags_order": sub_tags_order,
                 "inherits_from": inherits_from,
             }.items() if v is not None
         }
@@ -128,7 +115,6 @@ def element(
 
 def abstract(
     sub_tags: str | tuple[str, ...] = "",
-    sub_tags_order: str | list[str] = "",
 ) -> Callable:
     """Decorator to define an abstract element (for inheritance only).
 
@@ -137,7 +123,6 @@ def abstract(
 
     Args:
         sub_tags: Valid child tags with cardinality (see element decorator).
-        sub_tags_order: Ordering constraint (see element decorator).
 
     Example:
         @abstract(sub_tags='span,a,em,strong')
@@ -151,7 +136,6 @@ def abstract(
         func._decorator = {  # type: ignore[attr-defined]
             "abstract": True,
             "sub_tags": sub_tags,
-            "sub_tags_order": sub_tags_order,
         }
         return func
 
@@ -197,21 +181,6 @@ class Range:
             raise ValueError(f"must be > {self.gt}")
         if self.lt is not None and value >= self.lt:
             raise ValueError(f"must be < {self.lt}")
-
-
-@dataclass(frozen=True)
-class _OrderToken:
-    """Token for pattern-based sub_tags_order validation.
-
-    Attributes:
-        kind: "wildcard" (matches 0..N tags) or "regex" (matches exactly 1 tag).
-        raw: Original string from the pattern list.
-        regex: Compiled regex pattern (None for wildcard tokens).
-    """
-
-    kind: str  # "wildcard" | "regex"
-    raw: str
-    regex: re.Pattern[str] | None = None
 
 
 # =============================================================================
@@ -260,7 +229,6 @@ class BagBuilderBase(ABC):
                 setattr(cls, handler_name, obj)
 
             sub_tags = decorator_info.get("sub_tags", "")
-            sub_tags_order = decorator_info.get("sub_tags_order", "")
             inherits_from = decorator_info.get("inherits_from", "")
             call_args_validations = _extract_validators_from_signature(obj)
 
@@ -268,7 +236,6 @@ class BagBuilderBase(ABC):
                 cls._class_schema.set_item(tag, None,
                     handler_name=handler_name,
                     sub_tags=sub_tags,
-                    sub_tags_order=sub_tags_order,
                     inherits_from=inherits_from,
                     call_args_validations=call_args_validations,
                 )
@@ -354,8 +321,7 @@ class BagBuilderBase(ABC):
         if target_node:
             self._validate_sub_tags(target_node, target_info)
 
-        if isinstance(node_value, Bag):
-            self._validate_sub_tags(child_node, child_info)
+        self._validate_sub_tags(child_node, child_info)
 
         return child_node
 
@@ -412,7 +378,6 @@ class BagBuilderBase(ABC):
         self,
         node_tag: str,
         sub_tags_compiled: dict[str, tuple[int, int]],
-        sub_tags_order: str | list[str] | None,
         children_tags: list[str],
     ) -> list[str]:
         """Validate a list of child tags against sub_tags spec.
@@ -420,14 +385,13 @@ class BagBuilderBase(ABC):
         Args:
             node_tag: Tag of parent node (for error messages)
             sub_tags_compiled: Compiled sub_tags dict {tag: (min, max)}
-            sub_tags_order: Order spec (optional)
             children_tags: List of child tags to validate
 
         Returns:
             List of invalid_reasons (missing required tags)
 
         Raises:
-            ValueError: if tag not allowed, max exceeded, or order violated
+            ValueError: if tag not allowed or max exceeded
         """
         bounds = {tag: list(minmax) for tag, minmax in sub_tags_compiled.items()}
         for tag in children_tags:
@@ -438,18 +402,6 @@ class BagBuilderBase(ABC):
             if minmax[1] < 0:
                 raise ValueError(f"Too many '{tag}' in '{node_tag}'")
             minmax[0] -= 1
-
-        # Check order if specified
-        if sub_tags_order:
-            order_spec = _parse_sub_tags_order(sub_tags_order)
-            if isinstance(sub_tags_order, str):
-                # Grouped ordering (legacy string format)
-                if not _validate_sub_tags_order(children_tags, order_spec):  # type: ignore[arg-type]
-                    raise ValueError(f"Order violated in '{node_tag}'")
-            else:
-                # Pattern ordering (list format)
-                if not _validate_sub_tags_order_pattern(children_tags, order_spec):  # type: ignore[arg-type]
-                    raise ValueError(f"Order violated in '{node_tag}'")
 
         # Warnings for missing required elements (min > 0 after decrement)
         return [tag for tag, (n_min, _) in bounds.items() if n_min > 0]
@@ -474,11 +426,10 @@ class BagBuilderBase(ABC):
             node._invalid_reasons = []
             return
 
-        sub_tags_order = info.get("sub_tags_order")
-        children_tags = [n.tag for n in node.value.nodes]
+        children_tags = [n.tag for n in node.value.nodes] if isinstance(node.value, Bag) else []
 
         node._invalid_reasons = self._validate_children_tags(
-            node_tag, sub_tags_compiled, sub_tags_order, children_tags
+            node_tag, sub_tags_compiled, children_tags
         )
 
     def _accept_child(
@@ -494,56 +445,17 @@ class BagBuilderBase(ABC):
         Raises ValueError if not valid.
         """
         sub_tags_compiled = info.get("sub_tags_compiled")
-        sub_tags_order = info.get("sub_tags_order")
-        if not sub_tags_compiled and not sub_tags_order:
+        if not sub_tags_compiled:
             return
 
         # Build children_tags = current + new
-        children_tags = [n.tag for n in target_node.value.nodes]
+        children_tags = [n.tag for n in target_node.value.nodes] if isinstance(target_node.value, Bag) else []
 
         # Insert new tag at correct position
-        idx = target_node.value._nodes._parse_position(node_position)
+        idx = target_node.value._nodes._parse_position(node_position) if isinstance(target_node.value, Bag) else 0
         children_tags.insert(idx, child_tag)
 
-        self._validate_children_tags(target_node.tag, sub_tags_compiled, sub_tags_order, children_tags)
-
-    def _check_order(
-        self,
-        children_bag: Bag,
-        child_tag: str,
-        node_position: str | None,
-        sub_tags_order: str | list[str],
-        parent_tag: str,
-    ) -> None:
-        """Check if adding child_tag violates order constraints. Raises if violated."""
-        # Get existing tags in order
-        existing_tags = [
-            child.tag for child in children_bag.values()
-            if hasattr(child, "tag") and child.tag
-        ]
-
-        # Parse order spec
-        order_spec = _parse_sub_tags_order(sub_tags_order)
-
-        # For grouped ordering (list of sets)
-        if order_spec and isinstance(order_spec[0], set):
-            # Find group index for each tag
-            def get_group_index(tag: str) -> int:
-                for i, group in enumerate(order_spec):
-                    if tag in group:
-                        return i
-                return len(order_spec)  # Unknown tags go last
-
-            child_group = get_group_index(child_tag)
-
-            # If inserting at end, check that no earlier group tags come after
-            if node_position is None:
-                for existing_tag in existing_tags:
-                    existing_group = get_group_index(existing_tag)
-                    if existing_group > child_group:
-                        raise ValueError(
-                            f"'{child_tag}' must come before '{existing_tag}' in '{parent_tag}'"
-                        )
+        self._validate_children_tags(target_node.tag, sub_tags_compiled, children_tags)
 
     def _command_on_node(
         self, node: BagNode, child_tag: str, node_position: str | int | None = None, **attrs: Any
@@ -574,7 +486,6 @@ class BagBuilderBase(ABC):
         Returns dict with keys:
             - handler_name: str | None
             - sub_tags: str | None
-            - sub_tags_order: str | list[str] | None
             - sub_tags_compiled: dict[str, tuple[int, int]] | None
             - call_args_validations: dict | None
 
@@ -661,28 +572,6 @@ class BagBuilderBase(ABC):
         raise ValueError(f"Unknown format: {format}")
 
     # -------------------------------------------------------------------------
-    # Sub-tags validation (internal)
-    # -------------------------------------------------------------------------
-
-    def _get_sub_tags_spec(
-        self, node: BagNode
-    ) -> tuple[str | None, str | list[str] | None]:
-        """Return (sub_tags, sub_tags_order) for the node's tag."""
-        tag = node.tag
-        schema_node = self._schema.node(tag)
-        if schema_node is None:
-            return None, None
-        return (
-            schema_node.attr.get("sub_tags"),
-            schema_node.attr.get("sub_tags_order"),
-        )
-
-    def _sub_tags_validation_pattern(self, node: BagNode) -> str | None:
-        """Return the sub_tags spec for the node's tag (for error messages)."""
-        sub_tags, _ = self._get_sub_tags_spec(node)
-        return sub_tags
-
-
     # -------------------------------------------------------------------------
     # Call args validation (internal)
     # -------------------------------------------------------------------------
@@ -869,119 +758,6 @@ def _parse_sub_tags_spec(spec: str) -> dict[str, tuple[int, int]]:
     return result
 
 
-def _parse_sub_tags_order(
-    order: str | list[str],
-) -> list[set[str]] | list[_OrderToken]:
-    """Parse sub_tags order spec.
-
-    Args:
-        order: Either legacy string format or pattern list.
-
-    Returns:
-        - str format 'a,b>c,d' -> list[set[str]] (grouped ordering)
-        - list format ['^a$', '*', '^b$'] -> list[_OrderToken] (pattern matching)
-          where '*' is wildcard (0..N tags), others are regex.
-    """
-    if isinstance(order, str):
-        result: list[set[str]] = []
-        for group in order.split(">"):
-            tags = {t.strip() for t in group.split(",") if t.strip()}
-            if tags:
-                result.append(tags)
-        return result
-
-    tokens: list[_OrderToken] = []
-    for item in order:
-        if item == "*":
-            tokens.append(_OrderToken(kind="wildcard", raw="*"))
-        else:
-            tokens.append(_OrderToken(kind="regex", raw=item, regex=re.compile(item)))
-    return tokens
-
-
-def _validate_sub_tags_order(tags: list[str], order_groups: list[set[str]]) -> bool:
-    """Check tags respect group ordering (legacy string format).
-
-    Args:
-        tags: List of tag names to validate.
-        order_groups: List of tag sets from parsing 'a,b>c,d' format.
-            Tags in earlier groups must appear before tags in later groups.
-
-    Returns:
-        True if ordering is valid, False otherwise.
-    """
-    current_group_idx = 0
-    for tag in tags:
-        tag_group_idx = None
-        for i, group in enumerate(order_groups):
-            if tag in group:
-                tag_group_idx = i
-                break
-
-        if tag_group_idx is None:
-            continue
-
-        if tag_group_idx < current_group_idx:
-            return False
-
-        current_group_idx = tag_group_idx
-
-    return True
-
-
-def _validate_sub_tags_order_pattern(
-    tags: list[str], pattern: list[_OrderToken], partial: bool = True
-) -> bool:
-    """Validate tags against full-sequence pattern.
-
-    Semantics:
-        - regex token consumes exactly 1 tag (fullmatch)
-        - '*' wildcard consumes 0..N tags
-
-    Args:
-        tags: List of tag names to validate.
-        pattern: List of _OrderToken (regex or wildcard).
-        partial: If True, allows partial matches (sequence could be extended).
-                 If False, requires complete match.
-    """
-    seen: set[tuple[int, int]] = set()
-
-    def rec(i: int, j: int) -> bool:
-        key = (i, j)
-        if key in seen:
-            return False
-        seen.add(key)
-
-        # All tags consumed
-        if i == len(tags):
-            if partial:
-                # Partial mode: ok if remaining pattern can match empty
-                # (all remaining tokens are wildcards or we're at end)
-                for k in range(j, len(pattern)):
-                    if pattern[k].kind != "wildcard":
-                        return True  # Can still be extended
-                return True
-            # Complete mode: pattern must also be exhausted
-            return j == len(pattern)
-
-        # Tags remain but pattern exhausted
-        if j == len(pattern):
-            return False
-
-        tok = pattern[j]
-
-        if tok.kind == "wildcard":
-            return rec(i, j + 1) or rec(i + 1, j)
-
-        if tok.regex is None:
-            return False
-        if tok.regex.fullmatch(tags[i]) is None:
-            return False
-        return rec(i + 1, j + 1)
-
-    return rec(0, 0)
-
-
 # =============================================================================
 # Empty body detection (internal)
 # =============================================================================
@@ -1037,7 +813,7 @@ class SchemaBuilder(BagBuilderBase):
     Creates schema nodes with the structure expected by BagBuilderBase:
     - node.label = element name (e.g., 'div') or abstract (e.g., '@flow')
     - node.value = None
-    - node.attr = {sub_tags, sub_tags_order, inherits_from, ...}
+    - node.attr = {sub_tags, inherits_from, ...}
 
     Schema conventions:
         - Elements: stored by name (e.g., 'div', 'span')
@@ -1060,7 +836,7 @@ class SchemaBuilder(BagBuilderBase):
             target: The destination Bag.
             tag: Ignored (overwritten by value).
             value: Element name (e.g., 'div', '@flow').
-            **attr: Schema attributes (sub_tags, sub_tags_order, inherits_from).
+            **attr: Schema attributes (sub_tags, inherits_from).
 
         Returns:
             The created schema node.
