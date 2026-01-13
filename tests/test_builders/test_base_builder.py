@@ -424,6 +424,26 @@ class TestSubTagsValidation:
         with pytest.raises(ValueError, match='not allowed'):
             div.img()
 
+    def test_void_element_rejects_children(self):
+        """Bug: sub_tags='' (void element) should reject ALL children.
+
+        Empty string means "no children allowed", but was being treated
+        as "no validation" because '' is falsy in Python.
+        """
+        class Builder(BagBuilderBase):
+            @element(sub_tags='')  # void element - no children allowed
+            def br(self): ...
+
+            @element()
+            def span(self): ...
+
+        bag = Bag(builder=Builder)
+        br = bag.br()
+
+        # void element should reject any child
+        with pytest.raises(ValueError, match='not allowed'):
+            br.span()
+
 
 # =============================================================================
 # Tests for attribute validation via Annotated

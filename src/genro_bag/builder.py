@@ -422,7 +422,7 @@ class BagBuilderBase(ABC):
             return
 
         sub_tags_compiled = info.get("sub_tags_compiled")
-        if not sub_tags_compiled:
+        if sub_tags_compiled is None:
             node._invalid_reasons = []
             return
 
@@ -445,7 +445,7 @@ class BagBuilderBase(ABC):
         Raises ValueError if not valid.
         """
         sub_tags_compiled = info.get("sub_tags_compiled")
-        if not sub_tags_compiled:
+        if sub_tags_compiled is None:
             return
 
         # Build children_tags = current + new
@@ -510,7 +510,7 @@ class BagBuilderBase(ABC):
                         result[k] = v
 
         sub_tags = result.get("sub_tags")
-        if sub_tags:
+        if sub_tags is not None:
             result["sub_tags_compiled"] = _parse_sub_tags_spec(sub_tags)
 
         schema_node.attr["_cached_info"] = result
