@@ -1405,10 +1405,8 @@ class Bag(BagParser, BagSerializer, BagQuery):
         if p >= 0:
             node = cast(BagNode, self._nodes[p])
         elif autocreate:
-            node = BagNode(self, label=label, value=default)
             i = len(self._nodes)
-            self._nodes.set(label, node)
-            node.parent_bag = self
+            node = self._nodes.set(label, default, parent_bag=self)
             if self.backref:
                 self._on_node_inserted(node, i)
         else:

@@ -2806,6 +2806,29 @@ class TestBagCoverageMissing:
         assert 'new_node' in bag.keys()
         assert 'new_node' in inserted
 
+    # Bug report: autocreate returns ghost node not in container
+    def test_get_node_autocreate_returns_registered_node(self):
+        """Bug: _get_node autocreate returns unregistered 'ghost' node.
+
+        The node returned by _get_node(autocreate=True) must be the SAME
+        node that is registered in the container, not a different instance.
+        This ensures backref/events work correctly.
+        """
+        bag = Bag()
+        bag.set_backref()
+
+        # Get node with autocreate
+        returned_node = bag.get_node('test_key', autocreate=True, default='value')
+
+        # Get the node that's actually in the container
+        container_node = bag._nodes.get('test_key')
+
+        # They MUST be the same object
+        assert returned_node is container_node, (
+            f"Returned node {id(returned_node)} differs from "
+            f"container node {id(container_node)} - ghost node bug!"
+        )
+
     # Line 1313: get_node returns None for non-existent
     def test_get_node_nonexistent(self):
         """get_node returns None for non-existent path."""
