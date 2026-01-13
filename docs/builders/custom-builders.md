@@ -142,6 +142,129 @@ BagNode : ... at ...
 BagNode : ... at ...
 ```
 
+## The @abstract Decorator
+
+Use `@abstract` to define element groups that can be inherited but not instantiated directly. Abstract elements are stored with an `@` prefix in the schema.
+
+### Defining Content Categories
+
+Abstract elements are useful for defining content categories (like HTML5 content categories):
+
+```{doctest}
+>>> from genro_bag import Bag
+>>> from genro_bag.builders import BagBuilderBase, element, abstract
+
+>>> class HtmlLikeBuilder(BagBuilderBase):
+...     """Builder with HTML-like content categories."""
+...
+...     @abstract(sub_tags='span,strong,em,a')
+...     def phrasing(self):
+...         """Phrasing content: inline text-level elements."""
+...         ...
+...
+...     @abstract(sub_tags='div,p,ul,ol')
+...     def flow(self):
+...         """Flow content: block-level elements."""
+...         ...
+...
+...     @element(inherits_from='@phrasing')
+...     def p(self, target, tag, value=None, **attr):
+...         """Paragraph inherits phrasing content as children."""
+...         return self.child(target, tag, value=value, **attr)
+...
+...     @element(inherits_from='@flow')
+...     def div(self, target, tag, **attr):
+...         """Div inherits flow content as children."""
+...         return self.child(target, tag, **attr)
+...
+...     @element()
+...     def span(self, target, tag, value=None, **attr):
+...         return self.child(target, tag, value=value or '', **attr)
+...
+...     @element()
+...     def strong(self, target, tag, value=None, **attr):
+...         return self.child(target, tag, value=value or '', **attr)
+...
+...     @element()
+...     def em(self, target, tag, value=None, **attr):
+...         return self.child(target, tag, value=value or '', **attr)
+...
+...     @element()
+...     def a(self, target, tag, value=None, href=None, **attr):
+...         if href:
+...             attr['href'] = href
+...         return self.child(target, tag, value=value or '', **attr)
+...
+...     @element(sub_tags='li')
+...     def ul(self, target, tag, **attr):
+...         return self.child(target, tag, **attr)
+...
+...     @element(sub_tags='li')
+...     def ol(self, target, tag, **attr):
+...         return self.child(target, tag, **attr)
+...
+...     @element()
+...     def li(self, target, tag, value=None, **attr):
+...         return self.child(target, tag, value=value, **attr)
+
+>>> bag = Bag(builder=HtmlLikeBuilder)
+>>> p = bag.p()
+>>> p.strong(value='Bold')  # phrasing content allowed in p
+BagNode : ... at ...
+>>> p.em(value='Italic')  # doctest: +ELLIPSIS
+BagNode : ... at ...
+
+>>> div = bag.div()
+>>> div.p(value='Paragraph in div')  # flow content allowed in div
+BagNode : ... at ...
+```
+
+### Key Points
+
+1. **Cannot be instantiated**: `bag.phrasing()` would raise an error
+2. **Prefix with @**: When using `inherits_from`, reference as `'@phrasing'`
+3. **Defines sub_tags**: Child elements inherit the `sub_tags` specification
+4. **Combinable**: Abstract elements can reference other abstracts
+
+### Combining Abstracts
+
+```{doctest}
+>>> from genro_bag import Bag
+>>> from genro_bag.builders import BagBuilderBase, element, abstract
+
+>>> class ContentBuilder(BagBuilderBase):
+...     @abstract(sub_tags='text,code')
+...     def inline(self): ...
+...
+...     @abstract(sub_tags='block,section')
+...     def structural(self): ...
+...
+...     @abstract(sub_tags='=inline,=structural')  # Combine both!
+...     def all_content(self): ...
+...
+...     @element(inherits_from='@all_content')
+...     def container(self): ...
+...
+...     @element()
+...     def text(self): ...
+...
+...     @element()
+...     def code(self): ...
+...
+...     @element()
+...     def block(self): ...
+...
+...     @element()
+...     def section(self): ...
+
+>>> bag = Bag(builder=ContentBuilder)
+>>> c = bag.container()
+>>> c.text(value='Hello')  # from @inline
+BagNode : ... at ...
+>>> c.block()  # from @structural
+<genro_bag.bag.Bag object at ...>
+```
+
 ## Defining Multiple Elements Simply
 
 For elements without custom logic, use empty method bodies:

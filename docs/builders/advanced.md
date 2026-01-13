@@ -281,6 +281,131 @@ Use `_builder` parameter to change builder mid-tree:
 BagNode : ... at ...
 ```
 
+## SchemaBuilder: Programmatic Schema Creation
+
+`SchemaBuilder` allows you to define schemas programmatically instead of using decorators. This is useful for:
+
+- Dynamic schema generation
+- Schemas loaded from external sources
+- Reusable schema definitions shared across builders
+
+### Basic Usage
+
+```{doctest}
+>>> from genro_bag import Bag
+>>> from genro_bag.builders import SchemaBuilder
+
+>>> schema = Bag(builder=SchemaBuilder)
+
+>>> # Define elements with the item() method
+>>> schema.item('document', sub_tags='chapter[]')  # doctest: +ELLIPSIS
+BagNode : ... at ...
+>>> schema.item('chapter', sub_tags='section[],paragraph[]')  # doctest: +ELLIPSIS
+BagNode : ... at ...
+>>> schema.item('section', sub_tags='paragraph[]')  # doctest: +ELLIPSIS
+BagNode : ... at ...
+>>> schema.item('paragraph')  # Leaf element (no children)  # doctest: +ELLIPSIS
+BagNode : ... at ...
+```
+
+### The item() Method
+
+```python
+schema.item(
+    name: str,              # Element name (or '@name' for abstract)
+    sub_tags: str = '',     # Valid child tags with cardinality
+    inherits_from: str = None,  # Abstract element to inherit from
+)
+```
+
+### Defining Abstract Elements
+
+Use `@` prefix for abstract elements:
+
+```{doctest}
+>>> from genro_bag import Bag
+>>> from genro_bag.builders import SchemaBuilder
+
+>>> schema = Bag(builder=SchemaBuilder)
+
+>>> # Define abstract (content category)
+>>> schema.item('@inline', sub_tags='span,strong,em')  # doctest: +ELLIPSIS
+BagNode : ... at ...
+
+>>> # Concrete element inherits from abstract
+>>> schema.item('p', inherits_from='@inline')  # doctest: +ELLIPSIS
+BagNode : ... at ...
+
+>>> schema.item('span')  # doctest: +ELLIPSIS
+BagNode : ... at ...
+>>> schema.item('strong')  # doctest: +ELLIPSIS
+BagNode : ... at ...
+>>> schema.item('em')  # doctest: +ELLIPSIS
+BagNode : ... at ...
+```
+
+### Compiling to File
+
+Save the schema for reuse:
+
+```python
+# Save to MessagePack (binary, compact)
+schema.builder.compile('my_schema.msgpack')
+
+# Or save to JSON (human-readable)
+schema.builder.compile('my_schema.json', transport='json')
+```
+
+### Using Compiled Schema
+
+Load the schema in a custom builder:
+
+```python
+from genro_bag import Bag
+from genro_bag.builders import BagBuilderBase
+
+# Method 1: Class attribute
+class MyBuilder(BagBuilderBase):
+    schema_path = 'my_schema.msgpack'
+
+# Method 2: Constructor parameter
+bag = Bag(builder=BagBuilderBase, builder_schema_path='my_schema.msgpack')
+```
+
+### Complete Example: Config Schema
+
+```{doctest}
+>>> from genro_bag import Bag
+>>> from genro_bag.builders import SchemaBuilder, BagBuilderBase
+
+>>> # Create schema programmatically
+>>> schema = Bag(builder=SchemaBuilder)
+>>> schema.item('config', sub_tags='database,cache[:1],logging[:1]')  # doctest: +ELLIPSIS
+BagNode : ... at ...
+>>> schema.item('database')  # doctest: +ELLIPSIS
+BagNode : ... at ...
+>>> schema.item('cache')  # doctest: +ELLIPSIS
+BagNode : ... at ...
+>>> schema.item('logging')  # doctest: +ELLIPSIS
+BagNode : ... at ...
+
+>>> # Use the schema directly (without saving to file)
+>>> class ConfigBuilder(BagBuilderBase):
+...     pass
+
+>>> # The schema would normally be loaded from file
+>>> # For this example, we show the pattern
+```
+
+### When to Use SchemaBuilder vs @element
+
+| Approach | Use When |
+|----------|----------|
+| `@element` decorator | Schema is static, defined in code |
+| `SchemaBuilder` | Schema is dynamic, generated at runtime |
+| `SchemaBuilder` + file | Schema is shared across multiple builders |
+| XSD → SchemaBuilder | Schema comes from external XSD file |
+
 ## Loading Schema from File
 
 Builders can load schema from a pre-compiled MessagePack file using `schema_path`:
@@ -294,21 +419,6 @@ class MyBuilder(BagBuilderBase):
 
 # Or pass at instantiation
 bag = Bag(builder=MyBuilder, builder_schema_path='custom_schema.msgpack')
-```
-
-To create a schema file, use `SchemaBuilder`:
-
-```python
-from genro_bag import Bag
-from genro_bag.builders import SchemaBuilder
-
-# Create schema programmatically
-schema = Bag(builder=SchemaBuilder)
-schema.item('container', sub_tags='item[]')
-schema.item('item')
-
-# Save to file
-schema.builder.compile('schema.msgpack')
 ```
 
 ## Custom Validation
