@@ -1383,7 +1383,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
                     if not ignore_none or value is not None:
                         curr_node.value = value
             else:
-                self.set_item(label, value, attr=attr)
+                self.set_item(label, value, _attributes=attr)
 
     # -------------------- _get_node (single level) --------------------------------
 

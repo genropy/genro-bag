@@ -2794,6 +2794,27 @@ class TestBagCoverageMissing:
         assert bag1['config.port'] == 9090
         assert bag1['config.timeout'] == 30
 
+    # Bug report: update() passes attr= instead of _attributes= to set_item
+    def test_update_preserves_attributes(self):
+        """Bug: update() passes attr= to set_item which expects _attributes=.
+
+        This causes attributes to be stored as a kwarg named 'attr' instead
+        of being set as node attributes.
+        """
+        source = Bag()
+        source.set_item('key', 'value', _attributes={'color': 'red', 'size': 10})
+
+        target = Bag()
+        target.update(source)
+
+        # Attributes should be preserved on the node
+        node = target.get_node('key')
+        assert node is not None
+        assert node.attr.get('color') == 'red', "Attribute 'color' not preserved"
+        assert node.attr.get('size') == 10, "Attribute 'size' not preserved"
+        # Should NOT have an 'attr' attribute (that would be the bug)
+        assert 'attr' not in node.attr, "Bug: 'attr' stored as attribute instead of _attributes"
+
     # Line 1262: get_node with autocreate and backref fires insert event
     def test_get_node_autocreate_with_backref(self):
         """get_node with autocreate and backref fires insert event."""
