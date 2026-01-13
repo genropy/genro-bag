@@ -536,7 +536,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
 
     @smartasync
     async def _async_traverse_until(
-        self, curr: Bag, pathlist: list, static: bool = False
+        self, curr: Bag, pathlist: list, *, static: bool
     ) -> tuple[Bag, list]:
         """Traverse path segments with async support (may trigger resolvers).
 
@@ -591,7 +591,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
 
     @smartasync
     async def _async_htraverse(
-        self, path: str | list, write_mode: bool = False, static: bool = False
+        self, path: str | list, *, write_mode: bool = False, static: bool
     ) -> tuple[Any, str | None]:
         """Traverse a hierarchical path with async support.
 
@@ -658,20 +658,21 @@ class Bag(BagParser, BagSerializer, BagQuery):
     # -------------------- get_item --------------------------------
 
     @smartasync
-    async def get_item(self, path: str, default: Any = None, static: bool = False) -> Any:
+    async def get_item(self, path: str, default: Any = None, static: bool = True) -> Any:
         """Get value at a hierarchical path.
 
         Traverses the Bag hierarchy following the dot-separated path and returns
         the value at the final location.
 
         Decorated with @smartasync: can be called from sync or async context.
-        In async context with async resolvers, use `await bag.get_item(path)`.
+        By default does NOT trigger resolvers (static=True).
+        Use static=False to trigger resolvers during traversal.
 
         Args:
             path: Hierarchical path like 'a.b.c'. Empty path returns self.
                 Supports '?attr' suffix to get attribute instead of value.
             default: Value to return if path not found.
-            static: If True, don't trigger resolvers during traversal.
+            static: If False, trigger resolvers during traversal. Default True.
 
         Returns:
             The value at the path if found, otherwise default.
@@ -784,12 +785,12 @@ class Bag(BagParser, BagSerializer, BagQuery):
             _attributes = dict(_attributes or {})
             _attributes.update(kwargs)
 
-        # Se value è un resolver, estrailo (legacy compatibility)
+        # If value is a resolver, extract it (legacy compatibility)
         if safe_is_instance(value, "genro_bag.resolver.BagResolver"):
             resolver = value
             value = None
 
-        # Gestisci resolver.attributes se presente
+        # Handle resolver.attributes if present
         if resolver is not None and hasattr(resolver, "attributes") and resolver.attributes:
             _attributes = dict(_attributes or ())
             _attributes.update(resolver.attributes)
@@ -838,6 +839,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
         return node
 
     def __setitem__(self, path: str, value: Any) -> None:
+        """Set value at path using bracket notation."""
         self.set_item(path, value)
 
     # -------------------- _pop (single level) --------------------------------
@@ -979,8 +981,9 @@ class Bag(BagParser, BagSerializer, BagQuery):
     def as_dict(self, ascii: bool = False, lower: bool = False) -> dict[str, Any]:
         """Convert Bag to dict (first level only).
 
-        :param ascii: If True, convert keys to ASCII.
-        :param lower: If True, convert keys to lowercase.
+        Args:
+            ascii: If True, convert keys to ASCII.
+            lower: If True, convert keys to lowercase.
         """
         result = {}
         for el in self._nodes:
@@ -1041,7 +1044,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
             _remove_null_attributes: If True, remove attributes with None value.
             **kwargs: Additional attributes to set.
         """
-        self.get_node(path, autocreate=True, static=True).set_attr(
+        self.get_node(path, autocreate=True).set_attr(
             attr=_attributes, _remove_null_attributes=_remove_null_attributes, **kwargs
         )
 
@@ -1058,7 +1061,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
         Returns:
             Attribute value or default.
         """
-        node = self.get_node(path, static=True)
+        node = self.get_node(path)
         if node:
             return node.get_attr(label=attr, default=default)
         return default
@@ -1070,7 +1073,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
             path: Path to the node. If None, uses parent_node.
             *attrs: Attribute names to delete.
         """
-        node = self.get_node(path, static=True)
+        node = self.get_node(path)
         if node:
             node.del_attr(*attrs)
 
@@ -1097,7 +1100,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
         Returns:
             The resolver, or None if path doesn't exist or has no resolver.
         """
-        node = self.get_node(path, static=True)
+        node = self.get_node(path)
         return node.resolver if node else None
 
     def set_resolver(self, path: str, resolver) -> None:
@@ -1422,12 +1425,15 @@ class Bag(BagParser, BagSerializer, BagQuery):
         as_tuple: bool = False,
         autocreate: bool = False,
         default: Any = None,
-        static: bool = False,
+        static: bool = True,
     ) -> BagNode | tuple[Bag, BagNode | None] | None:
         """Get the BagNode at a path.
 
         Unlike get_item which returns the value, this returns the BagNode itself,
         giving access to attributes and other node properties.
+
+        By default does NOT trigger resolvers (static=True).
+        Use static=False to trigger resolvers during traversal.
 
         Args:
             path: Hierarchical path. If None or empty, returns the parent_node
@@ -1435,7 +1441,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
             as_tuple: If True, return (container_bag, node) tuple.
             autocreate: If True, create node if not found.
             default: Default value for autocreated node.
-            static: If True, don't trigger resolvers during traversal.
+            static: If False, trigger resolvers during traversal. Default True.
 
         Returns:
             The BagNode at the path, or None if not found.

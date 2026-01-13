@@ -1299,25 +1299,25 @@ class TestBagNodeContainerPositions:
         assert 'new' in bag
 
     def test_index_by_attr_value(self):
-        """Find index by =attr=value syntax."""
+        """Find index by #attr=value syntax."""
         bag = Bag()
         bag.set_item('a', 1, color='red')
         bag.set_item('b', 2, color='blue')
         bag.set_item('c', 3, color='red')
 
         # Find by attribute value
-        idx = bag._nodes.index('=color=blue')
+        idx = bag._nodes.index('#color=blue')
         assert idx == 1
 
     def test_index_by_value_only(self):
-        """Find index by ==value syntax."""
+        """Find index by #=value syntax."""
         bag = Bag()
         bag['a'] = 'first'
         bag['b'] = 'target'
         bag['c'] = 'last'
 
         # Find by value
-        idx = bag._nodes.index('==target')
+        idx = bag._nodes.index('#=target')
         assert idx == 1
 
     def test_index_not_found(self):

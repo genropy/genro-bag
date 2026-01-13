@@ -384,63 +384,6 @@ class TestBagCall:
         assert bag('a.b') == 42
 
 
-class TestBagIndexByAttribute:
-    """Test index lookup by attribute value (?attr=value) and by value (?=value)."""
-
-    def test_index_by_attribute_value(self):
-        """Find node index by attribute value with ?attr=value syntax."""
-        bag = Bag()
-        bag.set_item('a', 10, color='red')
-        bag.set_item('b', 20, color='blue')
-        bag.set_item('c', 30, color='green')
-        # Use position syntax to find by attribute
-        bag.set_item('new', 'X', _position='<?color=blue')
-        assert bag.keys() == ['a', 'new', 'b', 'c']
-
-    def test_index_by_attribute_value_after(self):
-        """Insert after node found by attribute value."""
-        bag = Bag()
-        bag.set_item('a', 10, color='red')
-        bag.set_item('b', 20, color='blue')
-        bag.set_item('c', 30, color='green')
-        bag.set_item('new', 'X', _position='>?color=blue')
-        assert bag.keys() == ['a', 'b', 'new', 'c']
-
-    def test_index_by_value(self):
-        """Find node index by value with ?=value syntax."""
-        bag = Bag()
-        bag['a'] = 'apple'
-        bag['b'] = 'banana'
-        bag['c'] = 'cherry'
-        bag.set_item('new', 'X', _position='<?=banana')
-        assert bag.keys() == ['a', 'new', 'b', 'c']
-
-    def test_index_by_value_after(self):
-        """Insert after node found by value."""
-        bag = Bag()
-        bag['a'] = 'apple'
-        bag['b'] = 'banana'
-        bag['c'] = 'cherry'
-        bag.set_item('new', 'X', _position='>?=banana')
-        assert bag.keys() == ['a', 'b', 'new', 'c']
-
-    def test_index_by_attribute_not_found(self):
-        """Attribute value not found appends at end."""
-        bag = Bag()
-        bag.set_item('a', 10, color='red')
-        bag.set_item('b', 20, color='blue')
-        bag.set_item('new', 'X', _position='<?color=yellow')
-        assert bag.keys() == ['a', 'b', 'new']
-
-    def test_index_by_value_not_found(self):
-        """Value not found appends at end."""
-        bag = Bag()
-        bag['a'] = 'apple'
-        bag['b'] = 'banana'
-        bag.set_item('new', 'X', _position='<?=orange')
-        assert bag.keys() == ['a', 'b', 'new']
-
-
 class TestBagBackref:
     """Test backref mode: set_backref, del_parent_ref, clear_backref."""
 

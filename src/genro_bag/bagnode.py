@@ -658,7 +658,11 @@ class BagNodeContainer:
         """Return the index of a label in this container.
 
         Args:
-            label: The label or index syntax to look up.
+            label: The label or special syntax to look up. Supported formats:
+                - 'label': exact label match
+                - '#n': numeric index (e.g., '#0', '#1')
+                - '#attr=value': find by attribute value (e.g., '#id=34')
+                - '#=value': find by node value (e.g., '#=target')
 
         Returns:
             Index position (0-based), or -1 if not found.
@@ -668,8 +672,8 @@ class BagNodeContainer:
         if m := re.match(r"^#(\d+)$", label):
             idx = int(m.group(1))
             return idx if idx < len(self._list) else -1
-        if "=" in label:
-            attr, value = label[1:].split("=", 1)
+        if m := re.match(r"^#(\w*)=(.*)$", label):
+            attr, value = m.groups()
             if attr:
                 return next(
                     (i for i, node in enumerate(self._list) if node.attr.get(attr) == value), -1

@@ -271,6 +271,7 @@ class _BagXmlHandler(sax.handler.ContentHandler):
         self.tag_attribute = tag_attribute
 
     def startDocument(self) -> None:
+        """SAX callback: initialize parsing state."""
         self.bags: list[tuple[Any, dict | None, str | None]] = [(self.bag_class(), None, None)]
         self.value_list: list[str] = []
         self.legacy_mode: bool = False
@@ -288,6 +289,7 @@ class _BagXmlHandler(sax.handler.ContentHandler):
         return value
 
     def startElement(self, tag_label: str, attributes: Any) -> None:
+        """SAX callback: handle opening tag."""
         attrs = {str(k): tytx_decode(saxutils.unescape(v)) for k, v in attributes.items()}
         curr_type: str | None = None
 
@@ -308,9 +310,11 @@ class _BagXmlHandler(sax.handler.ContentHandler):
         self.value_list = []
 
     def characters(self, s: str) -> None:
+        """SAX callback: accumulate character data."""
         self.value_list.append(s)
 
     def endElement(self, tag_label: str) -> None:
+        """SAX callback: handle closing tag."""
         curr, attrs, curr_type = self.bags.pop()
         value = self._get_value(dtype=curr_type)
         self.value_list = []
