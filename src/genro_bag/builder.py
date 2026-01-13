@@ -854,21 +854,41 @@ class SchemaBuilder(BagBuilderBase):
     """
 
     @element()
-    def item(self, target: Bag, tag: str, value=None, **attr: Any) -> BagNode:
+    def item(
+        self,
+        _target: Bag,
+        tag: str,
+        node_value: str,
+        sub_tags: str | None = None,
+        inherits_from: str | None = None,
+        handler_name: str | None = None,
+        call_args_validations: dict[str, tuple[Any, list, Any]] | None = None,
+        **kwargs: Any,
+    ) -> BagNode:
         """Define a schema item (element definition).
 
         Args:
-            target: The destination Bag.
-            tag: Ignored (overwritten by value).
-            value: Element name (e.g., 'div', '@flow').
-            **attr: Schema attributes (sub_tags, inherits_from).
+            _target: The destination Bag.
+            tag: The element tag ('item').
+            node_value: Element name to define (e.g., 'div', '@flow').
+            node_label: Ignored, node_value is used as label.
+            sub_tags: Valid child tags with cardinality syntax.
+            inherits_from: Abstract element name to inherit sub_tags from.
+            handler_name: Method name for custom handler.
+            call_args_validations: Validation spec for element attributes.
 
         Returns:
             The created schema node.
         """
-        tag = value
-        attr["node_label"] = value
-        return self.child(target, tag, **attr)
+        return self.child(
+            _target,
+            tag,
+            node_label=node_value,
+            sub_tags=sub_tags,
+            inherits_from=inherits_from,
+            handler_name=handler_name,
+            call_args_validations=call_args_validations,
+        )
 
     def compile(self, destination: str | Path) -> None:  # type: ignore[override]
         """Save schema to MessagePack file for later loading by builders.

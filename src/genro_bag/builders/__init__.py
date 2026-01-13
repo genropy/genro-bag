@@ -30,7 +30,7 @@ from genro_bag.builder import (
     element,
 )
 from genro_bag.builders.html import HtmlBuilder
-from genro_bag.builders.xsd import XsdBuilder, XsdSchemaBuilder
+from genro_bag.builders.xsd import XsdBuilder, XsdReader
 
 __all__ = [
     "BagBuilderBase",
@@ -41,5 +41,5 @@ __all__ = [
     "HtmlBuilder",
     "SchemaBuilder",
     "XsdBuilder",
-    "XsdSchemaBuilder",
+    "XsdReader",
 ]

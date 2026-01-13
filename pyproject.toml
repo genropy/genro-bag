@@ -58,8 +58,11 @@ docs = [
     "myst-parser>=4.0.0",
     "sphinxcontrib-mermaid>=1.0.0",
 ]
+xsd-validate = [
+    "xmlschema>=3.0",
+]
 all = [
-    "genro-bag[dev,docs]",
+    "genro-bag[dev,docs,xsd-validate]",
 ]
 
 [project.urls]
