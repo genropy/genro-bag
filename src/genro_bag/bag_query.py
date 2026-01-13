@@ -135,7 +135,7 @@ class BagQuery:
         """
         for node in self._nodes:
             node_value = node.value
-            if node_value and node_value[key] == value:
+            if node_value and node_value.get(key) == value:
                 return node  # type: ignore[no-any-return]
         return None
 
@@ -165,7 +165,7 @@ class BagQuery:
         return True
 
     def walk(
-        self, callback: Callable[[BagNode], Any] | None = None, _mode: str = "static", **kwargs
+        self, callback: Callable[[BagNode], Any] | None = None, static: bool = True, **kwargs
     ) -> Iterator[tuple[str, BagNode]] | Any:
         """Walk the tree depth-first.
 
@@ -182,10 +182,8 @@ class BagQuery:
         Args:
             callback: If None, return generator of (path, node) tuples.
                 If provided, call callback(node, **kwargs) for each node.
-            _mode: Controls resolver behavior in callback mode only.
-                - 'static' (default): Use node.get_value(static=True), no resolver trigger.
-                - Any other value (e.g., 'deep', ''): Use node.get_value(static=False),
-                  which may trigger resolvers to compute nested Bag values.
+            static: If True (default), don't trigger resolvers during traversal.
+                If False, resolvers may be triggered to compute nested Bag values.
                 Ignored in generator mode (always static).
             **kwargs: Passed to callback. Special keys:
                 - _pathlist: list of labels from root (auto-updated by walk)
@@ -227,9 +225,9 @@ class BagQuery:
                 if result:
                     return result
 
-                value = node.get_value(static=(_mode == "static"))
+                value = node.get_value(static=static)
                 if isinstance(value, Bag):
-                    result = value.walk(callback, _mode=_mode, **kw)
+                    result = value.walk(callback, static=static, **kw)
                     if result:
                         return result
             return None

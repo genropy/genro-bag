@@ -141,8 +141,8 @@ class TestOpenApiResolverStructure:
         apibag = Bag()
         apibag['openapi.petstore'] = OpenApiResolver(PETSTORE_URL)
 
-        # Access nested UrlResolver via full path
-        value_node = apibag.get_node('openapi.petstore.api.store.getInventory.value')
+        # Access nested UrlResolver via full path (static=False to trigger resolvers)
+        value_node = apibag.get_node('openapi.petstore.api.store.getInventory.value', static=False)
         assert value_node is not None
         assert value_node.resolver is not None
         assert isinstance(value_node.resolver, UrlResolver)

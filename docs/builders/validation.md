@@ -9,22 +9,22 @@ Builders support two types of validation:
 
 ### Defining Valid Children
 
-Use the `children` parameter in `@element` to specify allowed child tags:
+Use the `sub_tags` parameter in `@element` to specify allowed child tags:
 
 ```{doctest}
 >>> from genro_bag import Bag
 >>> from genro_bag.builders import BagBuilderBase, element
 
 >>> class DocumentBuilder(BagBuilderBase):
-...     @element(children='chapter')
+...     @element(sub_tags='chapter')
 ...     def book(self, target, tag, **attr):
 ...         return self.child(target, tag, **attr)
 ...
-...     @element(children='section, paragraph')
+...     @element(sub_tags='section,paragraph')
 ...     def chapter(self, target, tag, **attr):
 ...         return self.child(target, tag, **attr)
 ...
-...     @element(children='paragraph')
+...     @element(sub_tags='paragraph')
 ...     def section(self, target, tag, **attr):
 ...         return self.child(target, tag, **attr)
 ...
@@ -32,7 +32,7 @@ Use the `children` parameter in `@element` to specify allowed child tags:
 ...     def paragraph(self, target, tag, value=None, **attr):
 ...         return self.child(target, tag, value=value or '', **attr)
 
->>> bag = Bag(builder=DocumentBuilder())
+>>> bag = Bag(builder=DocumentBuilder)
 >>> book = bag.book()
 >>> ch1 = book.chapter()
 >>> ch1.paragraph(value='Introduction')  # doctest: +ELLIPSIS
@@ -48,10 +48,12 @@ Specify minimum and maximum occurrences with bracket syntax:
 
 | Syntax | Meaning |
 |--------|---------|
-| `tag` | 0 to unlimited |
-| `tag[1]` | Exactly 1 |
+| `tag` | Exactly 1 |
+| `tag[3]` | Exactly 3 |
+| `tag[]` | Any number (0..N) |
+| `tag[0:]` | 0 or more (same as `[]`) |
 | `tag[1:]` | At least 1 |
-| `tag[:3]` | At most 3 |
+| `tag[:3]` | 0 to 3 |
 | `tag[2:5]` | Between 2 and 5 |
 
 ```{doctest}
@@ -59,7 +61,7 @@ Specify minimum and maximum occurrences with bracket syntax:
 >>> from genro_bag.builders import BagBuilderBase, element
 
 >>> class PageBuilder(BagBuilderBase):
-...     @element(children='header[1], content[1], footer[:1]')
+...     @element(sub_tags='header,content,footer[:1]')
 ...     def page(self, target, tag, **attr):
 ...         """Page must have exactly 1 header, 1 content, at most 1 footer."""
 ...         return self.child(target, tag, **attr)
@@ -77,6 +79,67 @@ Specify minimum and maximum occurrences with bracket syntax:
 ...         return self.child(target, tag, **attr)
 ```
 
+### Ordering Constraints (sub_tags_order)
+
+Use `sub_tags_order` to enforce the order of child elements. Two formats are supported:
+
+#### String Format (Grouped Ordering)
+
+The legacy string format uses `>` to define groups that must appear in order:
+
+```python
+@element(sub_tags='a,b,c,d', sub_tags_order='a,b>c,d')
+def container(self): ...
+# a and b must come before c and d
+```
+
+#### List Format (Pattern Matching)
+
+The list format uses regex patterns and `*` wildcards for flexible ordering:
+
+| Pattern | Meaning |
+|---------|---------|
+| `'^tag$'` | Exactly this tag (regex fullmatch) |
+| `'.*'` | Any single tag (regex matches one) |
+| `'*'` | Wildcard: 0 or more tags |
+
+```{doctest}
+>>> from genro_bag import Bag
+>>> from genro_bag.builders import BagBuilderBase, element
+
+>>> class DocumentBuilder(BagBuilderBase):
+...     @element(sub_tags='header,content[],footer', sub_tags_order=['^header$', '*', '^footer$'])
+...     def page(self): ...
+...
+...     @element()
+...     def header(self): ...
+...
+...     @element()
+...     def content(self): ...
+...
+...     @element()
+...     def footer(self): ...
+
+>>> bag = Bag(builder=DocumentBuilder)
+>>> page = bag.page()
+>>> page.header()  # Must be first
+<genro_bag.bag.Bag object at ...>
+>>> page.content()  # Any number in the middle
+<genro_bag.bag.Bag object at ...>
+>>> page.content()
+<genro_bag.bag.Bag object at ...>
+>>> page.footer()  # Must be last
+<genro_bag.bag.Bag object at ...>
+```
+
+Common patterns:
+
+- `['^header$', '*', '^footer$']` - header first, footer last, anything between
+- `['*', '^footer$']` - anything, but footer must be last
+- `['^header$', '*']` - header first, then anything
+- `['^a$', '^b$', '^c$']` - exact sequence a, b, c
+- `['*']` - any order (no constraint)
+
 ### The check() Method
 
 Use `check()` to validate structure after building:
@@ -86,7 +149,7 @@ Use `check()` to validate structure after building:
 >>> from genro_bag.builders import BagBuilderBase, element
 
 >>> class ListBuilder(BagBuilderBase):
-...     @element(children='item[1:]')  # At least 1 item required
+...     @element(sub_tags='item[1:]')  # At least 1 item required
 ...     def list(self, target, tag, **attr):
 ...         return self.child(target, tag, **attr)
 ...
@@ -94,7 +157,7 @@ Use `check()` to validate structure after building:
 ...     def item(self, target, tag, value=None, **attr):
 ...         return self.child(target, tag, value=value or '', **attr)
 
->>> bag = Bag(builder=ListBuilder())
+>>> bag = Bag(builder=ListBuilder)
 >>> lst = bag.list()
 
 >>> # Empty list - validation fails
@@ -121,7 +184,7 @@ BagNode : ... at ...
 >>> from genro_bag.builders import BagBuilderBase, element
 
 >>> class StrictBuilder(BagBuilderBase):
-...     @element(children='allowed')
+...     @element(sub_tags='allowed')
 ...     def container(self, target, tag, **attr):
 ...         return self.child(target, tag, **attr)
 ...
@@ -133,7 +196,7 @@ BagNode : ... at ...
 ...     def forbidden(self, target, tag, value=None, **attr):
 ...         return self.child(target, tag, value=value or '', **attr)
 
->>> bag = Bag(builder=StrictBuilder())
+>>> bag = Bag(builder=StrictBuilder)
 >>> cont = bag.container()
 >>> cont.allowed(value='OK')  # doctest: +ELLIPSIS
 BagNode : ... at ...
@@ -149,53 +212,7 @@ True
 
 ## Attribute Validation
 
-### Schema-Based Validation
-
-Define attribute specs in `_schema`:
-
-```{doctest}
->>> from genro_bag import Bag
->>> from genro_bag.builders import BagBuilderBase
-
->>> class FormBuilder(BagBuilderBase):
-...     _schema = {
-...         'input': {
-...             'leaf': True,
-...             'attrs': {
-...                 'type': {
-...                     'type': 'enum',
-...                     'values': ['text', 'email', 'password', 'number'],
-...                     'required': True
-...                 },
-...                 'maxlength': {
-...                     'type': 'int',
-...                     'min': 1,
-...                     'max': 1000
-...                 },
-...                 'required': {
-...                     'type': 'bool'
-...                 }
-...             }
-...         }
-...     }
-
->>> bag = Bag(builder=FormBuilder())
->>> bag.input(type='email', maxlength=100)  # doctest: +ELLIPSIS
-BagNode : ... at ...
-```
-
-### Attribute Spec Options
-
-| Key | Type | Description |
-|-----|------|-------------|
-| `type` | str | `'string'`, `'int'`, `'bool'`, `'enum'` |
-| `required` | bool | If `True`, attribute must be provided |
-| `default` | Any | Default value if not provided |
-| `min` | int | Minimum value (for `int` type) |
-| `max` | int | Maximum value (for `int` type) |
-| `values` | list | Allowed values (for `enum` type) |
-
-### Type-Based Validation with Decorators
+### Type-Based Validation
 
 Use type hints in method signatures for automatic validation:
 
@@ -220,68 +237,46 @@ Use type hints in method signatures for automatic validation:
 ...             attr['disabled'] = disabled
 ...         return self.child(target, tag, value=value, **attr)
 
->>> bag = Bag(builder=ButtonBuilder())
+>>> bag = Bag(builder=ButtonBuilder)
 >>> bag.button(value='Submit', variant='primary')  # doctest: +ELLIPSIS
 BagNode : ... at ...
 >>> bag.button(value='Delete', variant='danger')  # doctest: +ELLIPSIS
 BagNode : ... at ...
 ```
 
-### Manual Validation
+### Using Range and Regex Validators
 
-Call `_validate_attrs()` explicitly:
+Use `Annotated` with `Range` and `Regex` for additional constraints:
 
 ```{doctest}
+>>> from typing import Annotated
 >>> from genro_bag import Bag
->>> from genro_bag.builders import BagBuilderBase
+>>> from genro_bag.builders import BagBuilderBase, element, Range, Regex
 
 >>> class TableBuilder(BagBuilderBase):
-...     _schema = {
-...         'td': {
-...             'attrs': {
-...                 'colspan': {'type': 'int', 'min': 1, 'max': 100},
-...                 'rowspan': {'type': 'int', 'min': 1, 'max': 100},
-...             }
-...         }
-...     }
+...     @element(sub_tags='td[]')
+...     def tr(self): ...
+...
+...     @element()
+...     def td(
+...         self,
+...         target,
+...         tag,
+...         value=None,
+...         colspan: Annotated[int, Range(ge=1, le=100)] = 1,
+...         rowspan: Annotated[int, Range(ge=1, le=100)] = 1,
+...         **attr
+...     ):
+...         attr['colspan'] = colspan
+...         attr['rowspan'] = rowspan
+...         return self.child(target, tag, value=value, **attr)
 
->>> builder = TableBuilder()
-
->>> # Valid attributes
->>> errors = builder._validate_attrs('td', {'colspan': 2}, raise_on_error=False)
->>> errors
-[]
-
->>> # Invalid: colspan too small
->>> errors = builder._validate_attrs('td', {'colspan': 0}, raise_on_error=False)
->>> len(errors) > 0
-True
->>> 'must be >= 1' in errors[0]
-True
-```
-
-### Validation Errors
-
-With `raise_on_error=True` (default), invalid attributes raise `ValueError`:
-
-```{doctest}
->>> from genro_bag.builders import BagBuilderBase
-
->>> class StrictBuilder(BagBuilderBase):
-...     _schema = {
-...         'input': {
-...             'attrs': {
-...                 'min': {'type': 'int', 'min': 0},
-...             }
-...         }
-...     }
-
->>> builder = StrictBuilder()
->>> try:
-...     builder._validate_attrs('input', {'min': -5}, raise_on_error=True)
-... except ValueError as e:
-...     'must be >= 0' in str(e)
-True
+>>> bag = Bag(builder=TableBuilder)
+>>> row = bag.tr()
+>>> row.td(value='Cell 1', colspan=2)  # doctest: +ELLIPSIS
+BagNode : ... at ...
+>>> row.td(value='Cell 2')  # doctest: +ELLIPSIS
+BagNode : ... at ...
 ```
 
 ## Combining Structure and Attribute Validation
@@ -289,31 +284,50 @@ True
 A complete example with both types:
 
 ```{doctest}
+>>> from typing import Annotated, Literal
 >>> from genro_bag import Bag
->>> from genro_bag.builders import BagBuilderBase, element
+>>> from genro_bag.builders import BagBuilderBase, element, Range
 
 >>> class TableBuilder(BagBuilderBase):
-...     _schema = {
-...         'table': {'children': 'thead[:1], tbody[1], tfoot[:1]'},
-...         'thead': {'children': 'tr'},
-...         'tbody': {'children': 'tr[1:]'},  # At least 1 row
-...         'tfoot': {'children': 'tr'},
-...         'tr': {'children': 'th, td'},
-...         'th': {
-...             'attrs': {
-...                 'colspan': {'type': 'int', 'min': 1, 'default': 1},
-...                 'scope': {'type': 'enum', 'values': ['row', 'col', 'rowgroup', 'colgroup']}
-...             }
-...         },
-...         'td': {
-...             'attrs': {
-...                 'colspan': {'type': 'int', 'min': 1, 'default': 1},
-...                 'rowspan': {'type': 'int', 'min': 1, 'default': 1}
-...             }
-...         }
-...     }
+...     @element(sub_tags='thead[:1],tbody,tfoot[:1]')
+...     def table(self): ...
+...
+...     @element(sub_tags='tr[]')
+...     def thead(self): ...
+...
+...     @element(sub_tags='tr[1:]')  # At least 1 row
+...     def tbody(self): ...
+...
+...     @element(sub_tags='tr[]')
+...     def tfoot(self): ...
+...
+...     @element(sub_tags='th[],td[]')
+...     def tr(self): ...
+...
+...     @element()
+...     def th(
+...         self, target, tag, value=None,
+...         colspan: Annotated[int, Range(ge=1)] = 1,
+...         scope: Literal['row', 'col', 'rowgroup', 'colgroup'] | None = None,
+...         **attr
+...     ):
+...         attr['colspan'] = colspan
+...         if scope:
+...             attr['scope'] = scope
+...         return self.child(target, tag, value=value, **attr)
+...
+...     @element()
+...     def td(
+...         self, target, tag, value=None,
+...         colspan: Annotated[int, Range(ge=1)] = 1,
+...         rowspan: Annotated[int, Range(ge=1)] = 1,
+...         **attr
+...     ):
+...         attr['colspan'] = colspan
+...         attr['rowspan'] = rowspan
+...         return self.child(target, tag, value=value, **attr)
 
->>> bag = Bag(builder=TableBuilder())
+>>> bag = Bag(builder=TableBuilder)
 >>> table = bag.table()
 >>> tbody = table.tbody()
 >>> row = tbody.tr()
@@ -321,11 +335,6 @@ A complete example with both types:
 BagNode : ... at ...
 >>> row.td(value='Cell 2')  # doctest: +ELLIPSIS
 BagNode : ... at ...
-
->>> # Validate structure
->>> errors = bag.builder.check(table, parent_tag='table')
->>> errors  # Valid: has tbody with at least 1 tr
-[]
 ```
 
 ## Best Practices
@@ -340,14 +349,12 @@ class ConfigBuilder(BagBuilderBase):
 
     Structure:
         config
-        ├── database[1]     # Required, exactly one
-        ├── cache[:1]       # Optional, at most one
-        └── logging[:1]     # Optional, at most one
+        ├── database     # Required, exactly one
+        ├── cache[:1]    # Optional, at most one
+        └── logging[:1]  # Optional, at most one
     """
-    _schema = {
-        'config': {'children': 'database[1], cache[:1], logging[:1]'},
-        # ...
-    }
+    @element(sub_tags='database,cache[:1],logging[:1]')
+    def config(self): ...
 ```
 
 ### 2. Validate After Building
@@ -355,7 +362,7 @@ class ConfigBuilder(BagBuilderBase):
 Always validate complete structures before use:
 
 ```python
-bag = Bag(builder=MyBuilder())
+bag = Bag(builder=MyBuilder)
 # ... build the structure ...
 
 errors = bag.builder.check(bag, parent_tag='root')

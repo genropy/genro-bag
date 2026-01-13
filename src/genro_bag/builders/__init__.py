@@ -7,43 +7,38 @@ like HTML, XML schemas, etc.
 
 Builder Types:
     - **BagBuilderBase**: Abstract base class for custom builders
+    - **SchemaBuilder**: Builder for creating schemas programmatically
     - **HtmlBuilder**: HTML5 document builder with element validation
-    - **XsdBuilder**: Dynamic builder from XML Schema (XSD) files
+    - **XsdBuilder**: Dynamic builder from XSD schema
 
 Example:
     >>> from genro_bag import Bag
     >>> from genro_bag.builders import HtmlBuilder
     >>>
-    >>> store = Bag(builder=HtmlBuilder())
+    >>> store = Bag(builder=HtmlBuilder)
     >>> body = store.body()
     >>> div = body.div(id='main')
     >>> div.p(value='Hello, World!')
-
-XSD Example:
-    >>> from genro_bag import Bag
-    >>> from genro_bag.builders import XsdBuilder
-    >>>
-    >>> xsd_content = open('invoice.xsd').read()
-    >>> schema = Bag.from_xml(xsd_content)
-    >>> builder = XsdBuilder(schema)
-    >>>
-    >>> invoice = Bag(builder=builder)
-    >>> invoice.Invoice().Header().Date(value='2025-01-01')
 """
 
-from genro_bag.builders.base_builder import BagBuilderBase, element
+from genro_bag.builder import (
+    BagBuilderBase,
+    Range,
+    Regex,
+    SchemaBuilder,
+    abstract,
+    element,
+)
 from genro_bag.builders.html import HtmlBuilder
-from genro_bag.builders.validations import Max, MaxLength, Min, MinLength, Pattern
-from genro_bag.builders.xsd import XsdBuilder
+from genro_bag.builders.xsd import XsdSchemaBuilder
 
 __all__ = [
     "BagBuilderBase",
+    "abstract",
     "element",
-    "Pattern",
-    "Min",
-    "Max",
-    "MinLength",
-    "MaxLength",
+    "Range",
+    "Regex",
     "HtmlBuilder",
-    "XsdBuilder",
+    "SchemaBuilder",
+    "XsdSchemaBuilder",
 ]

@@ -32,11 +32,11 @@ Define `_ref_<name>` properties on your builder:
 ...         """Flow content: both inline and block."""
 ...         return '=inline, =block'  # Combine other refs!
 ...
-...     @element(children='=flow')  # Use reference
+...     @element(sub_tags='=flow')  # Use reference
 ...     def div(self, target, tag, **attr):
 ...         return self.child(target, tag, **attr)
 ...
-...     @element(children='=inline')
+...     @element(sub_tags='=inline')
 ...     def p(self, target, tag, value=None, **attr):
 ...         return self.child(target, tag, value=value, **attr)
 ...
@@ -60,19 +60,19 @@ Define `_ref_<name>` properties on your builder:
 ...     def code(self, target, tag, value=None, **attr):
 ...         return self.child(target, tag, value=value or '', **attr)
 ...
-...     @element(children='li')
+...     @element(sub_tags='li')
 ...     def ul(self, target, tag, **attr):
 ...         return self.child(target, tag, **attr)
 ...
-...     @element(children='li')
+...     @element(sub_tags='li')
 ...     def ol(self, target, tag, **attr):
 ...         return self.child(target, tag, **attr)
 ...
-...     @element(children='=flow')
+...     @element(sub_tags='=flow')
 ...     def li(self, target, tag, value=None, **attr):
 ...         return self.child(target, tag, value=value, **attr)
 
->>> bag = Bag(builder=HtmlLikeBuilder())
+>>> bag = Bag(builder=HtmlLikeBuilder)
 >>> div = bag.div()
 >>> div.p(value='Paragraph text')  # block in flow ✓
 BagNode : ... at ...
@@ -104,59 +104,75 @@ References can reference other references:
 ...     def _ref_all(self):
 ...         return '=text, =media, div'  # Combines both + div
 ...
-...     _schema = {
-...         'container': {'children': '=all'},
-...         'div': {},
-...         'span': {},
-...         'strong': {},
-...         'img': {'leaf': True},
-...         'video': {},
-...     }
+...     @element(sub_tags='=all')
+...     def container(self): ...
+...
+...     @element()
+...     def div(self): ...
+...
+...     @element()
+...     def span(self): ...
+...
+...     @element()
+...     def strong(self): ...
+...
+...     @element(sub_tags='')  # void element
+...     def img(self): ...
+...
+...     @element()
+...     def video(self): ...
 
->>> builder = ChainedRefBuilder()
->>> resolved = builder._resolve_ref('=all')
->>> 'span' in resolved and 'img' in resolved and 'div' in resolved
-True
+>>> bag = Bag(builder=ChainedRefBuilder)
+>>> container = bag.container()
+>>> container.div()  # doctest: +ELLIPSIS
+<genro_bag.bag.Bag object at ...>
+>>> container.img()  # doctest: +ELLIPSIS
+BagNode : ... at ...
 ```
 
-### Dynamic References via __getattr__
+### Dynamic References via Properties
 
-For schema-loaded builders, use `__getattr__` for dynamic ref lookup:
+For dynamic reference lookup, use `_ref_*` properties:
 
 ```{doctest}
 >>> from genro_bag import Bag
->>> from genro_bag.builders import BagBuilderBase
+>>> from genro_bag.builders import BagBuilderBase, element
 
 >>> class DynamicRefBuilder(BagBuilderBase):
-...     def __init__(self):
-...         self._refs = {
-...             'controls': 'button, input, select',
-...             'display': 'span, div, label',
-...         }
+...     @property
+...     def _ref_controls(self):
+...         return 'button,input,select'
 ...
-...     def __getattr__(self, name):
-...         if name.startswith('_ref_'):
-...             ref_name = name[5:]
-...             if ref_name in self._refs:
-...                 return self._refs[ref_name]
-...             raise AttributeError(f"Reference '{ref_name}' not found")
-...         return super().__getattr__(name)
+...     @property
+...     def _ref_display(self):
+...         return 'span,div,label'
 ...
-...     _schema = {
-...         'form': {'children': '=controls, =display'},
-...         'button': {},
-...         'input': {'leaf': True},
-...         'select': {},
-...         'span': {},
-...         'div': {},
-...         'label': {},
-...     }
+...     @element(sub_tags='=controls,=display')
+...     def form(self): ...
+...
+...     @element()
+...     def button(self): ...
+...
+...     @element(sub_tags='')
+...     def input(self): ...
+...
+...     @element()
+...     def select(self): ...
+...
+...     @element()
+...     def span(self): ...
+...
+...     @element()
+...     def div(self): ...
+...
+...     @element()
+...     def label(self): ...
 
->>> bag = Bag(builder=DynamicRefBuilder())
+>>> bag = Bag(builder=DynamicRefBuilder)
 >>> form = bag.form()
->>> form.button(value='Submit')  # control ✓
+>>> form.button(value='Submit')  # control
 BagNode : ... at ...
->>> form.label(value='Name:')   # display ✓
+>>> form.label(value='Name:')   # display
 BagNode : ... at ...
 ```
 
@@ -186,7 +202,7 @@ BagNode : ... at ...
 ...     def button(self, target, tag, value=None, **attr):
 ...         return self.child(target, tag, value=value or 'Click', **attr)
 ...
-...     @element(children='option')
+...     @element(sub_tags='option')
 ...     def select(self, target, tag, **attr):
 ...         return self.child(target, tag, **attr)
 ...
@@ -194,7 +210,7 @@ BagNode : ... at ...
 ...     def option(self, target, tag, value=None, **attr):
 ...         return self.child(target, tag, value=value or '', **attr)
 
->>> bag = Bag(builder=ExtendedUIBuilder())
+>>> bag = Bag(builder=ExtendedUIBuilder)
 >>> cont = bag.container()  # From parent
 >>> cont.text(value='Label')  # From parent
 BagNode : ... at ...
@@ -223,7 +239,7 @@ BagNode : ... at ...
 ...         attr['class_'] = f'item-{style}'
 ...         return self.child(target, tag, value=value, **attr)
 
->>> bag = Bag(builder=StyledBuilder())
+>>> bag = Bag(builder=StyledBuilder)
 >>> item = bag.item(value='Styled', style='highlight')
 >>> item.attr['class_']
 'item-highlight'
@@ -265,53 +281,144 @@ Use `_builder` parameter to change builder mid-tree:
 BagNode : ... at ...
 ```
 
-## JSON Schema Loading
+## SchemaBuilder: Programmatic Schema Creation
 
-### Loading Schema from File
+`SchemaBuilder` allows you to define schemas programmatically instead of using decorators. This is useful for:
+
+- Dynamic schema generation
+- Schemas loaded from external sources
+- Reusable schema definitions shared across builders
+
+### Basic Usage
 
 ```{doctest}
->>> import json
->>> import tempfile
->>> from pathlib import Path
 >>> from genro_bag import Bag
->>> from genro_bag.builders import BagBuilderBase
+>>> from genro_bag.builders import SchemaBuilder
 
->>> # Create a schema file
->>> schema_data = {
-...     'elements': {
-...         'container': {'children': 'item'},
-...         'item': {}
-...     },
-...     'refs': {
-...         'common': 'item'
-...     }
-... }
+>>> schema = Bag(builder=SchemaBuilder)
 
->>> class JsonSchemaBuilder(BagBuilderBase):
-...     def __init__(self, schema_path=None, schema_dict=None):
-...         if schema_dict:
-...             data = schema_dict
-...         elif schema_path:
-...             data = json.loads(Path(schema_path).read_text())
-...         else:
-...             data = {'elements': {}, 'refs': {}}
-...
-...         self._schema = data.get('elements', {})
-...         self._refs = data.get('refs', {})
-...
-...     def __getattr__(self, name):
-...         if name.startswith('_ref_'):
-...             ref_name = name[5:]
-...             if ref_name in self._refs:
-...                 return self._refs[ref_name]
-...             raise AttributeError(f"Reference '{ref_name}' not found")
-...         return super().__getattr__(name)
-
->>> builder = JsonSchemaBuilder(schema_dict=schema_data)
->>> bag = Bag(builder=builder)
->>> cont = bag.container()
->>> cont.item(value='Test')  # doctest: +ELLIPSIS
+>>> # Define elements with the item() method
+>>> schema.item('document', sub_tags='chapter[]')  # doctest: +ELLIPSIS
 BagNode : ... at ...
+>>> schema.item('chapter', sub_tags='section[],paragraph[]')  # doctest: +ELLIPSIS
+BagNode : ... at ...
+>>> schema.item('section', sub_tags='paragraph[]')  # doctest: +ELLIPSIS
+BagNode : ... at ...
+>>> schema.item('paragraph')  # Leaf element (no children)  # doctest: +ELLIPSIS
+BagNode : ... at ...
+```
+
+### The item() Method
+
+```python
+schema.item(
+    name: str,              # Element name (or '@name' for abstract)
+    sub_tags: str = '',     # Valid child tags with cardinality
+    inherits_from: str = None,  # Abstract element to inherit from
+)
+```
+
+### Defining Abstract Elements
+
+Use `@` prefix for abstract elements:
+
+```{doctest}
+>>> from genro_bag import Bag
+>>> from genro_bag.builders import SchemaBuilder
+
+>>> schema = Bag(builder=SchemaBuilder)
+
+>>> # Define abstract (content category)
+>>> schema.item('@inline', sub_tags='span,strong,em')  # doctest: +ELLIPSIS
+BagNode : ... at ...
+
+>>> # Concrete element inherits from abstract
+>>> schema.item('p', inherits_from='@inline')  # doctest: +ELLIPSIS
+BagNode : ... at ...
+
+>>> schema.item('span')  # doctest: +ELLIPSIS
+BagNode : ... at ...
+>>> schema.item('strong')  # doctest: +ELLIPSIS
+BagNode : ... at ...
+>>> schema.item('em')  # doctest: +ELLIPSIS
+BagNode : ... at ...
+```
+
+### Compiling to File
+
+Save the schema for reuse:
+
+```python
+# Save to MessagePack (binary, compact)
+schema.builder.compile('my_schema.msgpack')
+
+# Or save to JSON (human-readable)
+schema.builder.compile('my_schema.json', transport='json')
+```
+
+### Using Compiled Schema
+
+Load the schema in a custom builder:
+
+```python
+from genro_bag import Bag
+from genro_bag.builders import BagBuilderBase
+
+# Method 1: Class attribute
+class MyBuilder(BagBuilderBase):
+    schema_path = 'my_schema.msgpack'
+
+# Method 2: Constructor parameter
+bag = Bag(builder=BagBuilderBase, builder_schema_path='my_schema.msgpack')
+```
+
+### Complete Example: Config Schema
+
+```{doctest}
+>>> from genro_bag import Bag
+>>> from genro_bag.builders import SchemaBuilder, BagBuilderBase
+
+>>> # Create schema programmatically
+>>> schema = Bag(builder=SchemaBuilder)
+>>> schema.item('config', sub_tags='database,cache[:1],logging[:1]')  # doctest: +ELLIPSIS
+BagNode : ... at ...
+>>> schema.item('database')  # doctest: +ELLIPSIS
+BagNode : ... at ...
+>>> schema.item('cache')  # doctest: +ELLIPSIS
+BagNode : ... at ...
+>>> schema.item('logging')  # doctest: +ELLIPSIS
+BagNode : ... at ...
+
+>>> # Use the schema directly (without saving to file)
+>>> class ConfigBuilder(BagBuilderBase):
+...     pass
+
+>>> # The schema would normally be loaded from file
+>>> # For this example, we show the pattern
+```
+
+### When to Use SchemaBuilder vs @element
+
+| Approach | Use When |
+|----------|----------|
+| `@element` decorator | Schema is static, defined in code |
+| `SchemaBuilder` | Schema is dynamic, generated at runtime |
+| `SchemaBuilder` + file | Schema is shared across multiple builders |
+| XSD → SchemaBuilder | Schema comes from external XSD file |
+
+## Loading Schema from File
+
+Builders can load schema from a pre-compiled MessagePack file using `schema_path`:
+
+```python
+from genro_bag import Bag
+from genro_bag.builders import BagBuilderBase
+
+class MyBuilder(BagBuilderBase):
+    schema_path = 'path/to/schema.msgpack'  # Load at class definition
+
+# Or pass at instantiation
+bag = Bag(builder=MyBuilder, builder_schema_path='custom_schema.msgpack')
 ```
 
 ## Custom Validation
@@ -339,7 +446,7 @@ Validate before creating nodes:
 ...                 raise ValueError(f"Must be positive: {value}")
 ...         return self.child(target, tag, value=value, **attr)
 
->>> bag = Bag(builder=ValidatedBuilder())
+>>> bag = Bag(builder=ValidatedBuilder)
 >>> bag.email_field(value='test@example.com')  # doctest: +ELLIPSIS
 BagNode : ... at ...
 
@@ -359,7 +466,7 @@ Validate complete structures:
 >>> from genro_bag.builders import BagBuilderBase, element
 
 >>> class FormBuilder(BagBuilderBase):
-...     @element(children='field')
+...     @element(sub_tags='field')
 ...     def form(self, target, tag, **attr):
 ...         return self.child(target, tag, **attr)
 ...
@@ -377,7 +484,7 @@ Validate complete structures:
 ...                 errors.append(f"Field '{node.label}' missing 'name' attribute")
 ...         return errors
 
->>> bag = Bag(builder=FormBuilder())
+>>> bag = Bag(builder=FormBuilder)
 >>> form = bag.form()
 >>> form.field(name='email', value='')  # doctest: +ELLIPSIS
 BagNode : ... at ...
@@ -440,7 +547,7 @@ errors = builder.check(parent, parent_tag='list')
 >>> class ConfigBuilder(BagBuilderBase):
 ...     """Builder for application configuration."""
 ...
-...     @element(children='database[1], cache[:1], logging[:1], features')
+...     @element(sub_tags='database,cache[:1],logging[:1],features[]')
 ...     def config(self, target, tag, env='production', **attr):
 ...         attr['env'] = env
 ...         return self.child(target, tag, **attr)
@@ -466,7 +573,7 @@ errors = builder.check(parent, parent_tag='list')
 ...     def features(self, target, tag, value=None, **attr):
 ...         return self.child(target, tag, value=value or '', **attr)
 
->>> bag = Bag(builder=ConfigBuilder())
+>>> bag = Bag(builder=ConfigBuilder)
 >>> config = bag.config(env='development')
 >>> config.database(host='db.local', port=5433)  # doctest: +ELLIPSIS
 <genro_bag.bag.Bag object at ...>

@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any, TypeVar, cast
 
 from genro_toolbox import smartasync, smartawait, smartsplit
@@ -84,8 +85,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
     """
 
     @extract_kwargs(builder=True)
-    def __init__(self, source: dict[str, Any] | None = None, builder=None,
-                 builder_kwargs=None):
+    def __init__(self, source: dict[str, Any] | None = None, builder=None, builder_kwargs=None):
         """Create a new Bag.
 
         Args:
@@ -127,10 +127,13 @@ class Bag(BagParser, BagSerializer, BagQuery):
         if source:
             self.fill_from(source)
 
-    def fill_from(self, source: dict[str, Any] | str | Bag) -> None:
-        """Fill bag from a source.
+    def fill_from(
+        self, source: dict[str, Any] | str | Path | Bag | None = None, format: str | None = None
+    ) -> Bag:
+        """Fill bag from a source and return self for chaining.
 
         Populates the bag with data from various sources:
+        - None: No-op, returns self unchanged
         - dict: Keys become labels, values become node values
         - str (file path): Load from file based on extension:
             - .xml: Parse as XML
@@ -138,70 +141,92 @@ class Bag(BagParser, BagSerializer, BagQuery):
             - .bag.mp: Parse as TYTX MessagePack
         - Bag: Copy nodes from another Bag
 
-        Existing nodes are cleared first.
+        Existing nodes are cleared first (except when source is None).
 
         Args:
-            source: Data source (dict, file path, or Bag).
+            source: Data source (dict, file path, Bag, or None).
+            format: Force format for file loading ('xml', 'json', 'msgpack').
+                If None, format is detected from file extension.
+
+        Returns:
+            Self for method chaining.
 
         Example:
-            >>> bag = Bag()
-            >>> bag.fill_from({'x': 1, 'y': {'z': 2}})
+            >>> bag = Bag().fill_from({'x': 1, 'y': {'z': 2}})
             >>> bag['y.z']
             2
             >>>
-            >>> bag2 = Bag()
-            >>> bag2.fill_from('/path/to/data.bag.json')
+            >>> bag2 = Bag().fill_from('/path/to/data.bag.json')
+            >>>
+            >>> bag3 = Bag().fill_from(None)  # returns empty bag
+            >>>
+            >>> # Force XML format regardless of extension
+            >>> bag4 = Bag().fill_from('/path/to/schema.xsd', format='xml')
         """
-        if isinstance(source, str):
-            self._fill_from_file(source)
+        if source is None:
+            return self
+        if isinstance(source, (str, Path)):
+            self._fill_from_file(str(source), format=format)
         elif isinstance(source, Bag):
             self._fill_from_bag(source)
         elif isinstance(source, dict):
             self._fill_from_dict(source)
         else:
-            raise TypeError(f"fill_from expects str, Bag, or dict, got {type(source).__name__}")
+            raise TypeError(
+                f"fill_from expects str, Path, Bag, dict, or None, got {type(source).__name__}"
+            )
+        return self
 
-    def _fill_from_file(self, path: str) -> None:
+    def _fill_from_file(self, path: str, format: str | None = None) -> None:
         """Load bag contents from a file.
 
-        Detects format from file extension:
+        Detects format from file extension (unless format is specified):
         - .bag.json: TYTX JSON format
         - .bag.mp: TYTX MessagePack format
         - .xml: XML format (with auto-detect for legacy GenRoBag)
 
         Args:
             path: Path to the file to load.
+            format: Force format ('xml', 'json', 'msgpack'). If None, detect from extension.
 
         Raises:
             FileNotFoundError: If file does not exist.
-            ValueError: If file extension is not recognized.
+            ValueError: If file extension is not recognized and format not specified.
         """
         if not os.path.isfile(path):
             raise FileNotFoundError(f"File not found: {path}")
 
-        # Detect format from extension
-        if path.endswith(".bag.json"):
+        # Determine format: explicit or from extension
+        if format is None:
+            if path.endswith(".bag.json"):
+                format = "json"
+            elif path.endswith(".bag.mp"):
+                format = "msgpack"
+            elif path.endswith(".xml"):
+                format = "xml"
+            else:
+                raise ValueError(
+                    f"Unrecognized file extension: {path}. Supported: .bag.json, .bag.mp, .xml"
+                )
+
+        # Load based on format
+        if format == "json":
             with open(path, encoding="utf-8") as f:
                 data = f.read()
             loaded = Bag.from_tytx(data, transport="json")
             self._fill_from_bag(loaded)
 
-        elif path.endswith(".bag.mp"):
+        elif format == "msgpack":
             with open(path, "rb") as f:
                 data_bytes = f.read()
             loaded = Bag.from_tytx(data_bytes, transport="msgpack")
             self._fill_from_bag(loaded)
 
-        elif path.endswith(".xml"):
+        elif format == "xml":
             with open(path, encoding="utf-8") as f:
                 data = f.read()
             loaded = Bag.from_xml(data)
             self._fill_from_bag(loaded)
-
-        else:
-            raise ValueError(
-                f"Unrecognized file extension: {path}. Supported: .bag.json, .bag.mp, .xml"
-            )
 
     def _fill_from_bag(self, other: Bag) -> None:
         """Copy nodes from another Bag.
@@ -382,15 +407,22 @@ class Bag(BagParser, BagSerializer, BagQuery):
             raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
         if self._builder is not None:
-            try:
-                handler = getattr(self._builder, name)
+            # Delegate to builder - let it raise specific error for unknown elements
+            handler = getattr(self._builder, name)
 
-                # Return callable bound to this Bag
-                # value is first positional arg, node_label for Bag label (not HTML)
-                # Merge value and node_label into attr to emulate original call
-                return lambda value=None, node_label=None, **attr: handler(self, _tag=name, **{**attr, 'value': value, 'node_label': node_label})
-            except AttributeError:
-                pass
+            # Return callable bound to this Bag
+            # API: bag.foo('John') -> node_value='John', node_label=auto, tag='foo'
+            #      bag.foo('John', node_label='x') -> explicit label
+            #      bag.foo('John', node_position='<first') -> insertion position
+            # NOTE: First positional arg maps to node_value (node content), passed as keyword
+            return lambda node_value=None, node_label=None, node_position=None, **attr: handler(
+                self,
+                _tag=name,
+                node_value=node_value,
+                node_label=node_label,
+                node_position=node_position,
+                **attr,
+            )
 
         raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
@@ -510,7 +542,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
 
     @smartasync
     async def _async_traverse_until(
-        self, curr: Bag, pathlist: list, static: bool = False
+        self, curr: Bag, pathlist: list, *, static: bool
     ) -> tuple[Bag, list]:
         """Traverse path segments with async support (may trigger resolvers).
 
@@ -565,7 +597,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
 
     @smartasync
     async def _async_htraverse(
-        self, path: str | list, write_mode: bool = False, static: bool = False
+        self, path: str | list, *, write_mode: bool = False, static: bool
     ) -> tuple[Any, str | None]:
         """Traverse a hierarchical path with async support.
 
@@ -632,20 +664,21 @@ class Bag(BagParser, BagSerializer, BagQuery):
     # -------------------- get_item --------------------------------
 
     @smartasync
-    async def get_item(self, path: str, default: Any = None, static: bool = False) -> Any:
+    async def get_item(self, path: str, default: Any = None, static: bool = True) -> Any:
         """Get value at a hierarchical path.
 
         Traverses the Bag hierarchy following the dot-separated path and returns
         the value at the final location.
 
         Decorated with @smartasync: can be called from sync or async context.
-        In async context with async resolvers, use `await bag.get_item(path)`.
+        By default does NOT trigger resolvers (static=True).
+        Use static=False to trigger resolvers during traversal.
 
         Args:
             path: Hierarchical path like 'a.b.c'. Empty path returns self.
                 Supports '?attr' suffix to get attribute instead of value.
             default: Value to return if path not found.
-            static: If True, don't trigger resolvers during traversal.
+            static: If False, trigger resolvers during traversal. Default True.
 
         Returns:
             The value at the path if found, otherwise default.
@@ -694,7 +727,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
         path: str,
         value: Any,
         _attributes: dict | None = None,
-        _position: str | None = None,
+        _position: str | int | None = None,
         _updattr: bool = False,
         _remove_null_attributes: bool = True,
         _reason: str | None = None,
@@ -758,12 +791,12 @@ class Bag(BagParser, BagSerializer, BagQuery):
             _attributes = dict(_attributes or {})
             _attributes.update(kwargs)
 
-        # Se value è un resolver, estrailo (legacy compatibility)
+        # If value is a resolver, extract it (legacy compatibility)
         if safe_is_instance(value, "genro_bag.resolver.BagResolver"):
             resolver = value
             value = None
 
-        # Gestisci resolver.attributes se presente
+        # Handle resolver.attributes if present
         if resolver is not None and hasattr(resolver, "attributes") and resolver.attributes:
             _attributes = dict(_attributes or ())
             _attributes.update(resolver.attributes)
@@ -812,6 +845,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
         return node
 
     def __setitem__(self, path: str, value: Any) -> None:
+        """Set value at path using bracket notation."""
         self.set_item(path, value)
 
     # -------------------- _pop (single level) --------------------------------
@@ -953,8 +987,9 @@ class Bag(BagParser, BagSerializer, BagQuery):
     def as_dict(self, ascii: bool = False, lower: bool = False) -> dict[str, Any]:
         """Convert Bag to dict (first level only).
 
-        :param ascii: If True, convert keys to ASCII.
-        :param lower: If True, convert keys to lowercase.
+        Args:
+            ascii: If True, convert keys to ASCII.
+            lower: If True, convert keys to lowercase.
         """
         result = {}
         for el in self._nodes:
@@ -1015,7 +1050,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
             _remove_null_attributes: If True, remove attributes with None value.
             **kwargs: Additional attributes to set.
         """
-        self.get_node(path, autocreate=True, static=True).set_attr(
+        self.get_node(path, autocreate=True).set_attr(
             attr=_attributes, _remove_null_attributes=_remove_null_attributes, **kwargs
         )
 
@@ -1032,7 +1067,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
         Returns:
             Attribute value or default.
         """
-        node = self.get_node(path, static=True)
+        node = self.get_node(path)
         if node:
             return node.get_attr(label=attr, default=default)
         return default
@@ -1044,7 +1079,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
             path: Path to the node. If None, uses parent_node.
             *attrs: Attribute names to delete.
         """
-        node = self.get_node(path, static=True)
+        node = self.get_node(path)
         if node:
             node.del_attr(*attrs)
 
@@ -1071,7 +1106,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
         Returns:
             The resolver, or None if path doesn't exist or has no resolver.
         """
-        node = self.get_node(path, static=True)
+        node = self.get_node(path)
         return node.resolver if node else None
 
     def set_resolver(self, path: str, resolver) -> None:
@@ -1357,7 +1392,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
                     if not ignore_none or value is not None:
                         curr_node.value = value
             else:
-                self.set_item(label, value, attr=attr)
+                self.set_item(label, value, _attributes=attr)
 
     # -------------------- _get_node (single level) --------------------------------
 
@@ -1379,10 +1414,8 @@ class Bag(BagParser, BagSerializer, BagQuery):
         if p >= 0:
             node = cast(BagNode, self._nodes[p])
         elif autocreate:
-            node = BagNode(self, label=label, value=default)
             i = len(self._nodes)
-            self._nodes.set(label, node)
-            node.parent_bag = self
+            node = self._nodes.set(label, default, parent_bag=self)
             if self.backref:
                 self._on_node_inserted(node, i)
         else:
@@ -1398,12 +1431,15 @@ class Bag(BagParser, BagSerializer, BagQuery):
         as_tuple: bool = False,
         autocreate: bool = False,
         default: Any = None,
-        static: bool = False,
+        static: bool = True,
     ) -> BagNode | tuple[Bag, BagNode | None] | None:
         """Get the BagNode at a path.
 
         Unlike get_item which returns the value, this returns the BagNode itself,
         giving access to attributes and other node properties.
+
+        By default does NOT trigger resolvers (static=True).
+        Use static=False to trigger resolvers during traversal.
 
         Args:
             path: Hierarchical path. If None or empty, returns the parent_node
@@ -1411,7 +1447,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
             as_tuple: If True, return (container_bag, node) tuple.
             autocreate: If True, create node if not found.
             default: Default value for autocreated node.
-            static: If True, don't trigger resolvers during traversal.
+            static: If False, trigger resolvers during traversal. Default True.
 
         Returns:
             The BagNode at the path, or None if not found.

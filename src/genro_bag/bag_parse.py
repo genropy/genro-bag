@@ -46,6 +46,7 @@ class BagParser:
         source: str | bytes,
         empty: Callable[[], Any] | None = None,
         raise_on_error: bool = False,
+        tag_attribute: str | None = None,
     ) -> Bag:
         """Deserialize from XML format.
 
@@ -63,6 +64,9 @@ class BagParser:
                 element has no content and no type marker.
             raise_on_error: If True, raise exceptions for type conversion errors.
                 If False (default), invalid values become '**INVALID::TYPE**' markers.
+            tag_attribute: If specified, use this attribute's value as the node
+                label instead of the XML tag name. Dotted values create nested
+                structure (e.g., 'section.elem' becomes section/elem path).
 
         Returns:
             Bag: Reconstructed Bag hierarchy.
@@ -79,8 +83,16 @@ class BagParser:
             42
             >>> type(bag['count'])  # _T="L" converts to int
             <class 'int'>
+
+            >>> # Use attribute as path (creates nested structure)
+            >>> xml = '<grammar><define name="section.elem"/></grammar>'
+            >>> bag = Bag.from_xml(xml, tag_attribute='name')
+            >>> 'section' in bag['grammar']  # dot creates hierarchy
+            True
         """
-        handler = _BagXmlHandler(cls, empty=empty, raise_on_error=raise_on_error)
+        handler = _BagXmlHandler(
+            cls, empty=empty, raise_on_error=raise_on_error, tag_attribute=tag_attribute
+        )
         if isinstance(source, bytes):
             source = source.decode()
 
@@ -252,13 +264,16 @@ class _BagXmlHandler(sax.handler.ContentHandler):
         bag_class: type,
         empty: Callable[[], Any] | None = None,
         raise_on_error: bool = False,
+        tag_attribute: str | None = None,
     ):
         super().__init__()
         self.bag_class = bag_class
         self.empty = empty
         self.raise_on_error = raise_on_error
+        self.tag_attribute = tag_attribute
 
     def startDocument(self) -> None:
+        """SAX callback: initialize parsing state."""
         self.bags: list[tuple[Any, dict | None, str | None]] = [(self.bag_class(), None, None)]
         self.value_list: list[str] = []
         self.legacy_mode: bool = False
@@ -276,6 +291,7 @@ class _BagXmlHandler(sax.handler.ContentHandler):
         return value
 
     def startElement(self, tag_label: str, attributes: Any) -> None:
+        """SAX callback: handle opening tag."""
         attrs = {str(k): tytx_decode(saxutils.unescape(v)) for k, v in attributes.items()}
         curr_type: str | None = None
 
@@ -296,9 +312,11 @@ class _BagXmlHandler(sax.handler.ContentHandler):
         self.value_list = []
 
     def characters(self, s: str) -> None:
+        """SAX callback: accumulate character data."""
         self.value_list.append(s)
 
     def endElement(self, tag_label: str) -> None:
+        """SAX callback: handle closing tag."""
         curr, attrs, curr_type = self.bags.pop()
         value = self._get_value(dtype=curr_type)
         self.value_list = []
@@ -342,6 +360,10 @@ class _BagXmlHandler(sax.handler.ContentHandler):
         # Use _tag attribute as label if present, keep original as xml_tag
         original_xml_tag = tag_label
         tag_label = attrs.pop("_tag", tag_label)
+
+        # Use tag_attribute value as label if specified (creates nested structure with dots)
+        if self.tag_attribute and self.tag_attribute in attrs:
+            tag_label = attrs.pop(self.tag_attribute)
 
         # Handle duplicate labels (always active - Bag doesn't allow duplicates)
         dup_manager = getattr(dest, "__dupmanager", None)

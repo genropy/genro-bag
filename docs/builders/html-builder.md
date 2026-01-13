@@ -10,7 +10,7 @@ The `HtmlBuilder` provides complete HTML5 support with 112 tags loaded from the 
 >>> from genro_bag import Bag
 >>> from genro_bag.builders import HtmlBuilder
 
->>> bag = Bag(builder=HtmlBuilder())
+>>> bag = Bag(builder=HtmlBuilder)
 >>> div = bag.div(id='main', class_='container')
 >>> div.h1(value='Hello World')  # doctest: +ELLIPSIS
 BagNode : ... at ...
@@ -43,7 +43,7 @@ Void elements (self-closing tags like `<br>`, `<img>`, `<meta>`) automatically g
 >>> sorted(builder.VOID_ELEMENTS)
 ['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'source', 'track', 'wbr']
 
->>> bag = Bag(builder=HtmlBuilder())
+>>> bag = Bag(builder=HtmlBuilder)
 >>> br = bag.br()
 >>> br.value  # Empty string, not None
 ''
@@ -67,7 +67,7 @@ Void elements (self-closing tags like `<br>`, `<img>`, `<meta>`) automatically g
 >>> from genro_bag import Bag
 >>> from genro_bag.builders import HtmlBuilder
 
->>> bag = Bag(builder=HtmlBuilder())
+>>> bag = Bag(builder=HtmlBuilder)
 >>> nav = bag.nav(class_='main-nav')
 >>> ul = nav.ul()
 >>> for text, href in [('Home', '/'), ('About', '/about'), ('Contact', '/contact')]:
@@ -84,7 +84,7 @@ Void elements (self-closing tags like `<br>`, `<img>`, `<meta>`) automatically g
 >>> from genro_bag import Bag
 >>> from genro_bag.builders import HtmlBuilder
 
->>> bag = Bag(builder=HtmlBuilder())
+>>> bag = Bag(builder=HtmlBuilder)
 >>> form = bag.form(action='/submit', method='post')
 >>> div = form.div(class_='form-group')
 >>> div.label(value='Email:', for_='email')  # doctest: +ELLIPSIS
@@ -101,7 +101,7 @@ BagNode : ... at ...
 >>> from genro_bag import Bag
 >>> from genro_bag.builders import HtmlBuilder
 
->>> bag = Bag(builder=HtmlBuilder())
+>>> bag = Bag(builder=HtmlBuilder)
 >>> table = bag.table(class_='data-table')
 >>> thead = table.thead()
 >>> tr = thead.tr()
@@ -281,7 +281,7 @@ Use trailing underscore for Python reserved words:
 >>> from genro_bag import Bag
 >>> from genro_bag.builders import HtmlBuilder
 
->>> bag = Bag(builder=HtmlBuilder())
+>>> bag = Bag(builder=HtmlBuilder)
 >>> bag.div(class_='container')  # doctest: +ELLIPSIS
 <genro_bag.bag.Bag object at ...>
 >>> bag.label(for_='input-id', value='Label')  # doctest: +ELLIPSIS
@@ -296,7 +296,7 @@ Use `data_` prefix (converted to `data-` in HTML):
 >>> from genro_bag import Bag
 >>> from genro_bag.builders import HtmlBuilder
 
->>> bag = Bag(builder=HtmlBuilder())
+>>> bag = Bag(builder=HtmlBuilder)
 >>> div = bag.div(data_id='123', data_action='toggle')
 >>> bag['div_0?data_id']
 '123'
@@ -308,7 +308,7 @@ Use `data_` prefix (converted to `data-` in HTML):
 >>> from genro_bag import Bag
 >>> from genro_bag.builders import HtmlBuilder
 
->>> bag = Bag(builder=HtmlBuilder())
+>>> bag = Bag(builder=HtmlBuilder)
 >>> div = bag.div(id='main')
 >>> div.p(value='First')  # doctest: +ELLIPSIS
 BagNode : ... at ...

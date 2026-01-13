@@ -48,6 +48,7 @@ In real systems, not everything can be stored. Some values must be *obtained*: b
 In a Bag, this does not require a different mental model. You still navigate to a place in the hierarchy. The only difference is that some places know how to **resolve** a value instead of containing one.
 
 ```python
+from datetime import datetime
 from genro_bag.resolvers import BagCbResolver, UrlResolver
 
 # A value computed on demand
@@ -84,7 +85,7 @@ The same hierarchy that can be navigated and observed can also be built. **Build
 ```python
 from genro_bag.builders import HtmlBuilder
 
-bag = Bag(builder=HtmlBuilder())
+bag = Bag(builder=HtmlBuilder)
 
 page = bag.html()
 head = page.head()
@@ -105,6 +106,8 @@ You can create domain-specific builders for any structured vocabulary: HTML, XML
 Once this model is in place, something interesting happens. The same way of reasoning can be applied to web pages, XML documents, API descriptions, database structures, cloud architectures, and shared real-time state. The structure stays the same. Only the vocabulary changes.
 
 ```python
+from genro_bag.resolvers import OpenApiResolver
+
 # Same mental model, different domains
 apis = Bag()
 apis['petstore'] = OpenApiResolver('https://petstore.swagger.io/api/v3/openapi.json')

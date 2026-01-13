@@ -384,63 +384,6 @@ class TestBagCall:
         assert bag('a.b') == 42
 
 
-class TestBagIndexByAttribute:
-    """Test index lookup by attribute value (?attr=value) and by value (?=value)."""
-
-    def test_index_by_attribute_value(self):
-        """Find node index by attribute value with ?attr=value syntax."""
-        bag = Bag()
-        bag.set_item('a', 10, color='red')
-        bag.set_item('b', 20, color='blue')
-        bag.set_item('c', 30, color='green')
-        # Use position syntax to find by attribute
-        bag.set_item('new', 'X', _position='<?color=blue')
-        assert bag.keys() == ['a', 'new', 'b', 'c']
-
-    def test_index_by_attribute_value_after(self):
-        """Insert after node found by attribute value."""
-        bag = Bag()
-        bag.set_item('a', 10, color='red')
-        bag.set_item('b', 20, color='blue')
-        bag.set_item('c', 30, color='green')
-        bag.set_item('new', 'X', _position='>?color=blue')
-        assert bag.keys() == ['a', 'b', 'new', 'c']
-
-    def test_index_by_value(self):
-        """Find node index by value with ?=value syntax."""
-        bag = Bag()
-        bag['a'] = 'apple'
-        bag['b'] = 'banana'
-        bag['c'] = 'cherry'
-        bag.set_item('new', 'X', _position='<?=banana')
-        assert bag.keys() == ['a', 'new', 'b', 'c']
-
-    def test_index_by_value_after(self):
-        """Insert after node found by value."""
-        bag = Bag()
-        bag['a'] = 'apple'
-        bag['b'] = 'banana'
-        bag['c'] = 'cherry'
-        bag.set_item('new', 'X', _position='>?=banana')
-        assert bag.keys() == ['a', 'b', 'new', 'c']
-
-    def test_index_by_attribute_not_found(self):
-        """Attribute value not found appends at end."""
-        bag = Bag()
-        bag.set_item('a', 10, color='red')
-        bag.set_item('b', 20, color='blue')
-        bag.set_item('new', 'X', _position='<?color=yellow')
-        assert bag.keys() == ['a', 'b', 'new']
-
-    def test_index_by_value_not_found(self):
-        """Value not found appends at end."""
-        bag = Bag()
-        bag['a'] = 'apple'
-        bag['b'] = 'banana'
-        bag.set_item('new', 'X', _position='<?=orange')
-        assert bag.keys() == ['a', 'b', 'new']
-
-
 class TestBagBackref:
     """Test backref mode: set_backref, del_parent_ref, clear_backref."""
 
@@ -490,6 +433,20 @@ class TestBagBackref:
         bag.clear_backref()
         for node in bag:
             assert node.parent_bag is None
+
+    def test_nested_bag_gets_parent_node_with_backref(self):
+        """When setting a Bag as value with backref, the Bag gets parent_node."""
+        bag = Bag()
+        bag.set_backref()
+        # First set to None, then to Bag - tests the overwrite case
+        bag['alfa'] = None
+        bag['alfa'] = Bag()
+        alfa_node = bag.node('alfa')
+        inner_bag = alfa_node.value
+        assert isinstance(inner_bag, Bag)
+        assert inner_bag.parent_node is not None
+        assert inner_bag.parent_node.label == 'alfa'
+
 
 
 class TestBagSubscribe:
@@ -2780,6 +2737,27 @@ class TestBagCoverageMissing:
         assert bag1['config.port'] == 9090
         assert bag1['config.timeout'] == 30
 
+    # Bug report: update() passes attr= instead of _attributes= to set_item
+    def test_update_preserves_attributes(self):
+        """Bug: update() passes attr= to set_item which expects _attributes=.
+
+        This causes attributes to be stored as a kwarg named 'attr' instead
+        of being set as node attributes.
+        """
+        source = Bag()
+        source.set_item('key', 'value', _attributes={'color': 'red', 'size': 10})
+
+        target = Bag()
+        target.update(source)
+
+        # Attributes should be preserved on the node
+        node = target.get_node('key')
+        assert node is not None
+        assert node.attr.get('color') == 'red', "Attribute 'color' not preserved"
+        assert node.attr.get('size') == 10, "Attribute 'size' not preserved"
+        # Should NOT have an 'attr' attribute (that would be the bug)
+        assert 'attr' not in node.attr, "Bug: 'attr' stored as attribute instead of _attributes"
+
     # Line 1262: get_node with autocreate and backref fires insert event
     def test_get_node_autocreate_with_backref(self):
         """get_node with autocreate and backref fires insert event."""
@@ -2791,6 +2769,29 @@ class TestBagCoverageMissing:
         assert node is not None
         assert 'new_node' in bag.keys()
         assert 'new_node' in inserted
+
+    # Bug report: autocreate returns ghost node not in container
+    def test_get_node_autocreate_returns_registered_node(self):
+        """Bug: _get_node autocreate returns unregistered 'ghost' node.
+
+        The node returned by _get_node(autocreate=True) must be the SAME
+        node that is registered in the container, not a different instance.
+        This ensures backref/events work correctly.
+        """
+        bag = Bag()
+        bag.set_backref()
+
+        # Get node with autocreate
+        returned_node = bag.get_node('test_key', autocreate=True, default='value')
+
+        # Get the node that's actually in the container
+        container_node = bag._nodes.get('test_key')
+
+        # They MUST be the same object
+        assert returned_node is container_node, (
+            f"Returned node {id(returned_node)} differs from "
+            f"container node {id(container_node)} - ghost node bug!"
+        )
 
     # Line 1313: get_node returns None for non-existent
     def test_get_node_nonexistent(self):

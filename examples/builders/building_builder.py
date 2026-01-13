@@ -48,7 +48,7 @@ class Building:
             name: The building name.
             **attr: Additional attributes for the building node.
         """
-        self._store = Bag(builder=BuildingBuilder())
+        self._store = Bag(builder=BuildingBuilder)
         self._root = self._store.building(name=name, **attr)
 
     @property
@@ -140,75 +140,75 @@ class BuildingBuilder(BagBuilderBase):
     # === Building level ===
 
     @element(children='floor')
-    def building(self, target: Bag, tag: str, name: str = '', **attr) -> Bag:
+    def building(self, target: Bag, tag: str, name: str = '', **attr) -> BagNode:
         """Create a building. Can contain only floors."""
-        return self.child(target, tag, value=None, name=name, **attr)
+        return self.child(target, tag, name=name, **attr)
 
     # === Floor level ===
 
     @element(children='apartment, corridor, stairs')
-    def floor(self, target: Bag, tag: str, number: int = 0, **attr) -> Bag:
+    def floor(self, target: Bag, tag: str, number: int = 0, **attr) -> BagNode:
         """Create a floor. Can contain apartments, corridors, stairs."""
-        return self.child(target, tag, value=None, number=number, **attr)
+        return self.child(target, tag, number=number, **attr)
 
     # === Floor elements ===
 
     @element(children='kitchen[:1], bathroom[1:], bedroom, living_room[:1], dining_room[:1]')
-    def apartment(self, target: Bag, tag: str, number: str = '', **attr) -> Bag:
+    def apartment(self, target: Bag, tag: str, number: str = '', **attr) -> BagNode:
         """Create an apartment. Must have at least 1 bathroom, max 1 kitchen/living/dining."""
-        return self.child(target, tag, value=None, number=number, **attr)
+        return self.child(target, tag, number=number, **attr)
 
-    @element()  # No children allowed
+    @element()
     def corridor(self, target: Bag, tag: str, **attr) -> BagNode:
-        """Create a corridor. Leaf element."""
-        return self.child(target, tag, value='', **attr)
+        """Create a corridor."""
+        return self.child(target, tag, **attr)
 
-    @element()  # No children allowed
+    @element()
     def stairs(self, target: Bag, tag: str, **attr) -> BagNode:
-        """Create stairs. Leaf element."""
-        return self.child(target, tag, value='', **attr)
+        """Create stairs."""
+        return self.child(target, tag, **attr)
 
     # === Rooms ===
 
     @element(children='fridge[:1], oven[:2], sink[:1], table, chair')
-    def kitchen(self, target: Bag, tag: str, **attr) -> Bag:
+    def kitchen(self, target: Bag, tag: str, **attr) -> BagNode:
         """Create a kitchen. Max 1 fridge, max 2 ovens, max 1 sink."""
-        return self.child(target, tag, value=None, **attr)
+        return self.child(target, tag, **attr)
 
     @element(children='toilet[:1], shower[:1], sink[:1]')
-    def bathroom(self, target: Bag, tag: str, **attr) -> Bag:
+    def bathroom(self, target: Bag, tag: str, **attr) -> BagNode:
         """Create a bathroom. Max 1 of each fixture."""
-        return self.child(target, tag, value=None, **attr)
+        return self.child(target, tag, **attr)
 
     @element(children='bed, wardrobe, desk, chair')
-    def bedroom(self, target: Bag, tag: str, **attr) -> Bag:
+    def bedroom(self, target: Bag, tag: str, **attr) -> BagNode:
         """Create a bedroom. Can contain bedroom furniture."""
-        return self.child(target, tag, value=None, **attr)
+        return self.child(target, tag, **attr)
 
     @element(children='sofa, tv, table, chair')
-    def living_room(self, target: Bag, tag: str, **attr) -> Bag:
+    def living_room(self, target: Bag, tag: str, **attr) -> BagNode:
         """Create a living room. Can contain living room furniture."""
-        return self.child(target, tag, value=None, **attr)
+        return self.child(target, tag, **attr)
 
     @element(children='table, chair')
-    def dining_room(self, target: Bag, tag: str, **attr) -> Bag:
+    def dining_room(self, target: Bag, tag: str, **attr) -> BagNode:
         """Create a dining room. Can contain dining furniture."""
-        return self.child(target, tag, value=None, **attr)
+        return self.child(target, tag, **attr)
 
-    # === Appliances and fixtures (leaf elements) ===
+    # === Appliances and fixtures ===
     # Using tags parameter to map multiple tags to same method
 
     @element(tags='fridge, oven, sink, toilet, shower')
     def appliance(self, target: Bag, tag: str, **attr) -> BagNode:
-        """Create an appliance/fixture. Leaf element."""
-        return self.child(target, tag, value='', **attr)
+        """Create an appliance/fixture."""
+        return self.child(target, tag, **attr)
 
-    # === Simple furniture (leaf elements) ===
+    # === Simple furniture ===
 
     @element(tags='bed, desk, table, chair, sofa, tv')
     def furniture(self, target: Bag, tag: str, **attr) -> BagNode:
-        """Create a simple piece of furniture. Leaf element."""
-        return self.child(target, tag, value='', **attr)
+        """Create a simple piece of furniture."""
+        return self.child(target, tag, **attr)
 
     # === Complex furniture (nested structures) ===
     # A single method call can create multiple nodes
@@ -217,7 +217,7 @@ class BuildingBuilder(BagBuilderBase):
     def wardrobe(
         self, target: Bag, tag: str,
         drawers: int = 4, doors: int = 2, **attr
-    ) -> Bag:
+    ) -> BagNode:
         """Create a wardrobe with chest of drawers and doors.
 
         This is an example of a COMPLEX ELEMENT: a single method call
@@ -231,7 +231,7 @@ class BuildingBuilder(BagBuilderBase):
             **attr: Additional attributes.
 
         Returns:
-            The wardrobe Bag (for potential further customization).
+            The wardrobe BagNode (for potential further customization).
 
         Example:
             >>> bedroom.wardrobe(drawers=6, doors=3, color='white')
@@ -240,15 +240,12 @@ class BuildingBuilder(BagBuilderBase):
             #   └── chest_of_drawers
             #   │     └── drawer (number=1)
             #   │     └── drawer (number=2)
-            #   │     └── drawer (number=3)
-            #   │     └── drawer (number=4)
-            #   │     └── drawer (number=5)
-            #   │     └── drawer (number=6)
+            #   │     ...
             #   └── door (number=1)
             #   └── door (number=2)
             #   └── door (number=3)
         """
-        wardrobe = self.child(target, tag, value=None, **attr)
+        wardrobe = self.child(target, tag, **attr)
 
         # Create chest of drawers with N drawers
         if drawers > 0:
@@ -263,14 +260,14 @@ class BuildingBuilder(BagBuilderBase):
         return wardrobe
 
     @element(children='drawer')
-    def chest_of_drawers(self, target: Bag, tag: str, **attr) -> Bag:
+    def chest_of_drawers(self, target: Bag, tag: str, **attr) -> BagNode:
         """Create a chest of drawers container."""
-        return self.child(target, tag, value=None, **attr)
+        return self.child(target, tag, **attr)
 
     @element(tags='drawer, door')
     def wardrobe_part(self, target: Bag, tag: str, **attr) -> BagNode:
-        """Create a wardrobe component (drawer or door). Leaf element."""
-        return self.child(target, tag, value='', **attr)
+        """Create a wardrobe component (drawer or door)."""
+        return self.child(target, tag, **attr)
 
 
 def demo():

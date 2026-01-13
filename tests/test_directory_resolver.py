@@ -3,8 +3,6 @@
 
 """Tests for DirectoryResolver."""
 
-import os
-
 import pytest
 
 from genro_bag import Bag
@@ -237,15 +235,46 @@ class TestDirectoryResolverProcessors:
         assert isinstance(bag, Bag)
         assert bag['root.item'] == 'value'
 
-    def test_processor_default_returns_none(self, tmp_path):
-        """Unknown extensions get None value."""
-        (tmp_path / 'file.unknown').write_text('data')
+    def test_processor_default_returns_none_for_non_xml(self, tmp_path):
+        """Unknown extensions with non-XML content get None value."""
+        (tmp_path / 'file.unknown').write_text('plain text data')
 
         resolver = DirectoryResolver(str(tmp_path), ext='')
         result = resolver.load()
 
         node = result.get_node('file_unknown')
         assert node.value is None
+
+    def test_processor_default_sniffs_xml_content(self, tmp_path):
+        """Files with XML content are auto-detected regardless of extension."""
+        from genro_bag.resolvers import SerializedBagResolver
+
+        # XSD file (XML content with non-xml extension)
+        (tmp_path / 'schema.xsd').write_text('<?xml version="1.0"?><schema/>')
+        # RNG file (XML content)
+        (tmp_path / 'grammar.rng').write_text('<grammar xmlns="http://relaxng.org/ns/structure/1.0"/>')
+        # SVG file (XML content without declaration)
+        (tmp_path / 'image.svg').write_text('<svg xmlns="http://www.w3.org/2000/svg"/>')
+
+        resolver = DirectoryResolver(str(tmp_path), ext='')
+        result = resolver.load()
+
+        # All should be detected as XML and get SerializedBagResolver
+        assert isinstance(result.get_node('schema_xsd').resolver, SerializedBagResolver)
+        assert isinstance(result.get_node('grammar_rng').resolver, SerializedBagResolver)
+        assert isinstance(result.get_node('image_svg').resolver, SerializedBagResolver)
+
+    def test_processor_default_loads_sniffed_xml_as_bag(self, tmp_path):
+        """Sniffed XML files load as Bag when accessed."""
+        (tmp_path / 'data.xsd').write_text('<root><item>value</item></root>')
+
+        resolver = DirectoryResolver(str(tmp_path), ext='')
+        result = resolver.load()
+
+        # Accessing value triggers resolver
+        bag = result['data_xsd']
+        assert isinstance(bag, Bag)
+        assert bag['root.item'] == 'value'
 
     def test_custom_processor(self, tmp_path):
         """Custom processor can be provided."""
