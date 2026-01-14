@@ -27,12 +27,8 @@ def create_test_directory() -> Path:
 
     # Create files
     (tmpdir / "readme.txt").write_text("This is the readme")
-    (tmpdir / "config" / "settings.xml").write_text(
-        "<settings><debug>true</debug></settings>"
-    )
-    (tmpdir / "config" / "database.json").write_text(
-        '{"host": "localhost", "port": 5432}'
-    )
+    (tmpdir / "config" / "settings.xml").write_text("<settings><debug>true</debug></settings>")
+    (tmpdir / "config" / "database.json").write_text('{"host": "localhost", "port": 5432}')
     (tmpdir / "data" / "users.csv").write_text("id,name\n1,John\n2,Jane")
     (tmpdir / "data" / "products.csv").write_text("id,name,price\n1,Widget,10")
 
@@ -64,6 +60,7 @@ def demo_basic_directory():
 
     # Cleanup
     import shutil
+
     shutil.rmtree(tmpdir)
 
 
@@ -95,6 +92,7 @@ def demo_filtered_directory():
 
     # Cleanup
     import shutil
+
     shutil.rmtree(tmpdir)
 
 

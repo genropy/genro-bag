@@ -203,7 +203,7 @@ class XsdReader:
 
     def _index_schema(self) -> None:
         """Index all global types and elements."""
-        for child in self.root:
+        for child in self.root:  # type: ignore[union-attr]
             if child.tag == self._q("simpleType"):
                 name = child.get("name")
                 if name:
@@ -346,7 +346,7 @@ class XsdReader:
 
         if mode == "choice":
             min_o, max_o = self._occurs(group)
-            alts: list[ChildSpec] = []
+            choice_alts: list[ChildSpec] = []
             for item in list(group):
                 child = self._parse_element_particle(item)
                 if child:
@@ -356,9 +356,9 @@ class XsdReader:
                         min_occurs=child.min_occurs * min_o,
                         max_occurs=self._mul_max(child.max_occurs, max_o),
                     )
-                    alts.append(child)
-            if alts:
-                steps.append(alts)
+                    choice_alts.append(child)
+            if choice_alts:
+                steps.append(choice_alts)
             return steps
 
         return steps

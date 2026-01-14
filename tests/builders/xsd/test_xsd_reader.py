@@ -2,13 +2,11 @@
 """Tests for XsdReader."""
 
 import inspect
-from decimal import Decimal
 from pathlib import Path
 
 import pytest
 
 from genro_bag.builders.xsd.xsd_reader import XsdReader
-
 
 # =============================================================================
 # Fixtures
@@ -296,7 +294,10 @@ class TestXsdReaderSepa:
     @pytest.fixture
     def sepa_xsd_path(self):
         """Path to SEPA XSD file."""
-        path = Path(__file__).parent.parent.parent.parent / "examples/builders/xsd/sepa/pain.001.001.12.xsd"
+        path = (
+            Path(__file__).parent.parent.parent.parent
+            / "examples/builders/xsd/sepa/pain.001.001.12.xsd"
+        )
         if not path.exists():
             pytest.skip("SEPA XSD not found")
         return path

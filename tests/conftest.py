@@ -2,10 +2,7 @@
 """Pytest configuration and fixtures."""
 
 import pytest
-
 from genro_toolbox import reset_smartasync_cache
-
-from genro_bag import Bag
 
 
 @pytest.fixture(autouse=True)

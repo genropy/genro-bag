@@ -22,7 +22,7 @@ if TYPE_CHECKING:
 
 
 # Load schema from JSON
-SCHEMA_PATH = Path(__file__).parent / 'html_tables.json'
+SCHEMA_PATH = Path(__file__).parent / "html_tables.json"
 
 
 class TableBuilder(BagBuilderBase):
@@ -57,25 +57,25 @@ class TableBuilder(BagBuilderBase):
         if SCHEMA_PATH.exists():
             data = json.loads(SCHEMA_PATH.read_text())
             # Set _schema from elements
-            self._schema = data.get('elements', {})
+            self._schema = data.get("elements", {})
             # Store refs for dynamic _ref_* resolution
-            self._refs = data.get('refs', {})
+            self._refs = data.get("refs", {})
         else:
             # Fallback inline schema
             self._schema = {
-                'table': {'children': 'thead, tbody, tfoot, tr'},
-                'thead': {'children': 'tr'},
-                'tbody': {'children': 'tr'},
-                'tfoot': {'children': 'tr'},
-                'tr': {'children': 'th, td'},
-                'th': {'leaf': False},
-                'td': {'leaf': False},
+                "table": {"children": "thead, tbody, tfoot, tr"},
+                "thead": {"children": "tr"},
+                "tbody": {"children": "tr"},
+                "tfoot": {"children": "tr"},
+                "tr": {"children": "th, td"},
+                "th": {"leaf": False},
+                "td": {"leaf": False},
             }
             self._refs = {}
 
     def __getattr__(self, name: str):
         """Handle _ref_* lookups for dynamic references."""
-        if name.startswith('_ref_'):
+        if name.startswith("_ref_"):
             ref_name = name[5:]  # '_ref_flow' -> 'flow'
             if ref_name in self._refs:
                 return self._refs[ref_name]
@@ -128,7 +128,7 @@ class HtmlTable:
             self._thead = self._table.thead()
         tr = self._thead.tr(**row_attrs)
         for cell in cells:
-            tr.th(value=str(cell), scope='col')
+            tr.th(value=str(cell), scope="col")
         return self._thead
 
     def add_row(self, cells: list, **row_attrs) -> Bag:
@@ -150,37 +150,34 @@ class HtmlTable:
 
     def check(self) -> list[str]:
         """Validate table structure."""
-        return self._store.builder.check(self._table, parent_tag='table')
+        return self._store.builder.check(self._table, parent_tag="table")
 
     def to_html(self, indent: int = 0) -> str:
         """Generate HTML string."""
         # Get the table node (not its value)
-        table_node = self._store.get_node('table_0')
+        table_node = self._store.get_node("table_0")
         return self._node_to_html(table_node, indent)
 
     def _node_to_html(self, node: BagNode, indent: int = 0) -> str:
         """Convert node to HTML."""
         tag = node.tag or node.label
-        attrs = ' '.join(
-            f'{k}="{v}"' for k, v in node.attr.items()
-            if not k.startswith('_')
-        )
-        attrs_str = f' {attrs}' if attrs else ''
-        spaces = '  ' * indent
+        attrs = " ".join(f'{k}="{v}"' for k, v in node.attr.items() if not k.startswith("_"))
+        attrs_str = f" {attrs}" if attrs else ""
+        spaces = "  " * indent
 
         node_value = node.get_value(static=True)
         is_leaf = not isinstance(node_value, Bag)
 
         if is_leaf:
-            if node_value == '':
-                return f'{spaces}<{tag}{attrs_str} />'
-            return f'{spaces}<{tag}{attrs_str}>{node_value}</{tag}>'
+            if node_value == "":
+                return f"{spaces}<{tag}{attrs_str} />"
+            return f"{spaces}<{tag}{attrs_str}>{node_value}</{tag}>"
 
-        lines = [f'{spaces}<{tag}{attrs_str}>']
+        lines = [f"{spaces}<{tag}{attrs_str}>"]
         for child in node_value:
             lines.append(self._node_to_html(child, indent + 1))
-        lines.append(f'{spaces}</{tag}>')
-        return '\n'.join(lines)
+        lines.append(f"{spaces}</{tag}>")
+        return "\n".join(lines)
 
 
 def demo():
@@ -191,9 +188,9 @@ def demo():
 
     # Create table using high-level API
     t = HtmlTable()
-    t.add_header(['Product', 'Price', 'Quantity'])
-    t.add_row(['Widget', '$10.00', '5'])
-    t.add_row(['Gadget', '$25.00', '3'])
+    t.add_header(["Product", "Price", "Quantity"])
+    t.add_row(["Widget", "$10.00", "5"])
+    t.add_row(["Gadget", "$25.00", "3"])
 
     print("\nGenerated HTML:")
     print(t.to_html())
@@ -221,30 +218,30 @@ def demo():
 
     # Valid attributes
     print("\nCreating td with colspan=2 (valid)...")
-    tr.td(value='Merged cell', colspan=2)
+    tr.td(value="Merged cell", colspan=2)
     print("  Success!")
 
     # Test scope enum on th
     print("\nCreating th with scope='col' (valid enum)...")
     tr2 = tbody.tr()
-    tr2.th(value='Header', scope='col')
+    tr2.th(value="Header", scope="col")
     print("  Success!")
 
     # Invalid attribute
     print("\nTrying td with colspan=0 (invalid, min=1)...")
     try:
-        tr.td(value='Bad cell', colspan=0)
+        tr.td(value="Bad cell", colspan=0)
         print("  Created (validation not triggered)")
     except Exception as e:
         print(f"  Validation error: {e}")
 
     print("\nTrying th with scope='invalid' (invalid enum)...")
     try:
-        tr2.th(value='Bad header', scope='invalid')
+        tr2.th(value="Bad header", scope="invalid")
         print("  Created (validation not triggered)")
     except Exception as e:
         print(f"  Validation error: {e}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     demo()

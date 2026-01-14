@@ -9,10 +9,10 @@ from genro_bag import Bag
 from genro_bag.resolvers import OpenApiResolver
 
 # Petstore OpenAPI spec URL
-PETSTORE_URL = 'https://petstore3.swagger.io/api/v3/openapi.json'
+PETSTORE_URL = "https://petstore3.swagger.io/api/v3/openapi.json"
 
 # Skip all tests if httpx not installed
-pytest.importorskip('httpx')
+pytest.importorskip("httpx")
 
 
 @pytest.fixture(autouse=True)
@@ -20,9 +20,10 @@ def reset_smartasync_cache():
     """Reset smartasync cache before each test."""
     # Reset before test - BagResolver.__call__ also uses @smartasync
     from genro_bag.resolver import BagResolver
-    if hasattr(OpenApiResolver.load, '_smartasync_reset_cache'):
+
+    if hasattr(OpenApiResolver.load, "_smartasync_reset_cache"):
         OpenApiResolver.load._smartasync_reset_cache()
-    if hasattr(BagResolver.__call__, '_smartasync_reset_cache'):
+    if hasattr(BagResolver.__call__, "_smartasync_reset_cache"):
         BagResolver.__call__._smartasync_reset_cache()
     yield
 
@@ -45,13 +46,13 @@ class TestOpenApiResolverBasic:
         resolver = OpenApiResolver(PETSTORE_URL)
         api = resolver()
 
-        assert 'info' in api.keys()
+        assert "info" in api.keys()
         # info value is the description string
-        info = api['info']
+        info = api["info"]
         assert isinstance(info, str)
         # title is in node attributes
-        info_node = api.get_node('info')
-        assert info_node.attr.get('title') is not None
+        info_node = api.get_node("info")
+        assert info_node.attr.get("title") is not None
 
     @pytest.mark.network
     def test_has_tags_as_children(self):
@@ -60,12 +61,12 @@ class TestOpenApiResolverBasic:
         api = resolver()
 
         # Tags are under api['api']
-        assert 'api' in api.keys()
-        api_bag = api['api']
+        assert "api" in api.keys()
+        api_bag = api["api"]
         # Petstore has pet, store, user tags
-        assert 'pet' in api_bag.keys()
-        assert 'store' in api_bag.keys()
-        assert 'user' in api_bag.keys()
+        assert "pet" in api_bag.keys()
+        assert "store" in api_bag.keys()
+        assert "user" in api_bag.keys()
 
     @pytest.mark.network
     def test_tag_bag_has_endpoints(self):
@@ -73,7 +74,7 @@ class TestOpenApiResolverBasic:
         resolver = OpenApiResolver(PETSTORE_URL)
         api = resolver()
 
-        pet_bag = api['api.pet']
+        pet_bag = api["api.pet"]
         assert isinstance(pet_bag, Bag)
         assert len(pet_bag) > 0
 
@@ -84,13 +85,13 @@ class TestOpenApiResolverBasic:
         api = resolver()
 
         # Get first endpoint from pet tag
-        pet_bag = api['api.pet']
+        pet_bag = api["api.pet"]
         first_key = list(pet_bag.keys())[0]
         endpoint = pet_bag[first_key]
 
         # Should have at least summary or operationId
         keys = endpoint.keys()
-        assert 'summary' in keys or 'operationId' in keys
+        assert "summary" in keys or "operationId" in keys
 
 
 class TestOpenApiResolverStructure:
@@ -102,8 +103,8 @@ class TestOpenApiResolverStructure:
         resolver = OpenApiResolver(PETSTORE_URL)
         api = resolver()
 
-        assert 'components' in api.keys()
-        components = api['components']
+        assert "components" in api.keys()
+        components = api["components"]
         assert isinstance(components, Bag)
 
     @pytest.mark.network
@@ -112,12 +113,12 @@ class TestOpenApiResolverStructure:
         resolver = OpenApiResolver(PETSTORE_URL)
         api = resolver()
 
-        components = api['components']
-        assert 'schemas' in components.keys()
+        components = api["components"]
+        assert "schemas" in components.keys()
 
-        schemas = components['schemas']
+        schemas = components["schemas"]
         # Petstore has Pet schema
-        assert 'Pet' in schemas.keys()
+        assert "Pet" in schemas.keys()
 
     @pytest.mark.network
     def test_endpoint_has_method_key(self):
@@ -125,12 +126,12 @@ class TestOpenApiResolverStructure:
         resolver = OpenApiResolver(PETSTORE_URL)
         api = resolver()
 
-        pet_bag = api['api.pet']
+        pet_bag = api["api.pet"]
         first_key = list(pet_bag.keys())[0]
         endpoint = pet_bag[first_key]
 
         # Method should be a key in endpoint Bag
-        assert 'method' in endpoint.keys()
+        assert "method" in endpoint.keys()
 
     @pytest.mark.network
     def test_endpoint_has_nested_url_resolver(self):
@@ -139,16 +140,16 @@ class TestOpenApiResolverStructure:
 
         # Create a Bag and put OpenApiResolver inside
         apibag = Bag()
-        apibag['openapi.petstore'] = OpenApiResolver(PETSTORE_URL)
+        apibag["openapi.petstore"] = OpenApiResolver(PETSTORE_URL)
 
         # Access nested UrlResolver via full path (static=False to trigger resolvers)
-        value_node = apibag.get_node('openapi.petstore.api.store.getInventory.value', static=False)
+        value_node = apibag.get_node("openapi.petstore.api.store.getInventory.value", static=False)
         assert value_node is not None
         assert value_node.resolver is not None
         assert isinstance(value_node.resolver, UrlResolver)
 
         # Check resolver has correct method
-        assert value_node.resolver._kw['method'] == 'get'
+        assert value_node.resolver._kw["method"] == "get"
 
 
 class TestOpenApiResolverCaching:
@@ -172,16 +173,16 @@ class TestOpenApiResolverInBag:
     def test_resolver_in_bag_node(self):
         """OpenApiResolver works when assigned to Bag node."""
         bag = Bag()
-        bag['petstore'] = OpenApiResolver(PETSTORE_URL)
+        bag["petstore"] = OpenApiResolver(PETSTORE_URL)
 
-        node = bag.get_node('petstore')
+        node = bag.get_node("petstore")
         assert node.resolver is not None
         assert isinstance(node.resolver, OpenApiResolver)
 
         # Trigger resolver
         api = node.resolver()
         assert isinstance(api, Bag)
-        assert 'pet' in api['api'].keys()
+        assert "pet" in api["api"].keys()
 
 
 class TestOpenApiResolverEquality:
@@ -196,7 +197,7 @@ class TestOpenApiResolverEquality:
     def test_different_url_not_equal(self):
         """Different URLs produce different resolvers."""
         r1 = OpenApiResolver(PETSTORE_URL)
-        r2 = OpenApiResolver('https://example.com/api.json')
+        r2 = OpenApiResolver("https://example.com/api.json")
         assert r1 != r2
 
     def test_same_url_different_cache_not_equal(self):
@@ -214,11 +215,11 @@ class TestOpenApiResolverSerialization:
         resolver = OpenApiResolver(PETSTORE_URL, cache_time=120, timeout=45)
         data = resolver.serialize()
 
-        assert data['resolver_class'] == 'OpenApiResolver'
-        assert 'openapi_resolver' in data['resolver_module']
-        assert data['args'] == [PETSTORE_URL]
-        assert data['kwargs']['cache_time'] == 120
-        assert data['kwargs']['timeout'] == 45
+        assert data["resolver_class"] == "OpenApiResolver"
+        assert "openapi_resolver" in data["resolver_module"]
+        assert data["args"] == [PETSTORE_URL]
+        assert data["kwargs"]["cache_time"] == 120
+        assert data["kwargs"]["timeout"] == 45
 
     def test_deserialize(self):
         """Resolver can be deserialized."""
@@ -230,5 +231,5 @@ class TestOpenApiResolverSerialization:
         restored = BagResolver.deserialize(data)
 
         assert isinstance(restored, OpenApiResolver)
-        assert restored._kw['url'] == PETSTORE_URL
-        assert restored._kw['cache_time'] == 120
+        assert restored._kw["url"] == PETSTORE_URL
+        assert restored._kw["cache_time"] == 120

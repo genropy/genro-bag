@@ -18,14 +18,16 @@ class ContactListPage:
 
     def prepare_head(self, head):
         """Build the head section."""
-        head.meta(charset='utf-8')
-        head.title('Contacts')
-        head.style('''
+        head.meta(charset="utf-8")
+        head.title("Contacts")
+        head.style(
+            """
             body { font-family: sans-serif; margin: 20px; }
             table { border-collapse: collapse; width: 100%; }
             th, td { border: 1px solid #ccc; padding: 8px; }
             th { background: #f5f5f5; }
-        ''')
+        """
+        )
 
     def prepare_contacts_table(self, block, contacts):
         """Build a table from contact data."""
@@ -34,21 +36,21 @@ class ContactListPage:
         # Header
         thead = table.thead()
         tr = thead.tr()
-        for header in ['Name', 'Email', 'Phone']:
+        for header in ["Name", "Email", "Phone"]:
             tr.th(header)
 
         # Body
         tbody = table.tbody()
         for contact in contacts:
             tr = tbody.tr()
-            tr.td(contact['name'])
-            tr.td(contact['email'])
-            tr.td(contact['phone'])
+            tr.td(contact["name"])
+            tr.td(contact["email"])
+            tr.td(contact["phone"])
 
     def build(self):
         """Build the page body with contacts."""
         body = self.page.body()
-        body.h1('Contact List')
+        body.h1("Contact List")
         self.prepare_contacts_table(body, self.contacts)
         return self
 
@@ -57,15 +59,15 @@ class ContactListPage:
         return self.page.builder.compile(destination=destination)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     contacts = [
-        {'name': 'John Smith', 'email': 'john@example.com', 'phone': '555-1234'},
-        {'name': 'Jane Doe', 'email': 'jane@example.com', 'phone': '555-5678'},
-        {'name': 'Bob Wilson', 'email': 'bob@example.com', 'phone': '555-9012'},
+        {"name": "John Smith", "email": "john@example.com", "phone": "555-1234"},
+        {"name": "Jane Doe", "email": "jane@example.com", "phone": "555-5678"},
+        {"name": "Bob Wilson", "email": "bob@example.com", "phone": "555-9012"},
     ]
 
     page = ContactListPage(contacts)
 
-    destination = Path(__file__).with_suffix('.html')
+    destination = Path(__file__).with_suffix(".html")
     html = page.to_html(destination=destination)
     print(html)

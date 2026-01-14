@@ -4,7 +4,6 @@
 """Tests for BagCbResolver - callback resolver."""
 
 import asyncio
-import time
 from datetime import datetime
 
 import pytest
@@ -23,9 +22,10 @@ def reset_smartasync_cache():
     """
     # Reset before test - both load() and __call__() use @smartasync
     from genro_bag.resolver import BagResolver
-    if hasattr(BagCbResolver.load, '_smartasync_reset_cache'):
+
+    if hasattr(BagCbResolver.load, "_smartasync_reset_cache"):
         BagCbResolver.load._smartasync_reset_cache()
-    if hasattr(BagResolver.__call__, '_smartasync_reset_cache'):
+    if hasattr(BagResolver.__call__, "_smartasync_reset_cache"):
         BagResolver.__call__._smartasync_reset_cache()
     yield
 
@@ -46,11 +46,11 @@ class TestBagCbResolverSync:
 
     def test_sync_callback_called_each_time_no_cache(self):
         """Without cache, callback is called each time."""
-        counter = {'value': 0}
+        counter = {"value": 0}
 
         def increment():
-            counter['value'] += 1
-            return counter['value']
+            counter["value"] += 1
+            return counter["value"]
 
         resolver = BagCbResolver(increment, cache_time=0)
         assert resolver() == 1
@@ -59,11 +59,11 @@ class TestBagCbResolverSync:
 
     def test_sync_callback_with_cache(self):
         """With cache, callback is called once until expired."""
-        counter = {'value': 0}
+        counter = {"value": 0}
 
         def increment():
-            counter['value'] += 1
-            return counter['value']
+            counter["value"] += 1
+            return counter["value"]
 
         resolver = BagCbResolver(increment, cache_time=10)
         # First call loads
@@ -72,29 +72,30 @@ class TestBagCbResolverSync:
         assert resolver() == 1
         assert resolver() == 1
         # Verify callback was only called once
-        assert counter['value'] == 1
+        assert counter["value"] == 1
 
     def test_sync_callback_returns_bag(self):
         """Callback can return a Bag."""
+
         def make_bag():
             b = Bag()
-            b['x'] = 1
-            b['y'] = 2
+            b["x"] = 1
+            b["y"] = 2
             return b
 
         resolver = BagCbResolver(make_bag)
         result = resolver()
         assert isinstance(result, Bag)
-        assert result['x'] == 1
-        assert result['y'] == 2
+        assert result["x"] == 1
+        assert result["y"] == 2
 
     def test_sync_callback_in_bag(self):
         """BagCbResolver works when assigned to Bag node."""
         bag = Bag()
-        bag['time'] = BagCbResolver(datetime.now)
+        bag["time"] = BagCbResolver(datetime.now)
 
         # Access triggers resolver
-        node = bag.get_node('time')
+        node = bag.get_node("time")
         assert node.resolver is not None
 
         # Get value through resolver
@@ -108,20 +109,22 @@ class TestBagCbResolverAsync:
     @pytest.mark.asyncio
     async def test_async_callback_returns_value(self):
         """Async callback returns its value."""
+
         async def async_value():
             await asyncio.sleep(0.01)
-            return 'async_result'
+            return "async_result"
 
         resolver = BagCbResolver(async_value)
         result = resolver()  # smartawait handles async in sync context
         # In async test, we should await if needed
         if asyncio.iscoroutine(result):
             result = await result
-        assert result == 'async_result'
+        assert result == "async_result"
 
     @pytest.mark.asyncio
     async def test_async_callback_datetime(self):
         """Async callback with datetime."""
+
         async def async_now():
             await asyncio.sleep(0.01)
             return datetime.now()
@@ -135,12 +138,12 @@ class TestBagCbResolverAsync:
     @pytest.mark.asyncio
     async def test_async_callback_called_each_time(self):
         """Async callback called each time without cache."""
-        counter = {'value': 0}
+        counter = {"value": 0}
 
         async def async_increment():
             await asyncio.sleep(0.001)
-            counter['value'] += 1
-            return counter['value']
+            counter["value"] += 1
+            return counter["value"]
 
         resolver = BagCbResolver(async_increment, cache_time=0)
 
@@ -158,10 +161,11 @@ class TestBagCbResolverAsync:
     @pytest.mark.asyncio
     async def test_async_callback_returns_bag(self):
         """Async callback can return a Bag."""
+
         async def async_make_bag():
             await asyncio.sleep(0.01)
             b = Bag()
-            b['async'] = True
+            b["async"] = True
             return b
 
         resolver = BagCbResolver(async_make_bag)
@@ -169,7 +173,7 @@ class TestBagCbResolverAsync:
         if asyncio.iscoroutine(result):
             result = await result
         assert isinstance(result, Bag)
-        assert result['async'] is True
+        assert result["async"] is True
 
 
 class TestBagCbResolverCaching:
@@ -228,6 +232,7 @@ class TestBagCbResolverEquality:
 
     def test_same_callback_same_fingerprint(self):
         """Same callback function produces same fingerprint."""
+
         def my_func():
             return 42
 
@@ -243,6 +248,7 @@ class TestBagCbResolverEquality:
 
     def test_same_callback_different_cache_time(self):
         """Same callback but different cache_time are different."""
+
         def my_func():
             return 42
 
@@ -256,12 +262,13 @@ class TestBagCbResolverSerialization:
 
     def test_serialize_basic(self):
         """Resolver can be serialized."""
+
         def my_func():
             return 42
 
         resolver = BagCbResolver(my_func, cache_time=30)
         data = resolver.serialize()
 
-        assert data['resolver_class'] == 'BagCbResolver'
-        assert 'genro_bag.resolver' in data['resolver_module']
-        assert data['kwargs']['cache_time'] == 30
+        assert data["resolver_class"] == "BagCbResolver"
+        assert "genro_bag.resolver" in data["resolver_module"]
+        assert data["kwargs"]["cache_time"] == 30

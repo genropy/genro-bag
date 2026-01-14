@@ -10,7 +10,7 @@ A didactic example showing how to use @element decorator for:
 
 from __future__ import annotations
 
-from genro_bag import Bag, BagNode, BagBuilderBase
+from genro_bag import Bag, BagBuilderBase, BagNode
 from genro_bag.builders import element
 
 
@@ -41,7 +41,7 @@ class Building:
         >>> # ['fridge is not a valid child of dining_room...']
     """
 
-    def __init__(self, name: str = '', **attr):
+    def __init__(self, name: str = "", **attr):
         """Create a new building.
 
         Args:
@@ -71,7 +71,7 @@ class Building:
         Returns:
             List of error messages (empty if valid).
         """
-        return self._store.builder.check(self._root, parent_tag='building')
+        return self._store.builder.check(self._root, parent_tag="building")
 
     def print_tree(self):
         """Print the building structure for debugging."""
@@ -79,10 +79,10 @@ class Building:
         print("BUILDING")
         print("=" * 60)
         for path, node in self._root.walk():
-            indent = "  " * path.count('.')
+            indent = "  " * path.count(".")
             tag = node.tag or node.label
-            attrs = ' '.join(f'{k}={v}' for k, v in node.attr.items() if not k.startswith('_'))
-            attrs_str = f' ({attrs})' if attrs else ''
+            attrs = " ".join(f"{k}={v}" for k, v in node.attr.items() if not k.startswith("_"))
+            attrs_str = f" ({attrs})" if attrs else ""
             print(f"{indent}{tag}{attrs_str}")
 
 
@@ -139,22 +139,22 @@ class BuildingBuilder(BagBuilderBase):
 
     # === Building level ===
 
-    @element(children='floor')
-    def building(self, target: Bag, tag: str, name: str = '', **attr) -> BagNode:
+    @element(children="floor")
+    def building(self, target: Bag, tag: str, name: str = "", **attr) -> BagNode:
         """Create a building. Can contain only floors."""
         return self.child(target, tag, name=name, **attr)
 
     # === Floor level ===
 
-    @element(children='apartment, corridor, stairs')
+    @element(children="apartment, corridor, stairs")
     def floor(self, target: Bag, tag: str, number: int = 0, **attr) -> BagNode:
         """Create a floor. Can contain apartments, corridors, stairs."""
         return self.child(target, tag, number=number, **attr)
 
     # === Floor elements ===
 
-    @element(children='kitchen[:1], bathroom[1:], bedroom, living_room[:1], dining_room[:1]')
-    def apartment(self, target: Bag, tag: str, number: str = '', **attr) -> BagNode:
+    @element(children="kitchen[:1], bathroom[1:], bedroom, living_room[:1], dining_room[:1]")
+    def apartment(self, target: Bag, tag: str, number: str = "", **attr) -> BagNode:
         """Create an apartment. Must have at least 1 bathroom, max 1 kitchen/living/dining."""
         return self.child(target, tag, number=number, **attr)
 
@@ -170,27 +170,27 @@ class BuildingBuilder(BagBuilderBase):
 
     # === Rooms ===
 
-    @element(children='fridge[:1], oven[:2], sink[:1], table, chair')
+    @element(children="fridge[:1], oven[:2], sink[:1], table, chair")
     def kitchen(self, target: Bag, tag: str, **attr) -> BagNode:
         """Create a kitchen. Max 1 fridge, max 2 ovens, max 1 sink."""
         return self.child(target, tag, **attr)
 
-    @element(children='toilet[:1], shower[:1], sink[:1]')
+    @element(children="toilet[:1], shower[:1], sink[:1]")
     def bathroom(self, target: Bag, tag: str, **attr) -> BagNode:
         """Create a bathroom. Max 1 of each fixture."""
         return self.child(target, tag, **attr)
 
-    @element(children='bed, wardrobe, desk, chair')
+    @element(children="bed, wardrobe, desk, chair")
     def bedroom(self, target: Bag, tag: str, **attr) -> BagNode:
         """Create a bedroom. Can contain bedroom furniture."""
         return self.child(target, tag, **attr)
 
-    @element(children='sofa, tv, table, chair')
+    @element(children="sofa, tv, table, chair")
     def living_room(self, target: Bag, tag: str, **attr) -> BagNode:
         """Create a living room. Can contain living room furniture."""
         return self.child(target, tag, **attr)
 
-    @element(children='table, chair')
+    @element(children="table, chair")
     def dining_room(self, target: Bag, tag: str, **attr) -> BagNode:
         """Create a dining room. Can contain dining furniture."""
         return self.child(target, tag, **attr)
@@ -198,14 +198,14 @@ class BuildingBuilder(BagBuilderBase):
     # === Appliances and fixtures ===
     # Using tags parameter to map multiple tags to same method
 
-    @element(tags='fridge, oven, sink, toilet, shower')
+    @element(tags="fridge, oven, sink, toilet, shower")
     def appliance(self, target: Bag, tag: str, **attr) -> BagNode:
         """Create an appliance/fixture."""
         return self.child(target, tag, **attr)
 
     # === Simple furniture ===
 
-    @element(tags='bed, desk, table, chair, sofa, tv')
+    @element(tags="bed, desk, table, chair, sofa, tv")
     def furniture(self, target: Bag, tag: str, **attr) -> BagNode:
         """Create a simple piece of furniture."""
         return self.child(target, tag, **attr)
@@ -213,11 +213,8 @@ class BuildingBuilder(BagBuilderBase):
     # === Complex furniture (nested structures) ===
     # A single method call can create multiple nodes
 
-    @element(children='chest_of_drawers[:1], door')
-    def wardrobe(
-        self, target: Bag, tag: str,
-        drawers: int = 4, doors: int = 2, **attr
-    ) -> BagNode:
+    @element(children="chest_of_drawers[:1], door")
+    def wardrobe(self, target: Bag, tag: str, drawers: int = 4, doors: int = 2, **attr) -> BagNode:
         """Create a wardrobe with chest of drawers and doors.
 
         This is an example of a COMPLEX ELEMENT: a single method call
@@ -259,12 +256,12 @@ class BuildingBuilder(BagBuilderBase):
 
         return wardrobe
 
-    @element(children='drawer')
+    @element(children="drawer")
     def chest_of_drawers(self, target: Bag, tag: str, **attr) -> BagNode:
         """Create a chest of drawers container."""
         return self.child(target, tag, **attr)
 
-    @element(tags='drawer, door')
+    @element(tags="drawer, door")
     def wardrobe_part(self, target: Bag, tag: str, **attr) -> BagNode:
         """Create a wardrobe component (drawer or door)."""
         return self.child(target, tag, **attr)
@@ -277,18 +274,18 @@ def demo():
     print("=" * 60)
 
     # Create a building
-    casa = Building(name='Casa Mia')
+    casa = Building(name="Casa Mia")
 
     # Add first floor
     floor1 = casa.floor(number=1)
 
     # Add apartment 1A
-    apt1a = floor1.apartment(number='1A')
+    apt1a = floor1.apartment(number="1A")
 
     # Add kitchen with appliances
     kitchen = apt1a.kitchen()
-    kitchen.fridge(brand='Samsung')
-    kitchen.oven(brand='Bosch')
+    kitchen.fridge(brand="Samsung")
+    kitchen.oven(brand="Bosch")
     kitchen.sink()
     kitchen.table()
     kitchen.chair()
@@ -302,19 +299,19 @@ def demo():
 
     # Add bedroom with complex wardrobe
     bedroom = apt1a.bedroom()
-    bedroom.bed(size='queen')
-    bedroom.wardrobe(drawers=6, doors=3, color='oak')
+    bedroom.bed(size="queen")
+    bedroom.wardrobe(drawers=6, doors=3, color="oak")
     bedroom.desk()
     bedroom.chair()
 
     # Add living room
     living = apt1a.living_room()
     living.sofa(seats=3)
-    living.tv(brand='LG', size='55"')
+    living.tv(brand="LG", size='55"')
 
     # Add second floor
     floor2 = casa.floor(number=2)
-    apt2a = floor2.apartment(number='2A')
+    apt2a = floor2.apartment(number="2A")
     apt2a.bathroom()  # minimum requirement
 
     # Print structure
@@ -337,9 +334,9 @@ def demo():
     print("Invalid Structure Demo")
     print("=" * 60)
 
-    bad_building = Building(name='Bad House')
+    bad_building = Building(name="Bad House")
     bad_floor = bad_building.floor(number=1)
-    bad_apt = bad_floor.apartment(number='1A')
+    bad_apt = bad_floor.apartment(number="1A")
 
     # Invalid: fridge in dining room (not allowed by children spec)
     dining = bad_apt.dining_room()
@@ -351,5 +348,5 @@ def demo():
         print(f"  - {e}")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     demo()

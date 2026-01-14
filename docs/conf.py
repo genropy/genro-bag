@@ -23,6 +23,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
 # Read version from pyproject.toml (single source of truth)
 try:
     import tomllib
+
     with open(Path(__file__).parent.parent / "pyproject.toml", "rb") as f:
         _pyproject = tomllib.load(f)
     release = _pyproject["project"]["version"]

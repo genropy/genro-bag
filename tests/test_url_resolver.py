@@ -16,15 +16,15 @@ from genro_bag import Bag
 from genro_bag.resolvers import UrlResolver
 
 # ECB daily exchange rates - stable public XML endpoint
-ECB_RATES_URL = 'https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml'
+ECB_RATES_URL = "https://www.ecb.europa.eu/stats/eurofxref/eurofxref-daily.xml"
 
 # httpbin for testing - provides various response formats
-HTTPBIN_JSON = 'https://httpbin.org/json'
-HTTPBIN_XML = 'https://httpbin.org/xml'
+HTTPBIN_JSON = "https://httpbin.org/json"
+HTTPBIN_XML = "https://httpbin.org/xml"
 
 
 # Skip all tests if httpx not installed
-pytest.importorskip('httpx')
+pytest.importorskip("httpx")
 
 
 @pytest.fixture(autouse=True)
@@ -32,11 +32,12 @@ def reset_smartasync_cache():
     """Reset smartasync cache before each test."""
     # Reset before test - BagResolver.__call__ also uses @smartasync
     from genro_bag.resolver import BagResolver
-    if hasattr(Bag.from_url, '_smartasync_reset_cache'):
+
+    if hasattr(Bag.from_url, "_smartasync_reset_cache"):
         Bag.from_url._smartasync_reset_cache()
-    if hasattr(UrlResolver.load, '_smartasync_reset_cache'):
+    if hasattr(UrlResolver.load, "_smartasync_reset_cache"):
         UrlResolver.load._smartasync_reset_cache()
-    if hasattr(BagResolver.__call__, '_smartasync_reset_cache'):
+    if hasattr(BagResolver.__call__, "_smartasync_reset_cache"):
         BagResolver.__call__._smartasync_reset_cache()
     yield
 
@@ -98,7 +99,7 @@ class TestUrlResolverBasic:
         resolver = UrlResolver(HTTPBIN_JSON, as_bag=False)
         result = resolver()
         assert isinstance(result, bytes)
-        assert b'slideshow' in result  # httpbin/json contains this
+        assert b"slideshow" in result  # httpbin/json contains this
 
     @pytest.mark.network
     def test_fetch_with_timeout(self):
@@ -110,15 +111,12 @@ class TestUrlResolverBasic:
     def test_resolver_parameters(self):
         """Resolver stores parameters correctly."""
         resolver = UrlResolver(
-            'http://example.com/data.xml',
-            cache_time=120,
-            timeout=45,
-            as_bag=True
+            "http://example.com/data.xml", cache_time=120, timeout=45, as_bag=True
         )
-        assert resolver._kw['url'] == 'http://example.com/data.xml'
-        assert resolver._kw['cache_time'] == 120
-        assert resolver._kw['timeout'] == 45
-        assert resolver._kw['as_bag'] is True
+        assert resolver._kw["url"] == "http://example.com/data.xml"
+        assert resolver._kw["cache_time"] == 120
+        assert resolver._kw["timeout"] == 45
+        assert resolver._kw["as_bag"] is True
 
 
 class TestUrlResolverAsBag:
@@ -166,7 +164,7 @@ class TestUrlResolverAsync:
         # Call resolver() in async context - returns coroutine to await
         result = await resolver()
         assert isinstance(result, bytes)
-        assert b'slideshow' in result
+        assert b"slideshow" in result
 
     @pytest.mark.asyncio
     @pytest.mark.network
@@ -186,10 +184,7 @@ class TestUrlResolverAsync:
         resolver2 = UrlResolver(HTTPBIN_XML, as_bag=True)
 
         # Run concurrently - resolver() returns coroutines in async context
-        results = await asyncio.gather(
-            resolver1(),
-            resolver2()
-        )
+        results = await asyncio.gather(resolver1(), resolver2())
 
         assert isinstance(results[0], bytes)
         assert isinstance(results[1], Bag)
@@ -207,7 +202,7 @@ class TestUrlResolverCaching:
     @pytest.mark.network
     def test_no_cache(self):
         """cache_time=0 fetches every time (different UUIDs)."""
-        resolver = UrlResolver('https://httpbin.org/uuid', cache_time=0)
+        resolver = UrlResolver("https://httpbin.org/uuid", cache_time=0)
 
         result1 = resolver()
         result2 = resolver()
@@ -224,10 +219,10 @@ class TestUrlResolverInBag:
     def test_resolver_in_bag_node(self):
         """UrlResolver works when assigned to Bag node."""
         bag = Bag()
-        bag['rates'] = UrlResolver(ECB_RATES_URL, as_bag=True)
+        bag["rates"] = UrlResolver(ECB_RATES_URL, as_bag=True)
 
         # Check resolver is set
-        node = bag.get_node('rates')
+        node = bag.get_node("rates")
         assert node.resolver is not None
         assert isinstance(node.resolver, UrlResolver)
 
@@ -239,11 +234,11 @@ class TestUrlResolverInBag:
     def test_multiple_url_resolvers(self):
         """Multiple URL resolvers in same Bag."""
         bag = Bag()
-        bag['json'] = UrlResolver(HTTPBIN_JSON, as_bag=False)
-        bag['xml'] = UrlResolver(HTTPBIN_XML, as_bag=True)
+        bag["json"] = UrlResolver(HTTPBIN_JSON, as_bag=False)
+        bag["xml"] = UrlResolver(HTTPBIN_XML, as_bag=True)
 
-        json_result = bag.get_node('json').resolver()
-        xml_result = bag.get_node('xml').resolver()
+        json_result = bag.get_node("json").resolver()
+        xml_result = bag.get_node("xml").resolver()
 
         assert isinstance(json_result, bytes)
         assert isinstance(xml_result, Bag)
@@ -254,20 +249,20 @@ class TestUrlResolverEquality:
 
     def test_same_url_same_params_equal(self):
         """Same URL and params produce equal resolvers."""
-        r1 = UrlResolver('http://example.com', cache_time=60)
-        r2 = UrlResolver('http://example.com', cache_time=60)
+        r1 = UrlResolver("http://example.com", cache_time=60)
+        r2 = UrlResolver("http://example.com", cache_time=60)
         assert r1 == r2
 
     def test_different_url_not_equal(self):
         """Different URLs produce different resolvers."""
-        r1 = UrlResolver('http://example.com/a')
-        r2 = UrlResolver('http://example.com/b')
+        r1 = UrlResolver("http://example.com/a")
+        r2 = UrlResolver("http://example.com/b")
         assert r1 != r2
 
     def test_same_url_different_cache_not_equal(self):
         """Same URL but different cache_time are not equal."""
-        r1 = UrlResolver('http://example.com', cache_time=60)
-        r2 = UrlResolver('http://example.com', cache_time=120)
+        r1 = UrlResolver("http://example.com", cache_time=60)
+        r2 = UrlResolver("http://example.com", cache_time=120)
         assert r1 != r2
 
 
@@ -277,37 +272,30 @@ class TestUrlResolverSerialization:
     def test_serialize(self):
         """Resolver can be serialized."""
         resolver = UrlResolver(
-            'http://example.com/data.xml',
-            cache_time=120,
-            timeout=45,
-            as_bag=True
+            "http://example.com/data.xml", cache_time=120, timeout=45, as_bag=True
         )
         data = resolver.serialize()
 
-        assert data['resolver_class'] == 'UrlResolver'
-        assert 'url_resolver' in data['resolver_module']
-        assert data['args'] == ['http://example.com/data.xml']
-        assert data['kwargs']['cache_time'] == 120
-        assert data['kwargs']['timeout'] == 45
-        assert data['kwargs']['as_bag'] is True
+        assert data["resolver_class"] == "UrlResolver"
+        assert "url_resolver" in data["resolver_module"]
+        assert data["args"] == ["http://example.com/data.xml"]
+        assert data["kwargs"]["cache_time"] == 120
+        assert data["kwargs"]["timeout"] == 45
+        assert data["kwargs"]["as_bag"] is True
 
     def test_deserialize(self):
         """Resolver can be deserialized."""
         from genro_bag.resolver import BagResolver
 
-        original = UrlResolver(
-            'http://example.com/data.xml',
-            cache_time=120,
-            as_bag=True
-        )
+        original = UrlResolver("http://example.com/data.xml", cache_time=120, as_bag=True)
         data = original.serialize()
 
         restored = BagResolver.deserialize(data)
 
         assert isinstance(restored, UrlResolver)
-        assert restored._kw['url'] == 'http://example.com/data.xml'
-        assert restored._kw['cache_time'] == 120
-        assert restored._kw['as_bag'] is True
+        assert restored._kw["url"] == "http://example.com/data.xml"
+        assert restored._kw["cache_time"] == 120
+        assert restored._kw["as_bag"] is True
 
 
 class TestUrlResolverErrorHandling:
@@ -318,7 +306,7 @@ class TestUrlResolverErrorHandling:
         """Invalid URL raises appropriate error."""
         import httpx
 
-        resolver = UrlResolver('http://invalid.invalid.invalid/')
+        resolver = UrlResolver("http://invalid.invalid.invalid/")
         with pytest.raises((httpx.ConnectError, httpx.HTTPError)):
             resolver()
 
@@ -327,6 +315,6 @@ class TestUrlResolverErrorHandling:
         """404 response raises HTTPStatusError."""
         import httpx
 
-        resolver = UrlResolver('https://httpbin.org/status/404')
+        resolver = UrlResolver("https://httpbin.org/status/404")
         with pytest.raises(httpx.HTTPStatusError):
             resolver()

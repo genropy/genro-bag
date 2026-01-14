@@ -508,11 +508,11 @@ class BagBuilderBase(ABC):
         if schema_node is None:
             raise KeyError(f"Element '{name}' not found in schema")
 
-        cached = schema_node.attr.get("_cached_info")
+        cached = schema_node.attr.get("_cached_info")  # type: ignore[union-attr]
         if cached is not None:
             return cached  # type: ignore[no-any-return]
 
-        result = dict(schema_node.attr)
+        result = dict(schema_node.attr)  # type: ignore[union-attr]
         inherits_from = result.pop("inherits_from", None)
 
         if inherits_from:
@@ -526,7 +526,7 @@ class BagBuilderBase(ABC):
         if sub_tags is not None:
             result["sub_tags_compiled"] = _parse_sub_tags_spec(sub_tags)
 
-        schema_node.attr["_cached_info"] = result
+        schema_node.attr["_cached_info"] = result  # type: ignore[union-attr]
         return result
 
     def __iter__(self):

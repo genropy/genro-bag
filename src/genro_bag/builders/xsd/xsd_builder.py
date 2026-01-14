@@ -100,7 +100,7 @@ class XsdBuilder(BagBuilderBase):
             xmlschema.XMLSchemaValidationError: If validation fails.
         """
         try:
-            import xmlschema
+            import xmlschema  # type: ignore[import-not-found]
         except ImportError as err:
             raise ImportError(
                 "xmlschema is required for full_validate. "

@@ -539,7 +539,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
             return curr, pathlist[0]
 
         result = self._traverse_inner(curr, pathlist, write_mode, static)
-        return smartcontinuation(result, finalize)
+        return smartcontinuation(result, finalize)  # type: ignore[no-any-return]
 
     def _is_coroutine(self, value: Any) -> bool:
         """Check if value is a coroutine (only possible in async context)."""
@@ -601,7 +601,8 @@ class Bag(BagParser, BagSerializer, BagQuery):
                 if new_curr is None:
                     return (curr, [segment] + remaining)
                 return self._traverse_inner(new_curr, remaining, write_mode, static)
-            return cont()
+
+            return cont()  # type: ignore[no-any-return]
 
         return (curr, pathlist)
 
@@ -985,7 +986,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
         if not node:
             self[path] = default
             return default
-        return node.value
+        return node.value  # type: ignore[union-attr]
 
     @property
     def nodes(self) -> list[BagNode]:
@@ -1028,7 +1029,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
             _remove_null_attributes: If True, remove attributes with None value.
             **kwargs: Additional attributes to set.
         """
-        self.get_node(path, autocreate=True).set_attr(
+        self.get_node(path, autocreate=True).set_attr(  # type: ignore[union-attr]
             attr=_attributes, _remove_null_attributes=_remove_null_attributes, **kwargs
         )
 
@@ -1047,7 +1048,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
         """
         node = self.get_node(path)
         if node:
-            return node.get_attr(label=attr, default=default)
+            return node.get_attr(label=attr, default=default)  # type: ignore[union-attr]
         return default
 
     def del_attr(self, path: str | None = None, *attrs: str) -> None:
@@ -1059,7 +1060,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
         """
         node = self.get_node(path)
         if node:
-            node.del_attr(*attrs)
+            node.del_attr(*attrs)  # type: ignore[union-attr]
 
     def get_inherited_attributes(self) -> dict[str, Any]:
         """Get inherited attributes from parent chain.
@@ -1085,7 +1086,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
             The resolver, or None if path doesn't exist or has no resolver.
         """
         node = self.get_node(path)
-        return node.resolver if node else None
+        return node.resolver if node else None  # type: ignore[union-attr]
 
     def set_resolver(self, path: str, resolver) -> None:
         """Set a resolver at the given path.
@@ -1456,7 +1457,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
                 return node
             return None
 
-        return smartcontinuation(result, finalize)
+        return smartcontinuation(result, finalize)  # type: ignore[no-any-return]
 
     # -------------------- backref management --------------------------------
 

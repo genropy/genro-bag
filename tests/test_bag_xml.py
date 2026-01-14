@@ -3,8 +3,6 @@
 
 import datetime
 
-import pytest
-
 from genro_bag import Bag
 
 
@@ -14,56 +12,56 @@ class TestBagToXml:
     def test_simple_values(self):
         """Test serialization of simple scalar values."""
         bag = Bag()
-        bag['name'] = 'test'
-        bag['count'] = 42
-        bag['price'] = 3.14
+        bag["name"] = "test"
+        bag["count"] = 42
+        bag["price"] = 3.14
 
         xml = bag.to_xml()
 
-        assert '<name>test</name>' in xml
-        assert '<count>42</count>' in xml
-        assert '<price>3.14</price>' in xml
+        assert "<name>test</name>" in xml
+        assert "<count>42</count>" in xml
+        assert "<price>3.14</price>" in xml
 
     def test_nested_bag(self):
         """Test serialization of nested Bag structures."""
         bag = Bag()
-        bag['person.name'] = 'Alice'
-        bag['person.age'] = 30
+        bag["person.name"] = "Alice"
+        bag["person.age"] = 30
 
         xml = bag.to_xml()
 
-        assert '<person>' in xml
-        assert '<name>Alice</name>' in xml
-        assert '<age>30</age>' in xml
-        assert '</person>' in xml
+        assert "<person>" in xml
+        assert "<name>Alice</name>" in xml
+        assert "<age>30</age>" in xml
+        assert "</person>" in xml
 
     def test_empty_values(self):
         """Test serialization of empty/None values."""
         bag = Bag()
-        bag['empty'] = ''
-        bag['none'] = None
+        bag["empty"] = ""
+        bag["none"] = None
 
         xml = bag.to_xml()
 
         # Empty values produce self-closed tags by default
-        assert '<empty/>' in xml
-        assert '<none/>' in xml
+        assert "<empty/>" in xml
+        assert "<none/>" in xml
 
     def test_special_characters_escaped(self):
         """Test that special XML characters are escaped."""
         bag = Bag()
-        bag['text'] = '<script>alert("xss")</script>'
-        bag['ampersand'] = 'A & B'
+        bag["text"] = '<script>alert("xss")</script>'
+        bag["ampersand"] = "A & B"
 
         xml = bag.to_xml()
 
-        assert '&lt;script&gt;' in xml
-        assert '&amp;' in xml
+        assert "&lt;script&gt;" in xml
+        assert "&amp;" in xml
 
     def test_attributes(self):
         """Test serialization with node attributes."""
         bag = Bag()
-        bag.set_item('item', 'value', _attributes={'id': '123', 'active': True})
+        bag.set_item("item", "value", _attributes={"id": "123", "active": True})
 
         xml = bag.to_xml()
 
@@ -73,7 +71,7 @@ class TestBagToXml:
     def test_doc_header_true(self):
         """Test XML declaration with doc_header=True."""
         bag = Bag()
-        bag['test'] = 'value'
+        bag["test"] = "value"
 
         xml = bag.to_xml(doc_header=True)
 
@@ -82,7 +80,7 @@ class TestBagToXml:
     def test_doc_header_custom(self):
         """Test custom XML declaration."""
         bag = Bag()
-        bag['test'] = 'value'
+        bag["test"] = "value"
 
         custom_header = '<?xml version="1.0" encoding="ISO-8859-1"?>'
         xml = bag.to_xml(doc_header=custom_header)
@@ -92,39 +90,39 @@ class TestBagToXml:
     def test_pretty_print(self):
         """Test pretty-printed output with indentation."""
         bag = Bag()
-        bag['root.child'] = 'value'
+        bag["root.child"] = "value"
 
         xml = bag.to_xml(pretty=True)
 
         # Pretty print adds indentation and newlines
-        assert '\n' in xml
+        assert "\n" in xml
 
     def test_self_closed_tags_list(self):
         """Test self_closed_tags parameter."""
         bag = Bag()
-        bag['br'] = ''
-        bag['div'] = ''
+        bag["br"] = ""
+        bag["div"] = ""
 
         # Only 'br' should be self-closed
-        xml = bag.to_xml(self_closed_tags=['br'])
+        xml = bag.to_xml(self_closed_tags=["br"])
 
-        assert '<br/>' in xml
-        assert '<div></div>' in xml
+        assert "<br/>" in xml
+        assert "<div></div>" in xml
 
     def test_invalid_tag_sanitization(self):
         """Test that invalid XML tag names are sanitized."""
         bag = Bag()
-        bag['123numeric'] = 'value'
-        bag['with space'] = 'value'
+        bag["123numeric"] = "value"
+        bag["with space"] = "value"
 
         xml = bag.to_xml()
 
         # Numeric start gets underscore prefix
-        assert '<_123numeric' in xml
+        assert "<_123numeric" in xml
         # Space replaced with underscore
-        assert '<with_space' in xml
+        assert "<with_space" in xml
         # Original tag stored in _tag attribute
-        assert '_tag=' in xml
+        assert "_tag=" in xml
 
 
 class TestBagFromXml:
@@ -132,28 +130,28 @@ class TestBagFromXml:
 
     def test_simple_xml(self):
         """Test parsing simple XML elements."""
-        xml = '<root><name>test</name><count>42</count></root>'
+        xml = "<root><name>test</name><count>42</count></root>"
 
         bag = Bag.from_xml(xml)
 
-        assert bag['root.name'] == 'test'
-        assert bag['root.count'] == '42'  # Plain XML values are strings
+        assert bag["root.name"] == "test"
+        assert bag["root.count"] == "42"  # Plain XML values are strings
 
     def test_nested_structure(self):
         """Test parsing nested XML structure."""
-        xml = '''
+        xml = """
         <config>
             <database>
                 <host>localhost</host>
                 <port>5432</port>
             </database>
         </config>
-        '''
+        """
 
         bag = Bag.from_xml(xml)
 
-        assert bag['config.database.host'] == 'localhost'
-        assert bag['config.database.port'] == '5432'
+        assert bag["config.database.host"] == "localhost"
+        assert bag["config.database.port"] == "5432"
 
     def test_attributes_as_node_attrs(self):
         """Test that XML attributes become node attributes.
@@ -165,48 +163,48 @@ class TestBagFromXml:
 
         bag = Bag.from_xml(xml)
 
-        assert bag['root.item'] == 'value'
-        node = bag.get_node('root.item')
+        assert bag["root.item"] == "value"
+        node = bag.get_node("root.item")
         # TYTX auto-decodes "123" as integer and "true" as boolean
-        assert node.attr['id'] == 123
-        assert node.attr['active'] is True
+        assert node.attr["id"] == 123
+        assert node.attr["active"] is True
 
     def test_empty_element(self):
         """Test parsing empty elements."""
-        xml = '<root><empty/></root>'
+        xml = "<root><empty/></root>"
 
         bag = Bag.from_xml(xml)
 
         # Empty element value depends on implementation
-        assert 'empty' in bag['root'].keys()
+        assert "empty" in bag["root"].keys()
 
     def test_empty_factory(self):
         """Test empty parameter provides factory for empty elements."""
-        xml = '<root><empty/></root>'
+        xml = "<root><empty/></root>"
 
-        bag = Bag.from_xml(xml, empty=lambda: 'default')
+        bag = Bag.from_xml(xml, empty=lambda: "default")
 
-        assert bag['root.empty'] == 'default'
+        assert bag["root.empty"] == "default"
 
     def test_duplicate_labels(self):
         """Test handling of duplicate element names."""
-        xml = '<root><item>first</item><item>second</item><item>third</item></root>'
+        xml = "<root><item>first</item><item>second</item><item>third</item></root>"
 
         bag = Bag.from_xml(xml)
 
-        assert bag['root.item'] == 'first'
-        assert bag['root.item_1'] == 'second'
-        assert bag['root.item_2'] == 'third'
+        assert bag["root.item"] == "first"
+        assert bag["root.item_1"] == "second"
+        assert bag["root.item_2"] == "third"
 
     def test_mixed_content(self):
         """Test elements with both text and child elements."""
-        xml = '<root><parent>text<child>nested</child></parent></root>'
+        xml = "<root><parent>text<child>nested</child></parent></root>"
 
         bag = Bag.from_xml(xml)
 
         # Text content stored in _ key
-        assert bag['root.parent._'] == 'text'
-        assert bag['root.parent.child'] == 'nested'
+        assert bag["root.parent._"] == "text"
+        assert bag["root.parent.child"] == "nested"
 
 
 class TestBagFromXmlLegacyFormat:
@@ -214,13 +212,13 @@ class TestBagFromXmlLegacyFormat:
 
     def test_genrobag_wrapper_removed(self):
         """Test that GenRoBag wrapper element is removed."""
-        xml = '<GenRoBag><name>test</name></GenRoBag>'
+        xml = "<GenRoBag><name>test</name></GenRoBag>"
 
         bag = Bag.from_xml(xml)
 
         # GenRoBag wrapper is stripped
-        assert bag['name'] == 'test'
-        assert 'GenRoBag' not in bag.keys()
+        assert bag["name"] == "test"
+        assert "GenRoBag" not in bag.keys()
 
     def test_type_T_integer(self):
         """Test _T="L" for integer type."""
@@ -228,8 +226,8 @@ class TestBagFromXmlLegacyFormat:
 
         bag = Bag.from_xml(xml)
 
-        assert bag['count'] == 42
-        assert isinstance(bag['count'], int)
+        assert bag["count"] == 42
+        assert isinstance(bag["count"], int)
 
     def test_type_T_decimal(self):
         """Test _T="N" for Decimal type."""
@@ -239,8 +237,8 @@ class TestBagFromXmlLegacyFormat:
 
         bag = Bag.from_xml(xml)
 
-        assert bag['price'] == Decimal('3.14')
-        assert isinstance(bag['price'], Decimal)
+        assert bag["price"] == Decimal("3.14")
+        assert isinstance(bag["price"], Decimal)
 
     def test_type_T_boolean(self):
         """Test _T="B" for boolean type."""
@@ -248,8 +246,8 @@ class TestBagFromXmlLegacyFormat:
 
         bag = Bag.from_xml(xml)
 
-        assert bag['active'] is True
-        assert bag['disabled'] is False
+        assert bag["active"] is True
+        assert bag["disabled"] is False
 
     def test_type_T_date(self):
         """Test _T="D" for date type."""
@@ -257,7 +255,7 @@ class TestBagFromXmlLegacyFormat:
 
         bag = Bag.from_xml(xml)
 
-        assert bag['created'] == datetime.date(2025, 1, 5)
+        assert bag["created"] == datetime.date(2025, 1, 5)
 
     def test_type_T_datetime(self):
         """Test _T="DH" for datetime type."""
@@ -265,7 +263,7 @@ class TestBagFromXmlLegacyFormat:
 
         bag = Bag.from_xml(xml)
 
-        assert bag['timestamp'] == datetime.datetime(2025, 1, 5, 10, 30, 0)
+        assert bag["timestamp"] == datetime.datetime(2025, 1, 5, 10, 30, 0)
 
     def test_type_T_time(self):
         """Test _T="H" for time type."""
@@ -273,7 +271,7 @@ class TestBagFromXmlLegacyFormat:
 
         bag = Bag.from_xml(xml)
 
-        assert bag['start_time'] == datetime.time(14, 30, 0)
+        assert bag["start_time"] == datetime.time(14, 30, 0)
 
     def test_tytx_attribute_format(self):
         """Test ::TYPE suffix in attribute values."""
@@ -283,9 +281,9 @@ class TestBagFromXmlLegacyFormat:
 
         bag = Bag.from_xml(xml)
 
-        node = bag.get_node('item')
-        assert node.attr['count'] == 42
-        assert node.attr['price'] == Decimal('3.14')
+        node = bag.get_node("item")
+        assert node.attr["count"] == 42
+        assert node.attr["price"] == Decimal("3.14")
 
     def test_nested_elements_in_genrobag(self):
         """Test nested elements in GenRoBag format.
@@ -293,16 +291,16 @@ class TestBagFromXmlLegacyFormat:
         Note: Array types (A*) are not supported. Nested elements
         are parsed as regular Bag children.
         """
-        xml = '''<GenRoBag><numbers>
+        xml = """<GenRoBag><numbers>
             <n>1</n><n>2</n><n>3</n>
-        </numbers></GenRoBag>'''
+        </numbers></GenRoBag>"""
 
         bag = Bag.from_xml(xml)
 
         # Nested elements become Bag children with duplicate handling
-        assert bag['numbers.n'] == '1'
-        assert bag['numbers.n_1'] == '2'
-        assert bag['numbers.n_2'] == '3'
+        assert bag["numbers.n"] == "1"
+        assert bag["numbers.n_1"] == "2"
+        assert bag["numbers.n_2"] == "3"
 
     def test_empty_with_type(self):
         """Test empty element with type.
@@ -315,7 +313,7 @@ class TestBagFromXmlLegacyFormat:
         bag = Bag.from_xml(xml)
 
         # Empty text type returns empty string
-        assert bag['empty'] == ''
+        assert bag["empty"] == ""
 
 
 class TestBagXmlRoundTrip:
@@ -324,28 +322,28 @@ class TestBagXmlRoundTrip:
     def test_simple_roundtrip(self):
         """Test that simple values survive round-trip."""
         original = Bag()
-        original['name'] = 'test'
-        original['description'] = 'A test bag'
+        original["name"] = "test"
+        original["description"] = "A test bag"
 
         xml = original.to_xml()
-        restored = Bag.from_xml(f'<root>{xml}</root>')
+        restored = Bag.from_xml(f"<root>{xml}</root>")
 
-        assert restored['root.name'] == 'test'
-        assert restored['root.description'] == 'A test bag'
+        assert restored["root.name"] == "test"
+        assert restored["root.description"] == "A test bag"
 
     def test_nested_roundtrip(self):
         """Test that nested structure survives round-trip."""
         original = Bag()
-        original['config.db.host'] = 'localhost'
-        original['config.db.port'] = '5432'
-        original['config.app.name'] = 'myapp'
+        original["config.db.host"] = "localhost"
+        original["config.db.port"] = "5432"
+        original["config.app.name"] = "myapp"
 
         xml = original.to_xml()
-        restored = Bag.from_xml(f'<root>{xml}</root>')
+        restored = Bag.from_xml(f"<root>{xml}</root>")
 
-        assert restored['root.config.db.host'] == 'localhost'
-        assert restored['root.config.db.port'] == '5432'
-        assert restored['root.config.app.name'] == 'myapp'
+        assert restored["root.config.db.host"] == "localhost"
+        assert restored["root.config.db.port"] == "5432"
+        assert restored["root.config.app.name"] == "myapp"
 
     def test_attributes_roundtrip(self):
         """Test that attributes survive round-trip.
@@ -353,21 +351,21 @@ class TestBagXmlRoundTrip:
         Note: TYTX auto-decodes numeric strings to integers.
         """
         original = Bag()
-        original.set_item('item', 'value', _attributes={'id': '123'})
+        original.set_item("item", "value", _attributes={"id": "123"})
 
         xml = original.to_xml()
-        restored = Bag.from_xml(f'<root>{xml}</root>')
+        restored = Bag.from_xml(f"<root>{xml}</root>")
 
-        node = restored.get_node('root.item')
+        node = restored.get_node("root.item")
         # TYTX decodes "123" as integer
-        assert node.attr['id'] == 123
+        assert node.attr["id"] == 123
 
     def test_special_chars_roundtrip(self):
         """Test that special characters survive round-trip."""
         original = Bag()
-        original['text'] = 'Hello <world> & friends'
+        original["text"] = "Hello <world> & friends"
 
         xml = original.to_xml()
-        restored = Bag.from_xml(f'<root>{xml}</root>')
+        restored = Bag.from_xml(f"<root>{xml}</root>")
 
-        assert restored['root.text'] == 'Hello <world> & friends'
+        assert restored["root.text"] == "Hello <world> & friends"
