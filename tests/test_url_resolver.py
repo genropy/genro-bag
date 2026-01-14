@@ -163,8 +163,8 @@ class TestUrlResolverAsync:
         """Async fetch returns raw bytes."""
         resolver = UrlResolver(HTTPBIN_JSON, as_bag=False)
 
-        # Call in async context
-        result = await resolver.load()
+        # Call resolver() in async context - returns coroutine to await
+        result = await resolver()
         assert isinstance(result, bytes)
         assert b'slideshow' in result
 
@@ -174,7 +174,7 @@ class TestUrlResolverAsync:
         """Async fetch and parse as Bag."""
         resolver = UrlResolver(ECB_RATES_URL, as_bag=True)
 
-        result = await resolver.load()
+        result = await resolver()
         assert isinstance(result, Bag)
         assert len(result) > 0
 
@@ -185,10 +185,10 @@ class TestUrlResolverAsync:
         resolver1 = UrlResolver(HTTPBIN_JSON, as_bag=False)
         resolver2 = UrlResolver(HTTPBIN_XML, as_bag=True)
 
-        # Run concurrently
+        # Run concurrently - resolver() returns coroutines in async context
         results = await asyncio.gather(
-            resolver1.load(),
-            resolver2.load()
+            resolver1(),
+            resolver2()
         )
 
         assert isinstance(results[0], bytes)

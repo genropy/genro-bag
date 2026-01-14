@@ -848,7 +848,7 @@ class TestStaticValue:
     """Test static_value property."""
 
     def test_static_value_with_resolver_read_only(self):
-        """static_value stays None with read_only resolver (default)."""
+        """static_value stays None with read_only resolver."""
         from genro_bag.resolvers import BagCbResolver
 
         call_count = [0]
@@ -857,8 +857,8 @@ class TestStaticValue:
             call_count[0] += 1
             return 'resolved'
 
-        # Default is read_only=True - no caching
-        resolver = BagCbResolver(callback)
+        # Explicit read_only=True - no caching in node
+        resolver = BagCbResolver(callback, read_only=True)
         bag = Bag()
         bag['item'] = resolver
 
@@ -873,7 +873,7 @@ class TestStaticValue:
         assert result == 'resolved'
         assert call_count[0] == 1
 
-        # static_value remains None (read_only doesn't cache)
+        # static_value remains None (read_only doesn't cache in node)
         assert node.static_value is None
 
     def test_static_value_with_resolver_caches_when_not_read_only(self):

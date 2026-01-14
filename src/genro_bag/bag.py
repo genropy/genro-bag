@@ -53,7 +53,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, TypeVar, cast
 
-from genro_toolbox import smartawait, smartcontinuation, smartsplit
+from genro_toolbox import smartcontinuation, smartsplit
 from genro_toolbox.decorators import extract_kwargs
 from genro_toolbox.typeutils import safe_is_instance
 
@@ -288,8 +288,8 @@ class Bag(BagParser, BagSerializer, BagQuery):
     # -------------------- class methods --------------------------------
 
     @classmethod
-    async def from_url(cls, url: str, timeout: int = 30) -> Bag:
-        """Load Bag from URL (classmethod, async-capable).
+    def from_url(cls, url: str, timeout: int = 30) -> Bag:
+        """Load Bag from URL (classmethod, sync/async capable).
 
         Fetches content from URL and parses based on HTTP content-type header.
         Uses UrlResolver internally for DRY implementation.
@@ -308,7 +308,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
             ValueError: If content-type is not supported.
 
         Example:
-            >>> # Sync context (smartasync handles the event loop)
+            >>> # Sync context
             >>> bag = Bag.from_url('https://example.com/data.xml')
             >>>
             >>> # Async context
@@ -317,7 +317,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
         from genro_bag.resolvers import UrlResolver
 
         resolver = UrlResolver(url, timeout=timeout, as_bag=True)
-        return cast("Bag", await smartawait(resolver()))
+        return cast("Bag", resolver())
 
     # -------------------- properties --------------------------------
 

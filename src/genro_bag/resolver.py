@@ -22,11 +22,10 @@ from __future__ import annotations
 import asyncio
 import importlib
 import json
-from collections.abc import Callable
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
-from genro_toolbox import smartasync, smartawait
+from genro_toolbox import smartasync
 
 if TYPE_CHECKING:
     from .bagnode import BagNode
@@ -74,7 +73,7 @@ class BagResolver:
         # resolver._kw['timeout'] = 30 (default)
     """
 
-    class_kwargs: dict[str, Any] = {"cache_time": 0, "read_only": True}
+    class_kwargs: dict[str, Any] = {"cache_time": 0, "read_only": False}
     class_args: list[str] = []
 
     __slots__ = (
@@ -84,6 +83,7 @@ class BagResolver:
         "_parent_node",  # BagNode | None: bidirectional link to parent
         "_fingerprint",  # int: hash for __eq__ comparison
         "_cache_last_update",  # datetime | None: last load() timestamp
+        "_cached_value",  # Any: cached result when standalone (no parent node)
     )
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -105,6 +105,7 @@ class BagResolver:
 
         # Cache state
         self._cache_last_update: datetime | None = None
+        self._cached_value: Any = None
 
         # Build _kw dict from class_args and class_kwargs
         self._kw: dict[str, Any] = {}
@@ -181,7 +182,26 @@ class BagResolver:
     @property
     def read_only(self) -> bool:
         """Whether resolver is in read-only mode."""
-        return self._kw.get("read_only", True)  # type: ignore[no-any-return]
+        if self.cache_time != 0:
+            return False  # cache implica read_only=False
+        return self._kw.get("read_only", False)  # type: ignore[no-any-return]
+
+    # =========================================================================
+    # CACHED VALUE PROPERTY
+    # =========================================================================
+
+    @property
+    def cached_value(self) -> Any:
+        """Get cached value from parent node or local storage."""
+        return self._parent_node._value if self._parent_node else self._cached_value
+
+    @cached_value.setter
+    def cached_value(self, value: Any) -> None:
+        """Set cached value in parent node or local storage."""
+        if self._parent_node:
+            self._parent_node._value = value
+        else:
+            self._cached_value = value
 
     # =========================================================================
     # CACHE MANAGEMENT
@@ -246,7 +266,7 @@ class BagResolver:
         """
         # Se non read_only e (static o cache valida), ritorna valore cachato
         if not self.read_only and (static or not self.expired):
-            return self._parent_node._value
+            return self.cached_value
 
         # Gestione kwargs temporanei
         if kwargs:
@@ -276,9 +296,10 @@ class BagResolver:
     # =========================================================================
 
     def _finalize_result(self, result: Any) -> Any:
-        """Salva risultato in cache e nel nodo."""
+        """Salva risultato in cache e nel nodo (se non read_only)."""
         self._cache_last_update = datetime.now()
-        self._parent_node._value = result
+        if not self.read_only:
+            self.cached_value = result
         return result
 
     def _sync_sync_load(self) -> Any:
@@ -460,20 +481,18 @@ class BagCbResolver(BagResolver):
         True
     """
 
-    class_kwargs = {"cache_time": 0, "read_only": True}
+    class_kwargs = {"cache_time": 0, "read_only": False}
     class_args = ["callback"]
 
+    @property
+    def is_async(self) -> bool:
+        """Check if callback is async."""
+        return asyncio.iscoroutinefunction(self._kw["callback"])
+
+    def load(self) -> Any:
+        """Call sync callback and return its result."""
+        return self._kw["callback"]()
+
     async def async_load(self) -> Any:
-        """Call the callback and return its result.
-
-        Uses smartawait to handle both sync and async callbacks.
-
-        Returns:
-            The value returned by the callback.
-
-        Raises:
-            TypeError: If callback is not callable.
-        """
-        callback: Callable[[], Any] = self._kw["callback"]
-        result = await smartawait(callback())
-        return self.on_result(result)
+        """Call async callback and return its result."""
+        return await self._kw["callback"]()

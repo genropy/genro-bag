@@ -65,13 +65,14 @@ class TestBagCbResolverSync:
             counter['value'] += 1
             return counter['value']
 
-        resolver = BagCbResolver(increment, cache_time=10, read_only=False)
+        resolver = BagCbResolver(increment, cache_time=10)
         # First call loads
         assert resolver() == 1
-        # Subsequent calls use cache (returns None to signal use cached value)
-        # But since read_only=False, node stores value
-        assert resolver() is None  # Signal to use cached
-        assert resolver() is None
+        # Subsequent calls use cache, return cached value
+        assert resolver() == 1
+        assert resolver() == 1
+        # Verify callback was only called once
+        assert counter['value'] == 1
 
     def test_sync_callback_returns_bag(self):
         """Callback can return a Bag."""
