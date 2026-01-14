@@ -39,21 +39,25 @@ class BagResolver:
     configurable duration.
 
     read_only Mode (how BagNode.get_value interacts with resolver):
-        - read_only=True (default): Each call to get_value() invokes resolver(),
+        - read_only=True: Each call to get_value() invokes resolver(),
           which calls load(). The result is returned directly, NOT stored in
           node._value. Good for computed/dynamic values that shouldn't be cached
           in the node itself.
 
-        - read_only=False: When cache expires, get_value() calls resolver() which
-          calls load(), then stores the result in node._value. Subsequent calls
-          return node._value until cache expires again. Good for expensive
-          operations where you want the node to hold the cached result.
+        - read_only=False (default): When cache expires, get_value() calls
+          resolver() which calls load(), then stores the result in node._value.
+          Subsequent calls return node._value until cache expires again. Good for
+          expensive operations where you want the node to hold the cached result.
+
+        NOTE: If cache_time != 0, read_only is forced to False (caching implies
+        storing the value).
 
     Class Attributes:
         class_kwargs: dict of {param_name: default_value}
             Parameters with defaults, passable as keyword args.
             - 'cache_time': 0 = no cache, >0 = TTL in seconds, <0 = infinite cache
             - 'read_only': if True, resolved value is NOT saved in node._value
+              (default: False, ignored when cache_time != 0)
 
         class_args: list of positional parameter names
             Required parameters, passable as positional args.
@@ -181,9 +185,12 @@ class BagResolver:
 
     @property
     def read_only(self) -> bool:
-        """Whether resolver is in read-only mode."""
+        """Whether resolver is in read-only mode.
+
+        Returns False if cache_time != 0 (caching requires storing value).
+        """
         if self.cache_time != 0:
-            return False  # cache implica read_only=False
+            return False
         return self._kw.get("read_only", False)  # type: ignore[no-any-return]
 
     # =========================================================================
@@ -264,11 +271,11 @@ class BagResolver:
         Returns:
             The resolved value, or a coroutine if in async context.
         """
-        # Se non read_only e (static o cache valida), ritorna valore cachato
+        # If not read_only and (static or cache valid), return cached value
         if not self.read_only and (static or not self.expired):
             return self.cached_value
 
-        # Gestione kwargs temporanei
+        # Handle temporary kwargs overrides
         if kwargs:
             original_kw = self._kw
             self._kw = {**original_kw, **kwargs}
@@ -292,11 +299,11 @@ class BagResolver:
                 return self._async_async_load()
 
     # =========================================================================
-    # LOAD VARIANTS - 4 casi (is_async, in_async_context)
+    # LOAD VARIANTS - 4 cases (is_async, in_async_context)
     # =========================================================================
 
     def _finalize_result(self, result: Any) -> Any:
-        """Salva risultato in cache e nel nodo (se non read_only)."""
+        """Store result in cache and node (if not read_only)."""
         self._cache_last_update = datetime.now()
         if not self.read_only:
             self.cached_value = result
@@ -319,23 +326,6 @@ class BagResolver:
     async def _async_async_load(self) -> Any:
         """Async resolver in async context - awaits async_load()."""
         return self._finalize_result(await self.async_load())
-
-    def on_result(self, result: Any) -> Any:
-        """Called by load() after obtaining the result.
-
-        Updates cache timestamp and stores result in parent node if applicable.
-        Subclasses must call this at the end of their load() method.
-
-        Args:
-            result: The loaded value.
-
-        Returns:
-            The same result (for chaining).
-        """
-        self._cache_last_update = datetime.now()
-        if self._parent_node is not None and not self.read_only:
-            self._parent_node._value = result
-        return result
 
     # =========================================================================
     # METHODS TO OVERRIDE IN SUBCLASSES
