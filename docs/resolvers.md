@@ -230,9 +230,20 @@ resolver.reset()  # Clear cache, next access will reload
 
 ## Sync and Async Support
 
-All resolvers work transparently in both **synchronous** and **asynchronous** contexts. The same resolver, the same code, works everywhere.
+Resolvers work in both **synchronous** and **asynchronous** contexts, but the behavior differs based on the `static` parameter.
+
+### The `static` Parameter Contract
+
+When accessing values with resolvers, the `static` parameter controls the return type:
+
+| `static` | Return Type | Behavior |
+|----------|-------------|----------|
+| `True` | Always direct data | No resolver trigger, returns cached/stored value |
+| `False` | Data OR coroutine | May trigger resolver; returns coroutine if in async context and cache expired |
 
 ### Sync Context
+
+In synchronous code, resolvers work transparently - **no special handling required**. Even async resolvers are automatically awaited via `@smartasync`:
 
 ```python
 from genro_bag import Bag
@@ -241,23 +252,60 @@ from genro_bag.resolvers import UrlResolver
 bag = Bag()
 bag['api'] = UrlResolver('https://api.example.com/data')
 
-# In a regular function
+# In a regular function - works directly, even with async resolvers
 def get_data():
-    return bag['api']  # Works synchronously
+    return bag.get_item('api', static=False)  # Always returns data
 ```
 
 ### Async Context
 
+In async code with `static=False`, the result may be a coroutine when the resolver needs to load fresh data. Use `smartawait` to handle both cases:
+
 ```python
 from genro_bag import Bag
 from genro_bag.resolvers import UrlResolver
+from genro_toolbox import smartawait
 
 bag = Bag()
-bag['api'] = UrlResolver('https://api.example.com/data')
+bag['api'] = UrlResolver('https://api.example.com/data', cache_time=300)
 
-# In an async function
+# RECOMMENDED: Use smartawait to handle both data and coroutine
 async def get_data():
-    return bag['api']  # Works asynchronously
+    result = await smartawait(bag.get_item('api', static=False))
+    return result
+```
+
+Or explicitly check for coroutine:
+
+```python
+import inspect
+
+async def get_data():
+    result = bag.get_item('api', static=False)
+    if inspect.iscoroutine(result):
+        result = await result
+    return result
+```
+
+### When Does It Return a Coroutine?
+
+In async context with `static=False`:
+
+- **Returns data directly** if:
+  - Value is cached and not expired
+  - No resolver attached (static value)
+
+- **Returns coroutine** if:
+  - Resolver present AND cache expired (needs fresh load)
+
+### Safe Pattern for Async Code
+
+```python
+from genro_toolbox import smartawait
+
+async def safe_get(bag, path):
+    """Always-safe getter for async code."""
+    return await smartawait(bag.get_item(path, static=False))
 ```
 
 ### Async Callbacks
@@ -267,6 +315,7 @@ You can also use async functions as callbacks:
 ```python
 from genro_bag import Bag
 from genro_bag.resolvers import BagCbResolver
+from genro_toolbox import smartawait
 
 async def fetch_data():
     import aiohttp
@@ -277,11 +326,10 @@ async def fetch_data():
 bag = Bag()
 bag['data'] = BagCbResolver(fetch_data)
 
-# Works in both sync and async contexts
-data = bag['data']  # Automatically handles async
+# In async context, use smartawait
+async def get_data():
+    return await smartawait(bag.get_item('data', static=False))
 ```
-
-The resolver detects the execution context and adapts automatically. No special handling required.
 
 ## read_only Mode
 

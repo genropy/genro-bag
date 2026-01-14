@@ -18,16 +18,42 @@ Example:
     >>> bag['config.database.port'] = 5432
     >>> print(bag['config.database.host'])
     localhost
+
+Async Usage with Resolvers:
+    When using Bag with resolvers, the ``static`` parameter controls behavior:
+
+    - ``static=True``: Always returns direct data (no resolver trigger)
+    - ``static=False``: May trigger resolver if cache expired
+
+    In **sync context**, no special handling is needed - async resolvers are
+    automatically awaited via ``@smartasync``.
+
+    In **async context**, the result may be a coroutine. Use ``smartawait``::
+
+        from genro_toolbox import smartawait
+
+        async def get_data():
+            result = await smartawait(bag.get_item("path", static=False))
+            return result
+
+    Or explicitly check for coroutine::
+
+        import inspect
+
+        result = bag.get_item("path", static=False)
+        if inspect.iscoroutine(result):
+            result = await result
 """
 
 from __future__ import annotations
 
+import asyncio
 import os
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any, TypeVar, cast
 
-from genro_toolbox import smartasync, smartawait, smartsplit
+from genro_toolbox import smartawait, smartsplit
 from genro_toolbox.decorators import extract_kwargs
 from genro_toolbox.typeutils import safe_is_instance
 
@@ -262,7 +288,6 @@ class Bag(BagParser, BagSerializer, BagQuery):
     # -------------------- class methods --------------------------------
 
     @classmethod
-    @smartasync
     async def from_url(cls, url: str, timeout: int = 30) -> Bag:
         """Load Bag from URL (classmethod, async-capable).
 
@@ -358,6 +383,15 @@ class Bag(BagParser, BagSerializer, BagQuery):
         while curr.parent is not None:
             curr = curr.parent
         return curr
+
+    @property
+    def in_async_context(self) -> bool:
+        """Whether we are currently running inside an async context."""
+        try:
+            asyncio.get_running_loop()
+            return True
+        except RuntimeError:
+            return False
 
     @property
     def attributes(self) -> dict[str, Any]:
@@ -540,7 +574,6 @@ class Bag(BagParser, BagSerializer, BagQuery):
 
     # -------------------- _async_traverse_until --------------------------------
 
-    @smartasync
     async def _async_traverse_until(
         self, curr: Bag, pathlist: list, *, static: bool
     ) -> tuple[Bag, list]:
@@ -595,7 +628,6 @@ class Bag(BagParser, BagSerializer, BagQuery):
 
     # -------------------- _async_htraverse --------------------------------
 
-    @smartasync
     async def _async_htraverse(
         self, path: str | list, *, write_mode: bool = False, static: bool
     ) -> tuple[Any, str | None]:
@@ -663,14 +695,12 @@ class Bag(BagParser, BagSerializer, BagQuery):
 
     # -------------------- get_item --------------------------------
 
-    @smartasync
-    async def get_item(self, path: str, default: Any = None, static: bool = True) -> Any:
+    def get_item(self, path: str, default: Any = None, static: bool = True) -> Any:
         """Get value at a hierarchical path.
 
         Traverses the Bag hierarchy following the dot-separated path and returns
         the value at the final location.
 
-        Decorated with @smartasync: can be called from sync or async context.
         By default does NOT trigger resolvers (static=True).
         Use static=False to trigger resolvers during traversal.
 
@@ -1424,8 +1454,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
 
     # -------------------- get_node --------------------------------
 
-    @smartasync
-    async def get_node(
+    def get_node(
         self,
         path: str | None = None,
         as_tuple: bool = False,

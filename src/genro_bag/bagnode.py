@@ -228,14 +228,7 @@ class BagNode:
             The node's value, possibly resolved via resolver.
         """
         if self._resolver is not None:
-            if static:
-                return self._value
-            else:
-                if self._resolver.read_only:
-                    return self._resolver()
-                if self._resolver.expired:
-                    self.value = self._resolver()
-                return self._value
+            return self._resolver(static=static)
         return self._value
 
     def set_value(

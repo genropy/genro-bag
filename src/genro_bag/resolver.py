@@ -19,7 +19,9 @@ Caching Semantics:
 
 from __future__ import annotations
 
+import asyncio
 import importlib
+import inspect
 import json
 from collections.abc import Callable
 from datetime import datetime, timedelta
@@ -204,57 +206,114 @@ class BagResolver:
         return elapsed > timedelta(seconds=cache_time)
 
     # =========================================================================
+    # ASYNC PROPERTIES
+    # =========================================================================
+
+    @property
+    def is_async(self) -> bool:
+        """Whether this resolver's load() method is async.
+
+        Deduced automatically from the load() method signature.
+        """
+        return inspect.iscoroutinefunction(self.load)
+
+    @property
+    def in_async_context(self) -> bool:
+        """Whether we are currently running inside an async context.
+
+        Returns True if there's a running event loop, False otherwise.
+        """
+        try:
+            asyncio.get_running_loop()
+            return True
+        except RuntimeError:
+            return False
+
+    # =========================================================================
     # __call__ - MAIN ENTRY POINT
     # =========================================================================
 
-    @smartasync
-    async def __call__(self, **kwargs: Any) -> Any:
+    def __call__(self, static: bool = False, **kwargs: Any) -> Any:
         """Resolve and return the value.
 
-        Behavior depends on read_only mode:
-        - read_only=True: Always calls load(). If kwargs provided, they are
-          merged temporarily into _kw for this call only, then restored.
-        - read_only=False: Uses caching. If cache not expired, returns None
-          (signaling BagNode.get_value to use node._value). If expired, calls
-          load() and returns the result for BagNode to store.
-
         Args:
+            static: If True, return cached value without triggering load.
             **kwargs: Temporary parameter overrides (only for read_only=True).
 
         Returns:
-            The resolved value from load(), or None if cached (read_only=False).
+            The resolved value, or a coroutine if in async context.
         """
         if self.read_only:
-            # Pure getter mode: always call load(), no concurrency control
-            if kwargs:
-                original_kw = self._kw
-                self._kw = {**original_kw, **kwargs}
-                try:
-                    return await smartawait(self.load())
-                finally:
-                    self._kw = original_kw
-            return await smartawait(self.load())
+            return self._read_only_call(**kwargs)
 
-        # Cached mode (read_only=False)
-        return await smartawait(self._resolve_cached())
+        if static or not self.expired:
+            return self._parent_node._value
+
+        # Match sui 4 casi: (is_async, in_async_context)
+        match (self.is_async, self.in_async_context):
+            case (False, False):
+                return self._sync_sync_load()
+            case (False, True):
+                return self._sync_async_load()
+            case (True, False):
+                return self._async_sync_load()
+            case (True, True):
+                return self._async_async_load()
+
+    # =========================================================================
+    # LOAD VARIANTS - 4 casi (is_async, in_async_context)
+    # =========================================================================
+
+    def _finalize_result(self, result: Any) -> Any:
+        """Salva risultato in cache e nel nodo."""
+        self._cache_last_update = datetime.now()
+        self._parent_node._value = result
+        return result
+
+    def _sync_sync_load(self) -> Any:
+        """Sync resolver in sync context."""
+        return self._finalize_result(self.load())
 
     @smartasync
-    async def _resolve_cached(self) -> Any:
-        """Resolve with caching for read_only=False mode.
+    def _sync_async_load(self) -> Any:
+        """Sync resolver in async context."""
+        return self._finalize_result(self.load())
 
-        Called when read_only=False. Checks cache expiration and either:
-        - Returns None if cache valid (BagNode.get_value uses node._value)
-        - Calls load() if expired, updates timestamp, returns result
+    @smartasync
+    def _async_sync_load(self) -> Any:
+        """Async resolver in sync context."""
+        return self._finalize_result(self.load())
+
+    async def _async_async_load(self) -> Any:
+        """Async resolver in async context."""
+        return self._finalize_result(await self.load())
+
+    def _read_only_call(self, **kwargs: Any) -> Any:
+        """Pure getter mode: always call load(), no concurrency control."""
+        if kwargs:
+            original_kw = self._kw
+            self._kw = {**original_kw, **kwargs}
+            try:
+                return self.load()
+            finally:
+                self._kw = original_kw
+        return self.load()
+
+    def on_result(self, result: Any) -> Any:
+        """Called by load() after obtaining the result.
+
+        Updates cache timestamp and stores result in parent node if applicable.
+        Subclasses must call this at the end of their load() method.
+
+        Args:
+            result: The loaded value.
 
         Returns:
-            The resolved value if cache expired, or None to signal
-            BagNode.get_value to use the cached node._value.
+            The same result (for chaining).
         """
-        if not self.expired:
-            return None  # Signal Node to use cached _value
-
-        result = await smartawait(self.load())
         self._cache_last_update = datetime.now()
+        if self._parent_node is not None and not self.read_only:
+            self._parent_node._value = result
         return result
 
     # =========================================================================
@@ -399,4 +458,5 @@ class BagCbResolver(BagResolver):
             TypeError: If callback is not callable.
         """
         callback: Callable[[], Any] = self._kw["callback"]
-        return await smartawait(callback())
+        result = await smartawait(callback())
+        return self.on_result(result)

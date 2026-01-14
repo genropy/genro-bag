@@ -60,6 +60,8 @@ bag['weather'] = UrlResolver('https://api.weather.com/current', cache_time=300)
 
 From the outside, access looks the same: `bag['now']` or `bag['weather']`. You don't switch from "data mode" to "API mode". You navigate first; resolution happens later. And it works the same whether you're in a synchronous or asynchronous context.
 
+> **Async note**: In sync code, no special handling is needed. In async code with `static=False`, use `await smartawait(bag.get_item("path", static=False))` since the result may be a coroutine when the resolver needs to load fresh data.
+
 ## Reacting to meaning, not plumbing
 
 Change is inevitable in any non-trivial system. Usually, change is handled through events, callbacks, queues, or polling loops. These mechanisms tend to leak into application code and force developers to think about infrastructure details.
