@@ -18,7 +18,9 @@ Three types of events can be subscribed to:
 >>> bag = Bag()
 >>> events = []
 
->>> def on_change(node, pathlist, evt, **kw):
+>>> def on_change(**kw):
+...     node = kw['node']
+...     evt = kw['evt']
 ...     events.append(f"{evt}: {node.label} = {node.value}")
 
 >>> bag.subscribe('watcher', any=on_change)
@@ -45,18 +47,16 @@ bag.subscribe(
 
 ### Callback Signature
 
-Callbacks receive keyword arguments:
+Callbacks receive all arguments as keyword arguments (`**kw`):
 
 ```python
-def callback(
-    node,       # The affected BagNode
-    pathlist,   # List of labels from subscription root
-    evt,        # Event type: 'upd_value', 'ins', or 'del'
-    oldvalue=None,  # Previous value (for update events)
-    ind=None,   # Index position (for insert/delete)
-    reason=None # Optional reason string
-):
-    pass
+def callback(**kw):
+    node = kw['node']       # The affected BagNode
+    pathlist = kw['pathlist']  # List of labels from subscription root
+    evt = kw['evt']         # Event type: 'upd_value', 'ins', or 'del'
+    ind = kw.get('ind')     # Index position (for insert/delete)
+    reason = kw.get('reason')  # Optional reason string
+    # For update events, oldvalue is passed via 'info' key
 ```
 
 ## Event Types
@@ -71,9 +71,11 @@ Triggered when a node's value changes:
 >>> bag = Bag()
 >>> updates = []
 
->>> def on_update(node, pathlist, oldvalue, **kw):
+>>> def on_update(**kw):
+...     node = kw['node']
+...     pathlist = kw['pathlist']
 ...     path = '.'.join(pathlist)
-...     updates.append(f"{path}: {oldvalue} -> {node.value}")
+...     updates.append(f"{path}: {node.value}")
 
 >>> bag.subscribe('tracker', update=on_update)
 
@@ -82,7 +84,7 @@ Triggered when a node's value changes:
 >>> bag['count'] = 2
 
 >>> updates
-['count: 0 -> 1', 'count: 1 -> 2']
+['count: 1', 'count: 2']
 ```
 
 ### Insert Events
@@ -95,7 +97,9 @@ Triggered when new nodes are added:
 >>> bag = Bag()
 >>> inserts = []
 
->>> def on_insert(node, pathlist, ind, **kw):
+>>> def on_insert(**kw):
+...     node = kw['node']
+...     ind = kw['ind']
 ...     inserts.append(f"[{ind}] {node.label} = {node.value}")
 
 >>> bag.subscribe('tracker', insert=on_insert)
@@ -117,7 +121,9 @@ Triggered when nodes are removed:
 >>> bag = Bag({'x': 1, 'y': 2, 'z': 3})
 >>> deletes = []
 
->>> def on_delete(node, pathlist, ind, **kw):
+>>> def on_delete(**kw):
+...     node = kw['node']
+...     ind = kw['ind']
 ...     deletes.append(f"deleted [{ind}]: {node.label}")
 
 >>> bag.subscribe('tracker', delete=on_delete)
@@ -138,7 +144,9 @@ Subscriptions work with nested structures:
 >>> bag = Bag()
 >>> events = []
 
->>> def on_any(node, pathlist, evt, **kw):
+>>> def on_any(**kw):
+...     node = kw['node']
+...     evt = kw['evt']
 ...     events.append(f"{evt}: {node.label}")
 
 >>> bag.subscribe('watcher', any=on_any)
@@ -236,7 +244,9 @@ True
 
 >>> bag = Bag()
 
->>> def validate(node, evt, **kw):
+>>> def validate(**kw):
+...     node = kw['node']
+...     evt = kw['evt']
 ...     if evt == 'upd_value' and node.label == 'email':
 ...         if '@' not in str(node.value):
 ...             raise ValueError('Invalid email')
@@ -257,10 +267,13 @@ Invalid email
 ```python
 import logging
 
-def log_changes(node, pathlist, evt, oldvalue=None, **kw):
+def log_changes(**kw):
+    node = kw['node']
+    pathlist = kw['pathlist']
+    evt = kw['evt']
     path = '.'.join(pathlist)
-    if evt == 'upd':
-        logging.info(f"Updated {path}: {oldvalue} -> {node.value}")
+    if evt == 'upd_value':
+        logging.info(f"Updated {path}: {node.value}")
     elif evt == 'ins':
         logging.info(f"Added {path} = {node.value}")
     elif evt == 'del':
@@ -279,7 +292,8 @@ bag.subscribe('logger', any=log_changes)
 >>> bag['quantity'] = 5
 >>> bag['total'] = 500
 
->>> def update_total(node, pathlist, **kw):
+>>> def update_total(**kw):
+...     node = kw['node']
 ...     if node.label in ('price', 'quantity'):
 ...         parent = node.parent_bag
 ...         parent['total'] = parent['price'] * parent['quantity']

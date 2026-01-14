@@ -61,7 +61,9 @@ A Bag takes a different approach: instead of subscribing to events, you express 
 >>> bag = Bag()
 >>> changes = []
 
->>> def on_change(node, evt, **kw):
+>>> def on_change(**kw):
+...     node = kw['node']
+...     evt = kw['evt']
 ...     changes.append(f"{evt}: {node.label}")
 
 >>> bag.subscribe('watcher', any=on_change)

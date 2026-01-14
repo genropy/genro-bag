@@ -69,7 +69,8 @@ Change is inevitable in any non-trivial system. Usually, change is handled throu
 A Bag takes a different approach. Instead of subscribing to events, you express interest in a **place** in the hierarchy.
 
 ```python
-def on_price_change(node, evt, **kw):
+def on_price_change(**kw):
+    node = kw['node']
     if node.label == 'price':
         print(f"Price changed to {node.value}")
 
@@ -112,12 +113,12 @@ from genro_bag.resolvers import OpenApiResolver
 
 # Same mental model, different domains
 apis = Bag()
-apis['petstore'] = OpenApiResolver('https://petstore.swagger.io/api/v3/openapi.json')
-apis['github'] = OpenApiResolver('https://api.github.com/openapi.json')
+apis['petstore'] = OpenApiResolver('https://petstore3.swagger.io/api/v3/openapi.json')
 
-# Navigate APIs like local data
-apis['petstore.paths./pet.post.summary']
-apis['github.paths./repos/{owner}/{repo}.get.parameters']
+# Navigate APIs like local data - operations organized by tags
+api = apis['petstore']           # Loads and parses the OpenAPI spec
+api['api']['pet'].keys()         # ['addPet', 'updatePet', 'findPetsByStatus', ...]
+api['api']['pet']['addPet']['summary']  # 'Add a new pet to the store'
 ```
 
 Developers do not have to relearn how to think for each domain — only what names and constraints apply.

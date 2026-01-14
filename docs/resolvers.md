@@ -136,18 +136,63 @@ Supported file formats:
 
 ### OpenApiResolver
 
-Navigate OpenAPI specifications:
+Navigate OpenAPI specifications. The resolver organizes endpoints by tags for easy navigation:
 
 ```python
 from genro_bag import Bag
 from genro_bag.resolvers import OpenApiResolver
 
 bag = Bag()
-bag['api'] = OpenApiResolver('https://petstore.swagger.io/v3/openapi.json')
+bag['api'] = OpenApiResolver('https://petstore3.swagger.io/api/v3/openapi.json')
 
-# Access API structure
-bag['api.paths']
-bag['api.components.schemas']
+# Access triggers fetch and parse
+api = bag['api']
+
+# Structure organized by tags
+api['info']                    # API description (value), title/version (attrs)
+api['api']['pet'].keys()       # ['addPet', 'updatePet', 'findPetsByStatus', ...]
+api['api']['store'].keys()     # ['getInventory', 'placeOrder', ...]
+
+# Access operation details
+op = api['api']['pet']['findPetsByStatus']
+op['summary']                  # 'Finds Pets by status'
+op['method']                   # 'get'
+op['path']                     # '/pet/findByStatus'
+op['qs']['status'] = 'available'  # Set query param
+# op['value'] is a UrlResolver ready to call the endpoint
+```
+
+### TxtDocResolver
+
+Load file content as raw bytes:
+
+```python
+from genro_bag import Bag
+from genro_bag.resolvers import TxtDocResolver
+
+bag = Bag()
+bag['readme'] = TxtDocResolver('/path/to/readme.txt')
+
+# Access triggers file read
+content = bag['readme']  # Returns bytes
+text = content.decode('utf-8')  # Decode to string
+```
+
+### SerializedBagResolver
+
+Load a serialized Bag file (XML, TYTX JSON, TYTX MessagePack):
+
+```python
+from genro_bag import Bag
+from genro_bag.resolvers import SerializedBagResolver
+
+bag = Bag()
+bag['config'] = SerializedBagResolver('/path/to/config.xml')
+bag['data'] = SerializedBagResolver('/path/to/data.bag.json')
+
+# Access triggers file read and parse
+config = bag['config']  # Returns Bag parsed from XML
+config['database.host']
 ```
 
 ## Creating Custom Resolvers
@@ -190,12 +235,18 @@ bag['users'] = DatabaseResolver(
 
 ## Resolver Parameters
 
-All resolvers support these parameters:
+All resolvers support these base parameters (defaults may vary by resolver):
 
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `cache_time` | 0 | Cache duration in seconds (0=none, <0=infinite) |
-| `read_only` | True | If False, resolved value is stored in node |
+| Parameter    | Base Default | Description                                               |
+|--------------|--------------|-----------------------------------------------------------|
+| `cache_time` | 0            | Cache duration in seconds (0=none, <0=infinite)           |
+| `read_only`  | False        | If True, value is not stored in node (computed each time) |
+
+**Note**: Some resolvers override these defaults. For example:
+
+- `UrlResolver`: `cache_time=300`, `read_only=True`
+- `DirectoryResolver`: `cache_time=500`, `read_only=True`
+- `BagCbResolver`: `cache_time=0`, `read_only=False`
 
 ## Caching Behavior
 
@@ -335,17 +386,18 @@ async def get_data():
 
 Controls how resolved values are stored:
 
-### read_only=True (default)
-
-- Value computed on every access (respecting cache)
-- Result NOT stored in node._value
-- Good for frequently changing data
-
-### read_only=False
+### read_only=False (base default)
 
 - Value computed and stored in node._value
 - Subsequent access returns stored value
 - Good for expensive one-time loads
+
+### read_only=True
+
+- Value computed on every access (respecting cache)
+- Result NOT stored in node._value
+- Good for frequently changing data
+- Default for `UrlResolver` and `DirectoryResolver`
 
 ```python
 # Store resolved value in node

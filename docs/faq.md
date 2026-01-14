@@ -206,11 +206,11 @@ node.resolver.reset()
 
 ### What's the difference between read_only=True and False?
 
-- `read_only=True` (default): Value is computed each time (respecting cache), never stored in node
-- `read_only=False`: Value is computed once and stored in node permanently
+- `read_only=False` (base default): Value is computed once and stored in node permanently
+- `read_only=True` (default for UrlResolver, DirectoryResolver): Value is computed each time (respecting cache), never stored in node
 
 ```python
-# read_only=True: always fresh (with cache)
+# read_only=True (UrlResolver default): always fresh (with cache)
 bag['live'] = UrlResolver(url, cache_time=60)
 
 # read_only=False: load once, store forever
@@ -221,10 +221,12 @@ bag['static'] = UrlResolver(url, read_only=False)
 
 ### How do subscriptions work?
 
-Register callbacks that fire when the Bag changes:
+Register callbacks that fire when the Bag changes. Callbacks receive all arguments as keyword arguments:
 
 ```python
-def on_change(node, evt, **kw):
+def on_change(**kw):
+    node = kw['node']
+    evt = kw['evt']
     print(f"{evt}: {node.label}")
 
 bag.subscribe('my_watcher', any=on_change)
