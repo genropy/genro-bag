@@ -53,7 +53,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, TypeVar, cast
 
-from genro_toolbox import smartawait, smartsplit
+from genro_toolbox import smartawait, smartcontinuation, smartsplit
 from genro_toolbox.decorators import extract_kwargs
 from genro_toolbox.typeutils import safe_is_instance
 
@@ -491,168 +491,116 @@ class Bag(BagParser, BagSerializer, BagQuery):
 
         return curr, pathlist
 
-    def _htraverse_after(
-        self, curr: Bag, pathlist: list[str], write_mode: bool = False
-    ) -> tuple[Any, str | None]:
-        """Finalize traversal and handle write_mode autocreate.
+    # -------------------- _htraverse --------------------------------
 
-        Final phase of path traversal: handles empty paths, checks for
-        incomplete paths in read mode, and creates intermediate nodes in write mode.
+    def _htraverse(
+        self, path: str | list, write_mode: bool = False, static: bool = True
+    ) -> tuple[Any, str | None]:
+        """Traverse a hierarchical path - unified sync/async version.
+
+        Single method that handles both sync and async contexts:
+        - In sync context: returns tuple directly
+        - In async context with static=False: may return coroutine
 
         Args:
-            curr: Current Bag position after traversal.
-            pathlist: Remaining path segments.
+            path: Path as dot-separated string 'a.b.c' or list ['a', 'b', 'c'].
             write_mode: If True, create intermediate Bags for missing segments.
+                        Forces static=True (no resolver triggers during write).
+            static: If True, don't trigger resolvers during traversal.
 
         Returns:
-            Tuple of (container, label) where:
-                - container: The Bag containing the final element, or None
-                - label: The final path segment
-
-        Raises:
-            BagException: If write_mode and path uses '#n' for non-existent index.
+            Tuple of (container, label) OR coroutine that resolves to tuple.
         """
+        if write_mode:
+            static = True
+        curr, pathlist = self._htraverse_before(path)
+        if curr is None:
+            return None, None
         if not pathlist:
             return curr, ""
 
-        # In read mode, if we have more than one segment left, path doesn't exist
-        if not write_mode:
-            if len(pathlist) > 1:
-                return None, None
+        def finalize(curr: Bag, pathlist: list[str]) -> tuple[Any, str | None]:
+            """Finalize traversal: handle empty path or create intermediate nodes."""
+            if not pathlist:
+                return curr, ""
+            if not write_mode:
+                if len(pathlist) > 1:
+                    return None, None
+                return curr, pathlist[0]
+            # Write mode: create intermediate nodes
+            while len(pathlist) > 1:
+                label = pathlist.pop(0)
+                if label.startswith("#"):
+                    raise BagException("Not existing index in #n syntax")
+                new_bag = curr.__class__()
+                curr._nodes.set(label, new_bag, parent_bag=curr)
+                curr = new_bag
             return curr, pathlist[0]
 
-        # Write mode: create intermediate nodes
-        # Note: _nodes.set handles _on_node_inserted when parent_bag.backref is True
-        while len(pathlist) > 1:
-            label = pathlist.pop(0)
-            if label.startswith("#"):
-                raise BagException("Not existing index in #n syntax")
-            new_bag = curr.__class__()
-            curr._nodes.set(label, new_bag, parent_bag=curr)
-            curr = new_bag
+        result = self._traverse_until_new(curr, pathlist, write_mode, static)
+        return smartcontinuation(result, finalize)
 
-        return curr, pathlist[0]
+    def _is_coroutine(self, value: Any) -> bool:
+        """Check if value is a coroutine (only possible in async context)."""
+        return self.in_async_context and asyncio.iscoroutine(value)
 
-    # -------------------- _traverse_until (sync) --------------------------------
+    def _get_new_curr(self, node: BagNode, value: Any, write_mode: bool) -> Bag | None:
+        """Get next curr for traversal, creating Bag if needed in write_mode."""
+        if isinstance(value, Bag):
+            return value
+        if write_mode:
+            new_bag = self.__class__()
+            node.set_value(new_bag)
+            return new_bag
+        return None
 
-    def _traverse_until(
-        self, curr: Bag, pathlist: list, write_mode: bool = False
+    def _traverse_until_new(
+        self, curr: Bag, pathlist: list, write_mode: bool, static: bool
     ) -> tuple[Bag, list]:
-        """Traverse path segments synchronously (static mode, no resolver trigger).
-
-        Walks the path as far as possible without triggering resolvers.
-        Used by sync methods that always use static=True.
+        """Traverse path segments - unified sync/async version.
 
         Args:
             curr: Starting Bag position.
             pathlist: Path segments to traverse.
             write_mode: If True, replace non-Bag values with Bags during traversal.
-
-        Returns:
-            Tuple of (container, remaining_path) where:
-                - container: The last valid Bag reached
-                - remaining_path: List of path segments not yet traversed
-        """
-        while len(pathlist) > 1 and isinstance(curr, Bag):
-            node = curr._nodes[pathlist[0]]
-            if node:
-                value = node.get_value(static=True)
-                if not isinstance(value, Bag):
-                    if write_mode:
-                        # Replace non-Bag with new Bag
-                        new_bag = curr.__class__()
-                        node.set_value(new_bag)
-                        value = new_bag
-                    else:
-                        break
-                pathlist.pop(0)
-                curr = value
-            else:
-                break
-
-        return (curr, pathlist)
-
-    # -------------------- _async_traverse_until --------------------------------
-
-    async def _async_traverse_until(
-        self, curr: Bag, pathlist: list, *, static: bool
-    ) -> tuple[Bag, list]:
-        """Traverse path segments with async support (may trigger resolvers).
-
-        Walks the path as far as possible. When static=False, may trigger
-        async resolvers during traversal.
-
-        Args:
-            curr: Starting Bag position.
-            pathlist: Path segments to traverse.
             static: If True, don't trigger resolvers.
 
         Returns:
-            Tuple of (container, remaining_path) where:
-                - container: The last valid Bag reached
-                - remaining_path: List of path segments not yet traversed
+            Tuple of (container, remaining_path) OR coroutine.
         """
+        segment = None
         while len(pathlist) > 1 and isinstance(curr, Bag):
-            node = curr._nodes[pathlist[0]]
-            if node:
-                pathlist.pop(0)
-                curr = await smartawait(node.get_value(static=static))
-            else:
+            segment = pathlist.pop(0)
+            node = curr._nodes[segment]
+            if not node:
                 break
 
+            value = node.get_value(static=static)
+
+            if not self._is_coroutine(value):
+                curr = self._get_new_curr(node, value, write_mode)
+                continue
+
+            # coroutine case
+            remaining = pathlist[:]
+
+            async def cont(
+                value=value,
+                node=node,
+                curr=curr,
+                segment=segment,
+                remaining=remaining,
+            ):
+                resolved = await value
+                new_curr = self._get_new_curr(node, resolved, write_mode)
+                if new_curr is None:
+                    return (curr, [segment] + remaining)
+                return self._traverse_until_new(new_curr, remaining, write_mode, static)
+            return cont()
+
+        if segment:
+            pathlist.insert(0, segment)
         return (curr, pathlist)
-
-    # -------------------- _htraverse (sync) --------------------------------
-
-    def _htraverse(self, path: str | list, write_mode: bool = False) -> tuple[Any, str | None]:
-        """Traverse a hierarchical path synchronously (static mode).
-
-        Sync version that never triggers resolvers. Used by set_item, pop, etc.
-
-        Args:
-            path: Path as dot-separated string 'a.b.c' or list ['a', 'b', 'c'].
-            write_mode: If True, create intermediate Bags for missing segments.
-
-        Returns:
-            Tuple of (container, label) where:
-                - container: The Bag containing the final element, or None
-                - label: The final path segment
-        """
-        curr, pathlist = self._htraverse_before(path)
-        if curr is None:
-            return None, None
-        if not pathlist:
-            return curr, ""
-        curr, pathlist = self._traverse_until(curr, pathlist, write_mode)
-        return self._htraverse_after(curr, pathlist, write_mode)
-
-    # -------------------- _async_htraverse --------------------------------
-
-    async def _async_htraverse(
-        self, path: str | list, *, write_mode: bool = False, static: bool
-    ) -> tuple[Any, str | None]:
-        """Traverse a hierarchical path with async support.
-
-        Async version that may trigger resolvers when static=False.
-        Used by get_item, get_node when resolver triggering is needed.
-
-        Args:
-            path: Path as dot-separated string 'a.b.c' or list ['a', 'b', 'c'].
-            write_mode: If True, create intermediate Bags for missing segments.
-            static: If True, don't trigger resolvers during traversal.
-
-        Returns:
-            Tuple of (container, label) where:
-                - container: The Bag containing the final element, or None
-                - label: The final path segment
-        """
-        curr, pathlist = self._htraverse_before(path)
-        if curr is None:
-            return None, None
-        if not pathlist:
-            return curr, ""
-        curr, pathlist = await smartawait(self._async_traverse_until(curr, pathlist, static=static))
-        return self._htraverse_after(curr, pathlist, write_mode)
 
     # -------------------- get (single level) --------------------------------
 
@@ -727,28 +675,25 @@ class Bag(BagParser, BagSerializer, BagQuery):
 
         path = _normalize_path(path)
 
-        obj, label = await smartawait(self._async_htraverse(path, static=static))
+        result = self._htraverse(path, static=static)
 
-        if isinstance(obj, Bag):
-            return obj.get(label, default)
-
-        if hasattr(obj, "get"):
-            return obj.get(label, default)
-        else:
+        def finalize(obj_label):
+            obj, label = obj_label
+            if isinstance(obj, Bag):
+                return obj.get(label, default)
+            if hasattr(obj, "get"):
+                return obj.get(label, default)
             return default
 
-    def __getitem__(self, path: str) -> Any:
-        """Get value at path using sync _htraverse (no resolver trigger).
+        return smartcontinuation(result, finalize)
 
-        Use bag.get_item(path) or await bag.get_item(path) to trigger resolvers.
+    def __getitem__(self, path: str) -> Any:
+        """Get value at path (no resolver trigger).
+
+        Delegates to get_item with static=True (default).
+        Use bag.get_item(path, static=False) to trigger resolvers.
         """
-        path = _normalize_path(path)
-        obj, label = self._htraverse(path)
-        if isinstance(obj, Bag) and label is not None:
-            return obj.get(label)
-        if hasattr(obj, "get") and label is not None:
-            return obj.get(label)
-        return None
+        return self.get_item(path)
 
     # -------------------- set_item --------------------------------
 
@@ -923,7 +868,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
             'gone'
         """
         result = default
-        obj, label = self._htraverse(path)
+        obj, label = self._htraverse(path, static=True)
         if obj:
             n = obj._pop(label, _reason=_reason)
             if n:
@@ -957,7 +902,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
             >>> node.attr
             {'type': 'int'}
         """
-        result, label = self._htraverse(path)
+        result, label = self._htraverse(path, static=True)
         if result and label:
             obj = cast("Bag", result)
             n = obj._pop(label, _reason=_reason)
@@ -1497,17 +1442,18 @@ class Bag(BagParser, BagSerializer, BagQuery):
         if isinstance(path, int):
             return cast("BagNode | None", self._nodes[path])
 
-        obj, label = await smartawait(
-            self._async_htraverse(path, write_mode=autocreate, static=static)
-        )
+        result = self._htraverse(path, write_mode=autocreate, static=static)
 
-        if isinstance(obj, Bag):
-            node = obj._get_node(label, autocreate, default)
-            if as_tuple:
-                return (obj, node)
-            return node
+        def finalize(obj_label):
+            obj, label = obj_label
+            if isinstance(obj, Bag):
+                node = obj._get_node(label, autocreate, default)
+                if as_tuple:
+                    return (obj, node)
+                return node
+            return None
 
-        return None
+        return smartcontinuation(result, finalize)
 
     # -------------------- backref management --------------------------------
 
