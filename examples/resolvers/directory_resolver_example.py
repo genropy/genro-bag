@@ -46,10 +46,10 @@ def demo_basic_directory():
     # Create resolver
     resolver = DirectoryResolver(str(tmpdir))
     bag = Bag()
-    bag.set_item("files", None, _resolver=resolver)
+    bag.set_item("files", None, resolver=resolver)
 
-    # Access triggers scan
-    files = bag["files"]
+    # Access triggers scan (use static=False to trigger resolver)
+    files = bag.get_item("files", static=False)
 
     print(f"Directory: {tmpdir}")
     print("\nContents:")
@@ -75,13 +75,14 @@ def demo_filtered_directory():
     # Include only .xml and .json files
     resolver = DirectoryResolver(
         str(tmpdir),
-        include=["*.xml", "*.json"],
-        recursive=True,
+        include="*.xml,*.json",
+        ext="xml,json",
     )
     bag = Bag()
-    bag.set_item("config_files", None, _resolver=resolver)
+    bag.set_item("config_files", None, resolver=resolver)
 
-    files = bag["config_files"]
+    # Access triggers scan (use static=False to trigger resolver)
+    files = bag.get_item("config_files", static=False)
 
     print(f"Directory: {tmpdir}")
     print("Filter: *.xml, *.json")

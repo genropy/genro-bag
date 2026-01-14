@@ -68,8 +68,8 @@ def demo_lazy_resolver():
 
     # Create Bag with resolver (doesn't fetch yet)
     bag = Bag()
-    resolver = UrlResolver("https://httpbin.org/json")
-    bag.set_item("api_data", None, _resolver=resolver)
+    resolver = UrlResolver("https://httpbin.org/json", as_bag=True)
+    bag.set_item("api_data", None, resolver=resolver)
 
     print("Resolver attached but not fetched yet")
     print(f"Node has resolver: {bag.get_node('api_data').resolver is not None}")

@@ -570,7 +570,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
             Tuple of (container, remaining_path) OR coroutine.
         """
         while len(pathlist) > 1 and isinstance(curr, Bag):
-            segment = pathlist[0]  # leggi senza rimuovere
+            segment = pathlist[0]  # read without removing
             node = curr._nodes[segment]
             if not node:
                 break
@@ -581,12 +581,12 @@ class Bag(BagParser, BagSerializer, BagQuery):
                 new_curr = self._get_new_curr(node, value, write_mode)
                 if new_curr is None:
                     break
-                pathlist.pop(0)  # traversal riuscito, ora rimuovi
+                pathlist.pop(0)  # traversal succeeded, now remove
                 curr = new_curr
                 continue
 
             # coroutine case
-            pathlist.pop(0)  # rimuovi prima di creare continuation
+            pathlist.pop(0)  # remove before creating continuation
             remaining = pathlist[:]
 
             async def cont(
@@ -672,7 +672,9 @@ class Bag(BagParser, BagSerializer, BagQuery):
             'localhost'
             >>> bag['config.db.host']  # static=True, no resolver trigger
             'localhost'
-            >>> await bag.get_item('path.with.resolver')  # triggers resolver
+            >>> # With resolver (static=False), in async context use smartawait:
+            >>> from genro_toolbox import smartawait
+            >>> result = await smartawait(bag.get_item('path.with.resolver', static=False))
         """
         if not path:
             return self
@@ -1110,7 +1112,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
             **kwargs: Arguments passed to BagCbResolver constructor.
                 Common kwargs:
                 - cache_time: Cache duration in seconds (default 0, no cache).
-                - read_only: If True, value not saved in node (default True).
+                - read_only: If True, value not saved in node (default False).
 
         Note:
             The resolver is passed directly to set_item, which handles it

@@ -16,13 +16,59 @@ from .url_resolver import UrlResolver
 class OpenApiResolver(BagResolver):
     """Resolver that loads an OpenAPI spec and organizes endpoints by tags.
 
-    Structure:
-        result['info'] -> description (value), title (attr)
+    Fetches an OpenAPI 3.x specification from a URL, parses it, and creates
+    a structured Bag where endpoints are organized by their tags. Each
+    operation includes a UrlResolver for easy invocation.
+
+    Parameters (class_args):
+        url: URL to the OpenAPI spec (JSON format).
+
+    Parameters (class_kwargs):
+        cache_time: Cache duration in seconds. Default -1 (infinite cache).
+        read_only: If True, resolver acts as pure getter. Default True.
+        timeout: Request timeout in seconds. Default 30.
+
+    Result Structure:
+        result['info'] -> description (value), title/version (attr)
         result['externalDocs'] -> Bag with url, description
         result['servers'] -> Bag with server info
-        result['api']['pet'] -> tag node (attr: name, description)
-            result['api']['pet']['findByStatus'] -> operation Bag
-        result['components'] -> schemas, etc.
+        result['api']['<tag>'] -> tag node (attr: name, description)
+            result['api']['<tag>']['<operationId>'] -> operation Bag
+        result['components'] -> schemas, securitySchemes, etc.
+
+    Operation Bag Structure:
+        Each operation Bag contains:
+        - 'summary': Operation summary
+        - 'description': Operation description
+        - 'operationId': Unique operation identifier
+        - 'path': API path (e.g., '/pet/{petId}')
+        - 'method': HTTP method (get, post, etc.)
+        - 'url': Full URL (base_url + path)
+        - 'qs': Query parameters Bag (empty, fill before calling)
+        - 'body': Request body structure (for POST/PUT/PATCH)
+        - 'value': UrlResolver ready to invoke the endpoint
+        - 'responses': Response definitions
+        - 'security': Security requirements
+
+    Example:
+        >>> from genro_bag import Bag
+        >>> from genro_bag.resolvers import OpenApiResolver
+        >>>
+        >>> bag = Bag()
+        >>> bag['petstore'] = OpenApiResolver(
+        ...     'https://petstore3.swagger.io/api/v3/openapi.json'
+        ... )
+        >>> api = bag['petstore']
+        >>> # List available tags
+        >>> api['api'].keys()
+        ['pet', 'store', 'user']
+        >>> # Get operations for 'pet' tag
+        >>> api['api']['pet'].keys()
+        ['addPet', 'updatePet', 'findPetsByStatus', ...]
+        >>> # Invoke an endpoint
+        >>> op = api['api']['pet']['findPetsByStatus']
+        >>> op['qs']['status'] = 'available'
+        >>> result = await op['value']()  # calls the API
     """
 
     class_kwargs = {
