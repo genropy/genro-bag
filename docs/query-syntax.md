@@ -2,9 +2,9 @@
 
 Bag provides powerful query capabilities to extract, filter, and traverse hierarchical data.
 
-## The digest() Method
+## The query() Method
 
-The main query method is `digest()` (also available as `query()`). It extracts data using a concise syntax:
+The main query method is `query()`. It extracts data using a concise syntax:
 
 ```{doctest}
 >>> from genro_bag import Bag
@@ -14,11 +14,11 @@ The main query method is `digest()` (also available as `query()`). It extracts d
 >>> bag.set_item('bob', 'Bob Jones', role='user', age=25)
 
 >>> # Get all labels and values
->>> bag.digest('#k,#v')
+>>> bag.query('#k,#v')
 [('alice', 'Alice Smith'), ('bob', 'Bob Jones')]
 
 >>> # Get labels and specific attribute
->>> bag.digest('#k,#a.role')
+>>> bag.query('#k,#a.role')
 [('alice', 'admin'), ('bob', 'user')]
 ```
 
@@ -44,11 +44,11 @@ The main query method is `digest()` (also available as `query()`). It extracts d
 >>> bag = Bag({'x': 10, 'y': 20, 'z': 30})
 
 >>> # All labels
->>> bag.digest('#k')
+>>> bag.query('#k')
 ['x', 'y', 'z']
 
 >>> # All values
->>> bag.digest('#v')
+>>> bag.query('#v')
 [10, 20, 30]
 ```
 
@@ -63,7 +63,7 @@ Combine specifiers with commas:
 >>> bag.set_item('item1', 100, category='A')
 >>> bag.set_item('item2', 200, category='B')
 
->>> bag.digest('#k,#v,#a.category')
+>>> bag.query('#k,#v,#a.category')
 [('item1', 100, 'A'), ('item2', 200, 'B')]
 ```
 
@@ -82,11 +82,11 @@ Pass a callable that receives a BagNode and returns boolean:
 >>> bag.set_item('carol', 75, active=True)
 
 >>> # Only active users
->>> bag.digest('#k,#v', condition=lambda n: n.get_attr('active'))
+>>> bag.query('#k,#v', condition=lambda n: n.get_attr('active'))
 [('alice', 100), ('carol', 75)]
 
 >>> # Values greater than 60
->>> bag.digest('#k', condition=lambda n: n.value > 60)
+>>> bag.query('#k', condition=lambda n: n.value > 60)
 ['alice', 'carol']
 ```
 
@@ -120,7 +120,7 @@ Query a specific subtree using `path:what` syntax:
 >>> bag['config.debug'] = True
 
 >>> # Query only the users subtree
->>> bag.digest('users:#k')
+>>> bag.query('users:#k')
 ['alice', 'bob']
 ```
 
@@ -199,7 +199,7 @@ a.c: 2
 
 ## Access Syntax Shortcuts
 
-In addition to `digest()`, you can use path syntax for quick queries:
+In addition to `query()`, you can use path syntax for quick queries:
 
 ```{doctest}
 >>> from genro_bag import Bag
@@ -220,7 +220,7 @@ In addition to `digest()`, you can use path syntax for quick queries:
 
 | Method | Purpose |
 |--------|---------|
-| `digest(what)` | Extract data with query syntax |
+| `query(what)` | Extract data with query syntax |
 | `walk()` | Generator for tree traversal |
 | `get_node_by_attr(attr, val)` | Find node by attribute |
 | `get_node_by_value(key, val)` | Find node by value content |
