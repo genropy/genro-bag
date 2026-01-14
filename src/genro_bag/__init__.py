@@ -22,7 +22,7 @@ from genro_bag.bagnode import BagNode, BagNodeContainer, BagNodeException
 from genro_bag.builder import BagBuilderBase
 from genro_bag.resolver import BagResolver
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 
 __all__ = [
     "Bag",
