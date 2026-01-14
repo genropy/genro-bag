@@ -7,7 +7,6 @@ from __future__ import annotations
 from urllib.parse import urljoin, urlparse
 
 import httpx
-from genro_toolbox import smartasync
 
 from ..bag import Bag
 from ..resolver import BagResolver
@@ -33,8 +32,7 @@ class OpenApiResolver(BagResolver):
     }
     class_args = ["url"]
 
-    @smartasync
-    async def load(self) -> Bag:
+    async def async_load(self) -> Bag:
         url = self._kw["url"]
         timeout = self._kw["timeout"]
 

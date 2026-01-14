@@ -21,7 +21,6 @@ from __future__ import annotations
 
 import asyncio
 import importlib
-import inspect
 import json
 from collections.abc import Callable
 from datetime import datetime, timedelta
@@ -211,11 +210,13 @@ class BagResolver:
 
     @property
     def is_async(self) -> bool:
-        """Whether this resolver's load() method is async.
+        """Whether this resolver is async (implements async_load).
 
-        Deduced automatically from the load() method signature.
+        Returns True if subclass overrides async_load(), False if it overrides load().
+        Deduced by checking if async_load is NOT the base class NotImplementedError.
         """
-        return inspect.iscoroutinefunction(self.load)
+        # Check if async_load was overridden (not the base class version)
+        return type(self).async_load is not BagResolver.async_load
 
     @property
     def in_async_context(self) -> bool:
@@ -243,13 +244,23 @@ class BagResolver:
         Returns:
             The resolved value, or a coroutine if in async context.
         """
-        if self.read_only:
-            return self._read_only_call(**kwargs)
-
-        if static or not self.expired:
+        # Se non read_only e (static o cache valida), ritorna valore cachato
+        if not self.read_only and (static or not self.expired):
             return self._parent_node._value
 
-        # Match sui 4 casi: (is_async, in_async_context)
+        # Gestione kwargs temporanei
+        if kwargs:
+            original_kw = self._kw
+            self._kw = {**original_kw, **kwargs}
+            try:
+                return self._dispatch_load()
+            finally:
+                self._kw = original_kw
+
+        return self._dispatch_load()
+
+    def _dispatch_load(self) -> Any:
+        """Dispatch to correct load method based on sync/async context."""
         match (self.is_async, self.in_async_context):
             case (False, False):
                 return self._sync_sync_load()
@@ -271,33 +282,22 @@ class BagResolver:
         return result
 
     def _sync_sync_load(self) -> Any:
-        """Sync resolver in sync context."""
+        """Sync resolver in sync context - calls load()."""
         return self._finalize_result(self.load())
 
     @smartasync
     def _sync_async_load(self) -> Any:
-        """Sync resolver in async context."""
+        """Sync resolver in async context - wraps load() for async."""
         return self._finalize_result(self.load())
 
-    @smartasync
     def _async_sync_load(self) -> Any:
-        """Async resolver in sync context."""
-        return self._finalize_result(self.load())
+        """Async resolver in sync context - runs async_load() synchronously."""
+        result = smartasync(self.async_load)()
+        return self._finalize_result(result)
 
     async def _async_async_load(self) -> Any:
-        """Async resolver in async context."""
-        return self._finalize_result(await self.load())
-
-    def _read_only_call(self, **kwargs: Any) -> Any:
-        """Pure getter mode: always call load(), no concurrency control."""
-        if kwargs:
-            original_kw = self._kw
-            self._kw = {**original_kw, **kwargs}
-            try:
-                return self.load()
-            finally:
-                self._kw = original_kw
-        return self.load()
+        """Async resolver in async context - awaits async_load()."""
+        return self._finalize_result(await self.async_load())
 
     def on_result(self, result: Any) -> Any:
         """Called by load() after obtaining the result.
@@ -320,20 +320,39 @@ class BagResolver:
     # METHODS TO OVERRIDE IN SUBCLASSES
     # =========================================================================
 
-    @smartasync
-    async def load(self) -> Any:
-        """Load and return the resolved value.
+    def load(self) -> Any:
+        """Override this for SYNC resolvers.
 
-        MUST be overridden in subclasses.
-        Use @smartasync decorator for sync/async compatibility.
+        Implement this method in subclasses that perform synchronous operations
+        (e.g., file system access, CPU-bound computations).
 
         Returns:
             The resolved value (e.g., Bag, dict, or any other type).
 
-        Raises:
-            NotImplementedError: If not overridden in subclass.
+        Example:
+            class FileResolver(BagResolver):
+                def load(self):
+                    return Path(self._kw['path']).read_text()
         """
-        raise NotImplementedError("Subclasses must implement load()")
+        raise NotImplementedError("Sync resolvers must implement load()")
+
+    async def async_load(self) -> Any:
+        """Override this for ASYNC resolvers.
+
+        Implement this method in subclasses that perform asynchronous operations
+        (e.g., network requests, async I/O).
+
+        Returns:
+            The resolved value (e.g., Bag, dict, or any other type).
+
+        Example:
+            class UrlResolver(BagResolver):
+                async def async_load(self):
+                    async with httpx.AsyncClient() as client:
+                        response = await client.get(self._kw['url'])
+                        return response.text
+        """
+        raise NotImplementedError("Async resolvers must implement async_load()")
 
     def init(self) -> None:
         """Hook called at the end of __init__.
@@ -444,11 +463,9 @@ class BagCbResolver(BagResolver):
     class_kwargs = {"cache_time": 0, "read_only": True}
     class_args = ["callback"]
 
-    @smartasync
-    async def load(self) -> Any:
+    async def async_load(self) -> Any:
         """Call the callback and return its result.
 
-        Uses @smartasync to work in both sync and async contexts.
         Uses smartawait to handle both sync and async callbacks.
 
         Returns:

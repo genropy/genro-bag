@@ -519,8 +519,9 @@ class Bag(BagParser, BagSerializer, BagQuery):
         if not pathlist:
             return curr, ""
 
-        def finalize(curr: Bag, pathlist: list[str]) -> tuple[Any, str | None]:
+        def finalize(result: tuple[Bag, list[str]]) -> tuple[Any, str | None]:
             """Finalize traversal: handle empty path or create intermediate nodes."""
+            curr, pathlist = result
             if not pathlist:
                 return curr, ""
             if not write_mode:
@@ -537,7 +538,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
                 curr = new_bag
             return curr, pathlist[0]
 
-        result = self._traverse_until_new(curr, pathlist, write_mode, static)
+        result = self._traverse_inner(curr, pathlist, write_mode, static)
         return smartcontinuation(result, finalize)
 
     def _is_coroutine(self, value: Any) -> bool:
@@ -554,7 +555,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
             return new_bag
         return None
 
-    def _traverse_until_new(
+    def _traverse_inner(
         self, curr: Bag, pathlist: list, write_mode: bool, static: bool
     ) -> tuple[Bag, list]:
         """Traverse path segments - unified sync/async version.
@@ -568,9 +569,8 @@ class Bag(BagParser, BagSerializer, BagQuery):
         Returns:
             Tuple of (container, remaining_path) OR coroutine.
         """
-        segment = None
         while len(pathlist) > 1 and isinstance(curr, Bag):
-            segment = pathlist.pop(0)
+            segment = pathlist[0]  # leggi senza rimuovere
             node = curr._nodes[segment]
             if not node:
                 break
@@ -578,10 +578,15 @@ class Bag(BagParser, BagSerializer, BagQuery):
             value = node.get_value(static=static)
 
             if not self._is_coroutine(value):
-                curr = self._get_new_curr(node, value, write_mode)
+                new_curr = self._get_new_curr(node, value, write_mode)
+                if new_curr is None:
+                    break
+                pathlist.pop(0)  # traversal riuscito, ora rimuovi
+                curr = new_curr
                 continue
 
             # coroutine case
+            pathlist.pop(0)  # rimuovi prima di creare continuation
             remaining = pathlist[:]
 
             async def cont(
@@ -595,11 +600,9 @@ class Bag(BagParser, BagSerializer, BagQuery):
                 new_curr = self._get_new_curr(node, resolved, write_mode)
                 if new_curr is None:
                     return (curr, [segment] + remaining)
-                return self._traverse_until_new(new_curr, remaining, write_mode, static)
+                return self._traverse_inner(new_curr, remaining, write_mode, static)
             return cont()
 
-        if segment:
-            pathlist.insert(0, segment)
         return (curr, pathlist)
 
     # -------------------- get (single level) --------------------------------

@@ -15,6 +15,5 @@ def reset_smartasync_caches():
     This ensures that async context detection starts fresh for each test,
     preventing state leakage between sync and async tests.
     """
-    reset_smartasync_cache(Bag.get_node)
-    reset_smartasync_cache(Bag.get_item)
+    reset_smartasync_cache()
     yield

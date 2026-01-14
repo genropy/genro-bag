@@ -8,7 +8,6 @@ from typing import Any
 from urllib.parse import urlencode
 
 import httpx
-from genro_toolbox import smartasync
 
 from ..bag import Bag
 from ..resolver import BagResolver
@@ -65,8 +64,7 @@ class UrlResolver(BagResolver):
     }
     class_args = ["url"]
 
-    @smartasync
-    async def load(self) -> Any:
+    async def async_load(self) -> Any:
         """Fetch URL content and optionally parse as Bag.
 
         Builds the full URL with query string, makes the HTTP request,
