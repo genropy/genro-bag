@@ -1224,7 +1224,7 @@ class TestBagNodeContainerPositions:
         bag = Bag()
         bag["a"] = 1
         bag["b"] = 2
-        bag.set_item("first", 0, _position="<")
+        bag.set_item("first", 0, node_position="<")
 
         assert bag.keys() == ["first", "a", "b"]
 
@@ -1234,7 +1234,7 @@ class TestBagNodeContainerPositions:
         bag["a"] = 1
         bag["b"] = 2
         bag["c"] = 3
-        bag.set_item("new", 99, _position="<b")
+        bag.set_item("new", 99, node_position="<b")
 
         assert bag.keys() == ["a", "new", "b", "c"]
 
@@ -1244,7 +1244,7 @@ class TestBagNodeContainerPositions:
         bag["a"] = 1
         bag["b"] = 2
         bag["c"] = 3
-        bag.set_item("new", 99, _position=">b")
+        bag.set_item("new", 99, node_position=">b")
 
         assert bag.keys() == ["a", "b", "new", "c"]
 
@@ -1254,7 +1254,7 @@ class TestBagNodeContainerPositions:
         bag["a"] = 1
         bag["b"] = 2
         bag["c"] = 3
-        bag.set_item("new", 99, _position="#1")
+        bag.set_item("new", 99, node_position="#1")
 
         assert bag.keys() == ["a", "new", "b", "c"]
 
@@ -1264,7 +1264,7 @@ class TestBagNodeContainerPositions:
         bag["a"] = 1
         bag["b"] = 2
         bag["c"] = 3
-        bag.set_item("new", 99, _position="<#2")
+        bag.set_item("new", 99, node_position="<#2")
 
         assert bag.keys() == ["a", "b", "new", "c"]
 
@@ -1274,7 +1274,7 @@ class TestBagNodeContainerPositions:
         bag["a"] = 1
         bag["b"] = 2
         bag["c"] = 3
-        bag.set_item("new", 99, _position=">#0")
+        bag.set_item("new", 99, node_position=">#0")
 
         assert bag.keys() == ["a", "new", "b", "c"]
 
@@ -1283,7 +1283,7 @@ class TestBagNodeContainerPositions:
         bag = Bag()
         bag["a"] = 1
         bag["b"] = 2
-        bag.set_item("new", 99, _position="<nonexistent")
+        bag.set_item("new", 99, node_position="<nonexistent")
 
         # When label not found, appends at end
         assert bag.keys()[-1] == "new"
@@ -1292,7 +1292,7 @@ class TestBagNodeContainerPositions:
         """Invalid #n position appends at end."""
         bag = Bag()
         bag["a"] = 1
-        bag.set_item("new", 99, _position="#invalid")
+        bag.set_item("new", 99, node_position="#invalid")
 
         assert "new" in bag
 

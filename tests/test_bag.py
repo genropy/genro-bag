@@ -86,7 +86,7 @@ class TestBagPosition:
         bag = Bag()
         bag["a"] = 1
         bag["b"] = 2
-        bag.set_item("last", "X", _position=">")
+        bag.set_item("last", "X", node_position=">")
         assert bag.keys() == ["a", "b", "last"]
 
     def test_position_prepend(self):
@@ -94,7 +94,7 @@ class TestBagPosition:
         bag = Bag()
         bag["a"] = 1
         bag["b"] = 2
-        bag.set_item("first", "X", _position="<")
+        bag.set_item("first", "X", node_position="<")
         assert bag.keys() == ["first", "a", "b"]
 
     def test_position_index(self):
@@ -103,7 +103,7 @@ class TestBagPosition:
         bag["a"] = 1
         bag["b"] = 2
         bag["c"] = 3
-        bag.set_item("mid", "X", _position="#1")
+        bag.set_item("mid", "X", node_position="#1")
         assert bag.keys() == ["a", "mid", "b", "c"]
 
     def test_position_index_invalid(self):
@@ -111,7 +111,7 @@ class TestBagPosition:
         bag = Bag()
         bag["a"] = 1
         bag["b"] = 2
-        bag.set_item("new", "X", _position="#invalid")
+        bag.set_item("new", "X", node_position="#invalid")
         assert bag.keys() == ["a", "b", "new"]
 
     def test_position_after_label(self):
@@ -120,7 +120,7 @@ class TestBagPosition:
         bag["a"] = 1
         bag["b"] = 2
         bag["c"] = 3
-        bag.set_item("after_a", "X", _position=">a")
+        bag.set_item("after_a", "X", node_position=">a")
         assert bag.keys() == ["a", "after_a", "b", "c"]
 
     def test_position_after_missing_label(self):
@@ -128,7 +128,7 @@ class TestBagPosition:
         bag = Bag()
         bag["a"] = 1
         bag["b"] = 2
-        bag.set_item("new", "X", _position=">missing")
+        bag.set_item("new", "X", node_position=">missing")
         assert bag.keys() == ["a", "b", "new"]
 
     def test_position_before_label(self):
@@ -137,7 +137,7 @@ class TestBagPosition:
         bag["a"] = 1
         bag["b"] = 2
         bag["c"] = 3
-        bag.set_item("before_c", "X", _position="<c")
+        bag.set_item("before_c", "X", node_position="<c")
         assert bag.keys() == ["a", "b", "before_c", "c"]
 
     def test_position_before_missing_label(self):
@@ -145,7 +145,7 @@ class TestBagPosition:
         bag = Bag()
         bag["a"] = 1
         bag["b"] = 2
-        bag.set_item("new", "X", _position="<missing")
+        bag.set_item("new", "X", node_position="<missing")
         assert bag.keys() == ["a", "b", "new"]
 
     def test_position_before_index(self):
@@ -154,7 +154,7 @@ class TestBagPosition:
         bag["a"] = 1
         bag["b"] = 2
         bag["c"] = 3
-        bag.set_item("new", "X", _position="<#2")
+        bag.set_item("new", "X", node_position="<#2")
         assert bag.keys() == ["a", "b", "new", "c"]
 
     def test_position_before_index_invalid(self):
@@ -162,7 +162,7 @@ class TestBagPosition:
         bag = Bag()
         bag["a"] = 1
         bag["b"] = 2
-        bag.set_item("new", "X", _position="<#invalid")
+        bag.set_item("new", "X", node_position="<#invalid")
         assert bag.keys() == ["a", "b", "new"]
 
     def test_position_after_index(self):
@@ -171,7 +171,7 @@ class TestBagPosition:
         bag["a"] = 1
         bag["b"] = 2
         bag["c"] = 3
-        bag.set_item("new", "X", _position=">#0")
+        bag.set_item("new", "X", node_position=">#0")
         assert bag.keys() == ["a", "new", "b", "c"]
 
     def test_position_after_index_invalid(self):
@@ -179,7 +179,7 @@ class TestBagPosition:
         bag = Bag()
         bag["a"] = 1
         bag["b"] = 2
-        bag.set_item("new", "X", _position=">#invalid")
+        bag.set_item("new", "X", node_position=">#invalid")
         assert bag.keys() == ["a", "b", "new"]
 
     def test_position_unknown_syntax(self):
@@ -187,7 +187,7 @@ class TestBagPosition:
         bag = Bag()
         bag["a"] = 1
         bag["b"] = 2
-        bag.set_item("new", "X", _position="unknown")
+        bag.set_item("new", "X", node_position="unknown")
         assert bag.keys() == ["a", "b", "new"]
 
 
@@ -247,7 +247,7 @@ class TestBagIndexAccess:
         bag["a"] = 1
         bag["b"] = 2
         bag["c"] = 3
-        bag.set_item("new", "X", _position="<#2")
+        bag.set_item("new", "X", node_position="<#2")
         assert bag.keys() == ["a", "b", "new", "c"]
 
     def test_position_after_index(self):
@@ -256,7 +256,7 @@ class TestBagIndexAccess:
         bag["a"] = 1
         bag["b"] = 2
         bag["c"] = 3
-        bag.set_item("new", "X", _position=">#0")
+        bag.set_item("new", "X", node_position=">#0")
         assert bag.keys() == ["a", "new", "b", "c"]
 
 

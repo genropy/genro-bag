@@ -403,7 +403,7 @@ def child(
     tag: str,             # Semantic tag name
     label: str = None,    # Explicit label (auto-generated if None)
     value: Any = None,    # If provided, creates leaf; otherwise branch
-    _position: str = None, # Position specifier
+    node_position: str = None, # Position specifier
     _builder: BagBuilderBase = None,  # Override builder for subtree
     **attr: Any           # Node attributes
 ) -> Bag | BagNode:

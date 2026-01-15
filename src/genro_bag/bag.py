@@ -708,7 +708,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
         path: str,
         value: Any,
         _attributes: dict | None = None,
-        _position: str | int | None = None,
+        node_position: str | int | None = None,
         _updattr: bool = False,
         _remove_null_attributes: bool = True,
         _reason: str | None = None,
@@ -740,7 +740,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
                 Supports '?attr' suffix to set a node attribute instead of value.
             value: Value to set at the path (or attribute value if ?attr syntax).
             _attributes: Optional dict of attributes to set on the node.
-            _position: Position for new nodes. Supports:
+            node_position: Position for new nodes. Supports:
                 - '>': Append at end (default)
                 - '<': Insert at beginning
                 - '#n': Insert at index n
@@ -814,7 +814,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
                 node = obj._nodes.set(
                     label,
                     None,
-                    _position,
+                    node_position,
                     attr=_attributes,
                     parent_bag=obj,
                     _reason=_reason,
@@ -826,7 +826,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
         node = obj._nodes.set(
             label,
             value,
-            _position,
+            node_position,
             attr=_attributes,
             resolver=resolver,
             parent_bag=obj,

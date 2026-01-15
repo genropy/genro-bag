@@ -320,7 +320,7 @@ class BagBuilderBase(ABC):
         self._validate_call_args(child_info, node_value, attr)
 
         node_label = node_label or self._auto_label(_target, _tag)
-        child_node = _target.set_item(node_label, node_value, _position=node_position, **attr)
+        child_node = _target.set_item(node_label, node_value, node_position=node_position, **attr)
         child_node.tag = _tag
 
         if target_node:

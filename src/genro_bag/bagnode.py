@@ -788,7 +788,7 @@ class BagNodeContainer:
         self,
         label: str,
         value: Any,
-        _position: str | int | None = ">",
+        node_position: str | int | None = ">",
         attr: dict | None = None,
         resolver: Any = None,
         parent_bag: Bag | None = None,
@@ -812,7 +812,7 @@ class BagNodeContainer:
         Args:
             label: The node label.
             value: The value to set.
-            _position: Position specification (>, <, #n, <label, >label, etc.)
+            node_position: Position specification (>, <, #n, <label, >label, etc.)
             attr: Optional dict of attributes for new nodes.
             resolver: Optional resolver for new nodes. Use False to explicitly
                 remove an existing resolver.
@@ -857,7 +857,7 @@ class BagNodeContainer:
                 resolver=resolver,
                 _remove_null_attributes=_remove_null_attributes,
             )
-            idx = self._parse_position(_position)
+            idx = self._parse_position(node_position)
             self._dict[label] = node
             self._list.insert(idx, node)
             if do_trigger and parent_bag is not None and parent_bag.backref:

@@ -220,27 +220,28 @@ Control where new items are inserted:
 >>> bag['middle'] = 2
 
 >>> # Insert at beginning
->>> bag.set_item('first', 1, _position='<')
+>>> bag.set_item('first', 1, node_position='<')
 >>> list(bag.keys())
 ['first', 'middle']
 
 >>> # Insert at end (default)
->>> bag.set_item('last', 3, _position='>')
+>>> bag.set_item('last', 3, node_position='>')
 >>> list(bag.keys())
 ['first', 'middle', 'last']
 
 >>> # Insert before a label
->>> bag.set_item('before_last', 2.5, _position='<last')
+>>> bag.set_item('before_last', 2.5, node_position='<last')
 >>> list(bag.keys())
 ['first', 'middle', 'before_last', 'last']
 
 >>> # Insert after a label
->>> bag.set_item('after_first', 1.5, _position='>first')
+>>> bag.set_item('after_first', 1.5, node_position='>first')
 >>> list(bag.keys())
 ['first', 'after_first', 'middle', 'before_last', 'last']
 ```
 
 Position syntax:
+
 - `<` - Prepend (insert at beginning)
 - `>` - Append (insert at end, default)
 - `<label` - Insert before the node with given label
