@@ -96,14 +96,18 @@ Pass attributes as keyword arguments. Use `class_` for the `class` attribute (si
 
 >>> bag = Bag(builder=HtmlBuilder)
 >>> a = bag.a(value='Click here', href='https://example.com', target='_blank')
->>> bag['a_0?href']
+>>> a.attr['href']  # Access via saved reference
 'https://example.com'
->>> bag['a_0?target']
-'_blank'
 
 >>> div = bag.div(id='main', class_='container highlight')
->>> bag['div_0?class_']
+>>> div.parent_node.attr['class_']  # Access via reference
 'container highlight'
+```
+
+```{tip}
+Use saved references (like `a` and `div` above) to access attributes instead of
+auto-generated paths like `bag['a_0?href']`. References are stable and don't depend
+on insertion order.
 ```
 
 ## Branch vs Leaf Nodes

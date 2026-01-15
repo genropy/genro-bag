@@ -123,20 +123,25 @@ Use `data_` prefix (converted to `data-` in HTML):
 
 >>> bag = Bag(builder=HtmlBuilder)
 >>> div = bag.div(id='main')
->>> div.p(value='First')  # doctest: +ELLIPSIS
-BagNode : ... at ...
->>> div.p(value='Second')  # doctest: +ELLIPSIS
-BagNode : ... at ...
+>>> p1 = div.p(value='First')  # Save reference
+>>> p2 = div.p(value='Second')  # Save reference
 
->>> # Access by path
->>> div['p_0']
-'First'
->>> div['p_1']
-'Second'
->>> bag['div_0.p_0']  # Full path from root
+>>> # Preferred: use saved references
+>>> p1.value
 'First'
 
->>> # Iterate over children
->>> [node.value for node in div]
+>>> # Or iterate over children (filter by tag if needed)
+>>> [node.get_value(static=True) for node in div]
 ['First', 'Second']
+
+>>> # Or use node_label for stable paths
+>>> div.p(value='Third', node_label='summary')  # doctest: +ELLIPSIS
+BagNode : ... at ...
+>>> div['summary']
+'Third'
+```
+
+```{warning}
+Avoid using auto-generated labels like `p_0`, `p_1` in production code - they depend
+on insertion order. Use saved references, `node_label`, or iteration instead.
 ```

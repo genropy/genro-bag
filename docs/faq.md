@@ -288,7 +288,7 @@ bag['email'] = 'invalid'  # Raises ValueError
 A builder provides a fluent API for constructing validated Bag structures:
 
 ```python
-bag = Bag(builder=HtmlBuilder())
+bag = Bag(builder=HtmlBuilder)
 div = bag.div(id='main')
 div.h1(value='Title')
 div.p(value='Content')

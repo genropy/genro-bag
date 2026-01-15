@@ -63,18 +63,29 @@ Every node has both a **label** (unique identifier) and a **tag** (semantic type
 >>> bag = Bag(builder=HtmlBuilder)
 >>> div1 = bag.div()
 >>> div2 = bag.div()
->>> # Access by label path
 >>> list(bag.keys())
 ['div_0', 'div_1']
->>> # Add content to distinguish them
+```
+
+```{warning}
+**Avoid relying on auto-generated labels** like `div_0`, `div_1` in production code.
+They depend on insertion order and are fragile. Instead:
+
+1. **Save references** returned by builder methods (e.g., `div1 = bag.div()`)
+2. **Use `node_label`** for explicit labels: `bag.div(node_label='main')`
+3. **Iterate by tag**: `[n for n in bag if n.tag == 'div']`
+```
+
+```{doctest}
+>>> # Preferred: use saved references
 >>> div1.span(value='First')  # doctest: +ELLIPSIS
 BagNode : ... at ...
 >>> div2.span(value='Second')  # doctest: +ELLIPSIS
 BagNode : ... at ...
->>> bag['div_0.span_0']
-'First'
->>> bag['div_1.span_0']
-'Second'
+>>> # Or use explicit node_label
+>>> nav = bag.nav(node_label='main_nav')
+>>> bag['main_nav']  # Stable path
+<genro_bag.bag.Bag object at ...>
 ```
 
 ### Two Ways to Define Elements

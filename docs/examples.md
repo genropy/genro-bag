@@ -321,10 +321,27 @@ body.dati_pagamento(
     iban='IT60X0542811101000000123456'
 )
 
-# Access data
-print(bag['fattura_0?versione'])  # FPR12
-print(bag['fattura_0.header_0.cedente_0?partita_iva'])  # IT01234567890
-print(bag['fattura_0.body_0.dati_generali_0?numero'])  # 2025/001
+# === Accessing Data ===
+# IMPORTANT: Avoid using auto-generated labels like 'fattura_0', 'header_0' etc.
+# They depend on insertion order and are fragile. Use these alternatives instead:
+
+# Option 1: Use saved references (preferred - most stable)
+print(fattura.parent_node.attr.get('versione'))  # FPR12
+
+# Option 2: Use node_label for explicit, stable labels
+# When building, pass node_label to create predictable paths:
+# cedente = header.cedente(partita_iva='IT01234567890', node_label='seller')
+# Then access as: header['seller?partita_iva']
+
+# Option 3: Use node_position for positional access
+cedente_node = header.get_node_at(1)  # cedente is second child in header
+print(cedente_node.attr.get('partita_iva'))  # IT01234567890
+
+# Option 4: Iterate and filter by tag
+for node in body:
+    if node.tag == 'dati_generali':
+        print(node.attr.get('numero'))  # 2025/001
+        break
 
 # Serialize to XML for transmission
 xml = bag.to_xml()
@@ -349,21 +366,22 @@ except Exception as e:
 ### Computing Totals
 
 ```python
-from genro_bag import Bag
+def compute_invoice_totals(beni_bag):
+    """Compute invoice totals from line items.
 
-def compute_invoice_totals(invoice_bag):
-    """Compute invoice totals from line items."""
-    beni = invoice_bag['fattura_0.body_0.dati_beni_0']
-
+    Args:
+        beni_bag: The dati_beni Bag (pass reference, not path with auto-labels)
+    """
     imponibile = 0
     iva = 0
 
-    for node in beni:
-        totale = node.attr.get('prezzo_totale', 0)
-        aliquota = node.attr.get('aliquota_iva', 0)
+    for node in beni_bag:
+        if node.tag == 'linea':  # Filter by tag, not label
+            totale = node.attr.get('prezzo_totale', 0)
+            aliquota = node.attr.get('aliquota_iva', 0)
 
-        imponibile += totale
-        iva += totale * aliquota / 100
+            imponibile += totale
+            iva += totale * aliquota / 100
 
     return {
         'imponibile': imponibile,
@@ -371,7 +389,8 @@ def compute_invoice_totals(invoice_bag):
         'totale': imponibile + iva
     }
 
-totals = compute_invoice_totals(bag)
+# Use saved reference 'beni' from when we built the invoice
+totals = compute_invoice_totals(beni)
 print(f"Imponibile: €{totals['imponibile']:.2f}")
 print(f"IVA: €{totals['iva']:.2f}")
 print(f"Totale: €{totals['totale']:.2f}")
