@@ -76,7 +76,9 @@ class TxtDocResolver(BagResolver):
 
     Parameters (class_kwargs):
         cache_time: Cache duration in seconds. Default 500.
-        read_only: If True, resolver acts as pure getter. Default True.
+        read_only: If True, value is not stored in node._value. Default True,
+            but effectively False because cache_time=500 forces read_only=False.
+            Set cache_time=0 if you need true read_only behavior.
 
     Returns:
         bytes: Raw file content. Caller must decode if text is needed.
@@ -113,7 +115,9 @@ class SerializedBagResolver(BagResolver):
 
     Parameters (class_kwargs):
         cache_time: Cache duration in seconds. Default 500.
-        read_only: If True, resolver acts as pure getter. Default True.
+        read_only: If True, value is not stored in node._value. Default True,
+            but effectively False because cache_time=500 forces read_only=False.
+            Set cache_time=0 if you need true read_only behavior.
         format: Force format ('xml', 'json', 'msgpack'). If None, detect from extension.
 
     Example:
@@ -160,7 +164,9 @@ class DirectoryResolver(BagResolver):
 
     Parameters (class_kwargs):
         cache_time: Cache duration in seconds. Default 500.
-        read_only: If True, resolver acts as pure getter. Default True.
+        read_only: If True, value is not stored in node._value. Default True,
+            but effectively False because cache_time=500 forces read_only=False.
+            Set cache_time=0 if you need true read_only behavior.
         invisible: If True, includes hidden files (starting with '.'). Default False.
         ext: Comma-separated list of extensions to process, with optional
             processor mapping. Format: 'ext1,ext2:processor,ext3'.

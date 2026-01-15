@@ -211,8 +211,8 @@ class TestXsdReaderSimpleTypes:
         elements = {name: (sub_tags, cav) for name, sub_tags, cav in reader.iter_elements()}
 
         code_cav = elements["code"][1]
-        assert "value" in code_cav
-        base_type, validators, default = code_cav["value"]
+        assert "node_value" in code_cav
+        base_type, validators, default = code_cav["node_value"]
 
         # Should have Regex validator
         patterns = [v for v in validators if hasattr(v, "pattern")]
@@ -225,8 +225,8 @@ class TestXsdReaderSimpleTypes:
         elements = {name: (sub_tags, cav) for name, sub_tags, cav in reader.iter_elements()}
 
         amount_cav = elements["amount"][1]
-        assert "value" in amount_cav
-        base_type, validators, default = amount_cav["value"]
+        assert "node_value" in amount_cav
+        base_type, validators, default = amount_cav["node_value"]
 
         # Should have Range validator
         ranges = [v for v in validators if hasattr(v, "ge")]
@@ -240,8 +240,8 @@ class TestXsdReaderSimpleTypes:
         elements = {name: (sub_tags, cav) for name, sub_tags, cav in reader.iter_elements()}
 
         status_cav = elements["status"][1]
-        assert "value" in status_cav
-        base_type, validators, default = status_cav["value"]
+        assert "node_value" in status_cav
+        base_type, validators, default = status_cav["node_value"]
 
         # Base type should be Literal with enum values
         # (Literal types are complex to check, just verify it's not str)
@@ -258,8 +258,8 @@ class TestXsdReaderAttributes:
 
         price_cav = elements["price"][1]
 
-        # Should have value validation (decimal)
-        assert "value" in price_cav
+        # Should have node_value validation (decimal)
+        assert "node_value" in price_cav
 
         # Should have currency attribute (required)
         assert "currency" in price_cav

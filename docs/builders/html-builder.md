@@ -1,10 +1,8 @@
-# HtmlBuilder and HtmlPage
+# HtmlBuilder
 
-The `HtmlBuilder` provides complete HTML5 support with 112 tags loaded from the W3C schema. `HtmlPage` offers a convenient wrapper for building complete HTML documents.
+The `HtmlBuilder` provides complete HTML5 support with 112 tags loaded from the W3C schema.
 
-## HtmlBuilder
-
-### Basic Usage
+## Basic Usage
 
 ```{doctest}
 >>> from genro_bag import Bag
@@ -18,50 +16,9 @@ BagNode : ... at ...
 BagNode : ... at ...
 ```
 
-### Available Tags
+## Common Patterns
 
-HtmlBuilder supports all 112 HTML5 tags:
-
-```{doctest}
->>> from genro_bag.builders import HtmlBuilder
->>> builder = HtmlBuilder()
->>> len(builder.ALL_TAGS)
-112
->>> sorted(list(builder.ALL_TAGS))[:10]
-['a', 'abbr', 'address', 'area', 'article', 'aside', 'audio', 'b', 'base', 'bdi']
-```
-
-### Void Elements
-
-Void elements (self-closing tags like `<br>`, `<img>`, `<meta>`) automatically get an empty value:
-
-```{doctest}
->>> from genro_bag import Bag
->>> from genro_bag.builders import HtmlBuilder
-
->>> builder = HtmlBuilder()
->>> sorted(builder.VOID_ELEMENTS)
-['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'source', 'track', 'wbr']
-
->>> bag = Bag(builder=HtmlBuilder)
->>> br = bag.br()
->>> br.value  # Empty string, not None
-''
-
->>> img = bag.img(src='/logo.png', alt='Logo')
->>> img.value
-''
->>> bag['img_0?src']
-'/logo.png'
-
->>> meta = bag.meta(charset='utf-8')
->>> meta.value
-''
-```
-
-### Common Patterns
-
-#### Navigation Menu
+### Navigation Menu
 
 ```{doctest}
 >>> from genro_bag import Bag
@@ -78,7 +35,7 @@ Void elements (self-closing tags like `<br>`, `<img>`, `<meta>`) automatically g
 3
 ```
 
-#### Form Elements
+### Form Elements
 
 ```{doctest}
 >>> from genro_bag import Bag
@@ -95,7 +52,7 @@ BagNode : ... at ...
 BagNode : ... at ...
 ```
 
-#### Tables
+### Tables
 
 ```{doctest}
 >>> from genro_bag import Bag
@@ -119,150 +76,6 @@ BagNode : ... at ...
 3
 >>> len(list(tbody))  # 2 rows
 2
-```
-
-## HtmlPage
-
-`HtmlPage` provides a complete HTML document structure with separate `head` and `body` sections.
-
-### Basic Usage
-
-```{doctest}
->>> from genro_bag.builders import HtmlPage
-
->>> page = HtmlPage()
-
->>> # Configure <head>
->>> page.head.meta(charset='utf-8')  # doctest: +ELLIPSIS
-BagNode : ... at ...
->>> page.head.title(value='My Website')  # doctest: +ELLIPSIS
-BagNode : ... at ...
->>> page.head.meta(name='viewport', content='width=device-width, initial-scale=1')  # doctest: +ELLIPSIS
-BagNode : ... at ...
-
->>> # Build <body>
->>> page.body.header().h1(value='Welcome')  # doctest: +ELLIPSIS
-BagNode : ... at ...
->>> page.body.main().p(value='Content here')  # doctest: +ELLIPSIS
-BagNode : ... at ...
->>> page.body.footer().p(value='Footer')  # doctest: +ELLIPSIS
-BagNode : ... at ...
-```
-
-### Generating HTML
-
-```{doctest}
->>> from genro_bag.builders import HtmlPage
-
->>> page = HtmlPage()
->>> page.head.title(value='Test')  # doctest: +ELLIPSIS
-BagNode : ... at ...
->>> page.body.p(value='Hello')  # doctest: +ELLIPSIS
-BagNode : ... at ...
-
->>> html = page.to_html()
->>> '<!DOCTYPE html>' in html
-True
->>> '<html>' in html
-True
->>> '<head>' in html
-True
->>> '<title>Test</title>' in html
-True
->>> '<body>' in html
-True
->>> '<p>Hello</p>' in html
-True
-```
-
-### Saving to File
-
-```python
->>> from genro_bag.builders import HtmlPage
->>> import tempfile
->>> import os
-
->>> page = HtmlPage()
->>> page.head.title(value='Saved Page')  # doctest: +ELLIPSIS
-BagNode : ... at ...
->>> page.body.h1(value='Hello')  # doctest: +ELLIPSIS
-BagNode : ... at ...
-
->>> # Save to file
->>> with tempfile.TemporaryDirectory() as tmpdir:
-...     path = page.to_html('index.html', output_dir=tmpdir)
-...     os.path.basename(path)
-'index.html'
-```
-
-### Debug with print_tree()
-
-```python
->>> from genro_bag.builders import HtmlPage
-
->>> page = HtmlPage()
->>> page.head.title(value='Debug Example')  # doctest: +SKIP
->>> page.body.div(id='main').p(value='Hello')  # doctest: +SKIP
->>> page.print_tree()  # doctest: +SKIP
-============================================================
-HEAD
-============================================================
-<title>: "Debug Example"
-
-============================================================
-BODY
-============================================================
-<div [id="main"]>
-  <p>: "Hello"
-```
-
-### Complete Example
-
-```{doctest}
->>> from genro_bag.builders import HtmlPage
-
->>> page = HtmlPage()
-
->>> # Head section
->>> page.head.meta(charset='utf-8')  # doctest: +ELLIPSIS
-BagNode : ... at ...
->>> page.head.title(value='Product Page')  # doctest: +ELLIPSIS
-BagNode : ... at ...
->>> page.head.link(rel='stylesheet', href='/css/style.css')  # doctest: +ELLIPSIS
-BagNode : ... at ...
-
->>> # Navigation
->>> nav = page.body.nav(class_='navbar')
->>> ul = nav.ul()
->>> for text, href in [('Home', '/'), ('Products', '/products')]:
-...     li = ul.li()
-...     _ = li.a(value=text, href=href)
-
->>> # Main content
->>> main = page.body.main()
->>> main.h1(value='Our Products')  # doctest: +ELLIPSIS
-BagNode : ... at ...
-
->>> # Product cards
->>> grid = main.div(class_='product-grid')
->>> for name, price in [('Widget', '$10'), ('Gadget', '$25')]:
-...     card = grid.div(class_='product-card')
-...     _ = card.h2(value=name)
-...     _ = card.p(value=price, class_='price')
-...     _ = card.button(value='Buy Now')
-
->>> # Footer
->>> footer = page.body.footer()
->>> footer.p(value='Copyright 2025')  # doctest: +ELLIPSIS
-BagNode : ... at ...
-
->>> html = page.to_html()
->>> '<nav class_="navbar">' in html
-True
->>> '<div class_="product-grid">' in html
-True
->>> 'Widget' in html and 'Gadget' in html
-True
 ```
 
 ## Tips and Tricks

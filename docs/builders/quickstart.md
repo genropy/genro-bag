@@ -86,44 +86,6 @@ BagNode : ... at ...
 3
 ```
 
-## Building Complete Pages
-
-Use `HtmlPage` for full HTML documents:
-
-```{doctest}
->>> from genro_bag.builders import HtmlPage
-
->>> page = HtmlPage()
-
->>> # Configure head
->>> page.head.meta(charset='utf-8')  # doctest: +ELLIPSIS
-BagNode : ... at ...
->>> page.head.title(value='My Website')  # doctest: +ELLIPSIS
-BagNode : ... at ...
-
->>> # Build body
->>> header = page.body.header()
->>> header.h1(value='Site Title')  # doctest: +ELLIPSIS
-BagNode : ... at ...
-
->>> main = page.body.main()
->>> main.p(value='Welcome to my site!')  # doctest: +ELLIPSIS
-BagNode : ... at ...
-
->>> footer = page.body.footer()
->>> footer.p(value='Copyright 2025')  # doctest: +ELLIPSIS
-BagNode : ... at ...
-
->>> # Generate HTML
->>> html = page.to_html()
->>> '<!DOCTYPE html>' in html
-True
->>> '<title>My Website</title>' in html
-True
->>> '<h1>Site Title</h1>' in html
-True
-```
-
 ## Attributes
 
 Pass attributes as keyword arguments. Use `class_` for the `class` attribute (since `class` is a Python reserved word):

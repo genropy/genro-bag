@@ -3,7 +3,7 @@
 """BuildingBuilder - Example builder for building/apartment structures.
 
 A didactic example showing how to use @element decorator for:
-- Structure validation with children parameter
+- Structure validation with sub_tags parameter
 - Simple elements (single node)
 - Complex elements (nested structures created by a single method call)
 """
@@ -17,8 +17,8 @@ from genro_bag.builders import element
 class Building:
     """A building structure with validation.
 
-    This is the "cover" class (like HtmlPage for HTML) that wraps
-    a Bag with BuildingBuilder and provides a convenient API.
+    This is a "cover" class that wraps a Bag with BuildingBuilder
+    and provides a convenient API.
 
     Example:
         >>> casa = Building(name='Casa Mia')
@@ -71,7 +71,13 @@ class Building:
         Returns:
             List of error messages (empty if valid).
         """
-        return self._store.builder.check(self._root, parent_tag="building")
+        results = self._store.builder.check(self._root)
+        # Convert tuple format (path, node, reasons) to simple error strings
+        errors = []
+        for path, _node, reasons in results:
+            for reason in reasons:
+                errors.append(f"{path}: {reason}")
+        return errors
 
     def print_tree(self):
         """Print the building structure for debugging."""
@@ -134,26 +140,26 @@ class BuildingBuilder(BagBuilderBase):
         >>> bedroom = apt.bedroom()
         >>> bedroom.wardrobe(drawers=6, doors=3, color='oak')
         >>>
-        >>> errors = store.builder.check(building, parent_tag='building')
+        >>> errors = store.builder.check(building)
     """
 
     # === Building level ===
 
-    @element(children="floor")
+    @element(sub_tags="floor")
     def building(self, target: Bag, tag: str, name: str = "", **attr) -> BagNode:
         """Create a building. Can contain only floors."""
         return self.child(target, tag, name=name, **attr)
 
     # === Floor level ===
 
-    @element(children="apartment, corridor, stairs")
+    @element(sub_tags="apartment, corridor, stairs")
     def floor(self, target: Bag, tag: str, number: int = 0, **attr) -> BagNode:
         """Create a floor. Can contain apartments, corridors, stairs."""
         return self.child(target, tag, number=number, **attr)
 
     # === Floor elements ===
 
-    @element(children="kitchen[:1], bathroom[1:], bedroom, living_room[:1], dining_room[:1]")
+    @element(sub_tags="kitchen[:1], bathroom[1:], bedroom, living_room[:1], dining_room[:1]")
     def apartment(self, target: Bag, tag: str, number: str = "", **attr) -> BagNode:
         """Create an apartment. Must have at least 1 bathroom, max 1 kitchen/living/dining."""
         return self.child(target, tag, number=number, **attr)
@@ -170,27 +176,27 @@ class BuildingBuilder(BagBuilderBase):
 
     # === Rooms ===
 
-    @element(children="fridge[:1], oven[:2], sink[:1], table, chair")
+    @element(sub_tags="fridge[:1], oven[:2], sink[:1], table, chair")
     def kitchen(self, target: Bag, tag: str, **attr) -> BagNode:
         """Create a kitchen. Max 1 fridge, max 2 ovens, max 1 sink."""
         return self.child(target, tag, **attr)
 
-    @element(children="toilet[:1], shower[:1], sink[:1]")
+    @element(sub_tags="toilet[:1], shower[:1], sink[:1]")
     def bathroom(self, target: Bag, tag: str, **attr) -> BagNode:
         """Create a bathroom. Max 1 of each fixture."""
         return self.child(target, tag, **attr)
 
-    @element(children="bed, wardrobe, desk, chair")
+    @element(sub_tags="bed, wardrobe, desk, chair")
     def bedroom(self, target: Bag, tag: str, **attr) -> BagNode:
         """Create a bedroom. Can contain bedroom furniture."""
         return self.child(target, tag, **attr)
 
-    @element(children="sofa, tv, table, chair")
+    @element(sub_tags="sofa, tv, table, chair")
     def living_room(self, target: Bag, tag: str, **attr) -> BagNode:
         """Create a living room. Can contain living room furniture."""
         return self.child(target, tag, **attr)
 
-    @element(children="table, chair")
+    @element(sub_tags="table, chair")
     def dining_room(self, target: Bag, tag: str, **attr) -> BagNode:
         """Create a dining room. Can contain dining furniture."""
         return self.child(target, tag, **attr)
@@ -213,7 +219,7 @@ class BuildingBuilder(BagBuilderBase):
     # === Complex furniture (nested structures) ===
     # A single method call can create multiple nodes
 
-    @element(children="chest_of_drawers[:1], door")
+    @element(sub_tags="chest_of_drawers[:1], door")
     def wardrobe(self, target: Bag, tag: str, drawers: int = 4, doors: int = 2, **attr) -> BagNode:
         """Create a wardrobe with chest of drawers and doors.
 
@@ -256,7 +262,7 @@ class BuildingBuilder(BagBuilderBase):
 
         return wardrobe
 
-    @element(children="drawer")
+    @element(sub_tags="drawer")
     def chest_of_drawers(self, target: Bag, tag: str, **attr) -> BagNode:
         """Create a chest of drawers container."""
         return self.child(target, tag, **attr)

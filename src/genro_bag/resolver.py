@@ -271,8 +271,12 @@ class BagResolver:
         Returns:
             The resolved value, or a coroutine if in async context.
         """
-        # If not read_only and (static or cache valid), return cached value
-        if not self.read_only and (static or not self.expired):
+        # If static=True, always return cached value without triggering load
+        if static:
+            return self.cached_value
+
+        # If not read_only and cache valid, return cached value
+        if not self.read_only and not self.expired:
             return self.cached_value
 
         # Handle temporary kwargs overrides
@@ -447,7 +451,10 @@ class BagCbResolver(BagResolver):
 
     Parameters (class_kwargs):
         cache_time: Cache duration in seconds. Default 0 (no cache).
-        read_only: If True, resolver acts as pure getter. Default True.
+        read_only: If True, value is not stored in node._value. Default False.
+            Note: read_only is forced to False when cache_time != 0, because
+            caching requires storing the value. Set cache_time=0 if you need
+            read_only=True behavior.
 
     Example:
         >>> from datetime import datetime

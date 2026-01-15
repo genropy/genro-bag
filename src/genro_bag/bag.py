@@ -608,7 +608,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
 
     # -------------------- get (single level) --------------------------------
 
-    def get(self, label: str, default: Any = None) -> Any:
+    def get(self, label: str, default: Any = None, static: bool = True) -> Any:
         """Get value at a single level (no path traversal).
 
         Unlike get_item/`__getitem__`, this method only looks at direct children
@@ -618,6 +618,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
             label: Node label to look up. Can be a string label or '#n' index.
                 Supports '?attr' suffix to get a node attribute instead of value.
             default: Value to return if label not found.
+            static: If True, don't trigger resolvers. Default True.
 
         Returns:
             The node's value if found, otherwise default.
@@ -643,7 +644,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
         node = self._nodes.get(label)
         if not node:
             return default
-        return node.get_attr(attrname) if attrname else node.get_value()
+        return node.get_attr(attrname) if attrname else node.get_value(static=static)
 
     # -------------------- get_item --------------------------------
 
@@ -686,7 +687,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
         def finalize(obj_label):
             obj, label = obj_label
             if isinstance(obj, Bag):
-                return obj.get(label, default)
+                return obj.get(label, default, static=static)
             if hasattr(obj, "get"):
                 return obj.get(label, default)
             return default

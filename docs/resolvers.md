@@ -242,10 +242,14 @@ All resolvers support these base parameters (defaults may vary by resolver):
 | `cache_time` | 0            | Cache duration in seconds (0=none, <0=infinite)           |
 | `read_only`  | False        | If True, value is not stored in node (computed each time) |
 
-**Note**: Some resolvers override these defaults. For example:
+**Important**: When `cache_time != 0`, `read_only` is forced to `False` because caching
+requires storing the value. Set `cache_time=0` if you need true `read_only=True` behavior.
 
-- `UrlResolver`: `cache_time=300`, `read_only=True`
-- `DirectoryResolver`: `cache_time=500`, `read_only=True`
+Some resolvers override base defaults:
+
+- `UrlResolver`: `cache_time=300` (so effectively `read_only=False`)
+- `DirectoryResolver`: `cache_time=500` (so effectively `read_only=False`)
+- `OpenApiResolver`: `cache_time=-1` (infinite cache, so effectively `read_only=False`)
 - `BagCbResolver`: `cache_time=0`, `read_only=False`
 
 ## Caching Behavior
@@ -397,21 +401,24 @@ Controls how resolved values are stored:
 - Value computed on every access (respecting cache)
 - Result NOT stored in node._value
 - Good for frequently changing data
-- Default for `UrlResolver` and `DirectoryResolver`
+
+**Note**: `read_only=True` is forced to `False` when `cache_time != 0`. This is because
+caching inherently requires storing the value. If you need true read-only behavior
+(recompute on every access), set `cache_time=0`.
 
 ```python
-# Store resolved value in node
-bag['heavy'] = UrlResolver(
-    'https://api.example.com/large-dataset',
-    read_only=False,
-    cache_time=-1
+# Cached resolver - read_only is effectively False
+bag['cached'] = UrlResolver(
+    'https://api.example.com/data',
+    cache_time=300  # read_only forced to False
 )
 
-# First access loads and stores
-data1 = bag['heavy']  # HTTP request made
-
-# Second access uses stored value
-data2 = bag['heavy']  # No HTTP request
+# True read-only - recompute every time
+bag['dynamic'] = BagCbResolver(
+    get_current_time,
+    cache_time=0,
+    read_only=True
+)
 ```
 
 ## Serialization

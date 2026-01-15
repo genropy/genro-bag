@@ -142,6 +142,14 @@ class BagQuery:
     def is_empty(self, zero_is_none: bool = False, blank_is_none: bool = False) -> bool:
         """Check if the Bag is empty.
 
+        A node is considered non-empty if:
+        - It has a resolver (even if static value is None, the resolver
+          represents potential content that can be loaded)
+        - It has a non-None static value (unless zero_is_none/blank_is_none apply)
+
+        This method never triggers resolver I/O - it only checks static values
+        and resolver presence.
+
         Args:
             zero_is_none: If True, treat 0 values as empty.
             blank_is_none: If True, treat blank strings as empty.
@@ -153,7 +161,10 @@ class BagQuery:
             return True
 
         for node in self._nodes:
-            v = node.value
+            # A node with a resolver is not empty (has potential content)
+            if node._resolver is not None:
+                return False
+            v = node.get_value(static=True)
             if v is None:
                 continue
             if zero_is_none and v == 0:
@@ -232,13 +243,14 @@ class BagQuery:
                         return result
             return None
 
-        # Generator mode
+        # Generator mode - always uses static=True to avoid triggering resolvers
         def _walk_gen(bag: Bag, prefix: str) -> Iterator[tuple[str, BagNode]]:
             for node in bag._nodes:
                 path = f"{prefix}.{node.label}" if prefix else node.label
                 yield path, node
-                if isinstance(node.value, Bag):
-                    yield from _walk_gen(node.value, path)
+                value = node.get_value(static=True)
+                if isinstance(value, Bag):
+                    yield from _walk_gen(value, path)
 
         return _walk_gen(self, "")  # type: ignore[arg-type]
 

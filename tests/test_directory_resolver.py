@@ -180,8 +180,8 @@ class TestDirectoryResolverSubdirectories:
         resolver = DirectoryResolver(str(tmp_path), ext="txt")
         result = resolver.load()
 
-        # Get the subdirectory - accessing value triggers resolver
-        subdir_bag = result["level1"]
+        # Get the subdirectory - use static=False to trigger resolver
+        subdir_bag = result.get_item("level1", static=False)
         assert isinstance(subdir_bag, Bag)
         assert "file_txt" in subdir_bag
 
@@ -208,8 +208,8 @@ class TestDirectoryResolverProcessors:
         resolver = DirectoryResolver(str(tmp_path), ext="txt")
         result = resolver.load()
 
-        # Accessing value triggers the resolver
-        content = result["doc_txt"]
+        # Accessing value triggers the resolver (static=False required)
+        content = result.get_item("doc_txt", static=False)
         assert content == b"hello world"
 
     def test_processor_xml_creates_resolver(self, tmp_path):
@@ -231,8 +231,8 @@ class TestDirectoryResolverProcessors:
         resolver = DirectoryResolver(str(tmp_path), ext="xml")
         result = resolver.load()
 
-        # Accessing value triggers the resolver
-        bag = result["data_xml"]
+        # Accessing value triggers the resolver (static=False required)
+        bag = result.get_item("data_xml", static=False)
         assert isinstance(bag, Bag)
         assert bag["root.item"] == "value"
 
@@ -274,8 +274,8 @@ class TestDirectoryResolverProcessors:
         resolver = DirectoryResolver(str(tmp_path), ext="")
         result = resolver.load()
 
-        # Accessing value triggers resolver
-        bag = result["data_xsd"]
+        # Accessing value triggers resolver (static=False required)
+        bag = result.get_item("data_xsd", static=False)
         assert isinstance(bag, Bag)
         assert bag["root.item"] == "value"
 
@@ -290,7 +290,7 @@ class TestDirectoryResolverProcessors:
         resolver = DirectoryResolver(str(tmp_path), ext="csv", processors={"csv": csv_processor})
         result = resolver.load()
 
-        assert result["data_csv"] == ["a", "b", "c"]
+        assert result.get_item("data_csv", static=False) == ["a", "b", "c"]
 
     def test_processor_disabled_with_false(self, tmp_path):
         """Processor can be disabled by setting to False."""

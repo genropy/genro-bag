@@ -25,7 +25,9 @@ class OpenApiResolver(BagResolver):
 
     Parameters (class_kwargs):
         cache_time: Cache duration in seconds. Default -1 (infinite cache).
-        read_only: If True, resolver acts as pure getter. Default True.
+        read_only: If True, value is not stored in node._value. Default True,
+            but effectively False because cache_time=-1 forces read_only=False.
+            Set cache_time=0 if you need true read_only behavior.
         timeout: Request timeout in seconds. Default 30.
 
     Result Structure:

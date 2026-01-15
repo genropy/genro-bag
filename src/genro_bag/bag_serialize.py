@@ -287,13 +287,16 @@ class BagSerializer:
         for path, node in self.walk():  # type: ignore[attr-defined]
             parent_path = path.rsplit(".", 1)[0] if "." in path else ""
 
+            # Use static=True to avoid triggering resolvers during serialization
+            node_value = node.get_value(static=True)
+
             # Value encoding - use duck typing to check for Bag
-            if hasattr(node.value, "walk") and hasattr(node.value, "_nodes"):
+            if hasattr(node_value, "walk") and hasattr(node_value, "_nodes"):
                 value = "::X"
-            elif node.value is None:
+            elif node_value is None:
                 value = "::NN"
             else:
-                value = node.value
+                value = node_value
 
             attr = dict(node.attr) if node.attr else {}
 
@@ -301,7 +304,7 @@ class BagSerializer:
                 parent_ref = path_to_code.get(parent_path) if parent_path else None
                 yield (parent_ref, node.label, node.tag, value, attr)
 
-                if hasattr(node.value, "walk") and hasattr(node.value, "_nodes"):
+                if hasattr(node_value, "walk") and hasattr(node_value, "_nodes"):
                     path_to_code[path] = code_counter
                     path_registry[code_counter] = path  # type: ignore[index]
                     code_counter += 1
@@ -333,7 +336,8 @@ class BagSerializer:
 
     def _node_to_json_dict(self, node: Any, typed: bool) -> dict:
         """Convert a BagNode to JSON-serializable dict."""
-        value = node.value
+        # Use static=True to avoid triggering resolvers during serialization
+        value = node.get_value(static=True)
         # Check if value is a Bag using duck typing
         if hasattr(value, "_nodes") and hasattr(value, "walk"):
             value = [value._node_to_json_dict(n, typed) for n in value]

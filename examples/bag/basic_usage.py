@@ -80,7 +80,8 @@ def demo_iteration():
     # Iterate over nodes
     print("Iterating over nodes:")
     for node in bag:
-        print(f"  {node.label} = {node.value}")
+        # Use get_value(static=True) to avoid triggering resolvers in generic code
+        print(f"  {node.label} = {node.get_value(static=True)}")
 
     # Using walk() for nested structures
     nested = Bag()
@@ -90,7 +91,9 @@ def demo_iteration():
 
     print("\nWalking nested structure:")
     for path, node in nested.walk():
-        print(f"  {path}: {node.value if not node.is_branch else '(Bag)'}")
+        # Use get_value(static=True) to show cached value without side-effects
+        value = node.get_value(static=True)
+        print(f"  {path}: {value if not node.is_branch else '(Bag)'}")
 
 
 def demo_serialization():
@@ -146,7 +149,8 @@ def demo_xml_parsing():
             attrs = " ".join(f'{k}="{v}"' for k, v in node.attr.items())
             print(f"{indent}{node.label} {attrs}".strip())
         else:
-            print(f"{indent}{node.label}: {node.value}")
+            # Use get_value(static=True) to avoid triggering resolvers
+            print(f"{indent}{node.label}: {node.get_value(static=True)}")
 
 
 def demo():

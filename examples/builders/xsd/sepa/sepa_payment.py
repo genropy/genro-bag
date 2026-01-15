@@ -107,8 +107,11 @@ class SepaPayment:
         total = 0.0
         for node in self.payment_info:
             if node.tag == "CdtTrfTxInf":
-                amt_node = node.value["Amt_0.InstdAmt_0"]
-                total += float(amt_node)
+                # Walk the transfer to find InstdAmt by tag, not by auto-generated label
+                for _path, child in node.value.walk():
+                    if child.tag == "InstdAmt":
+                        total += float(child.value)
+                        break
         return total
 
     @property

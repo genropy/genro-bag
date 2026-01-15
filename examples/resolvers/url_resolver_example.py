@@ -35,7 +35,8 @@ def demo_fetch_xml():
         if node.is_branch:
             print(f"{indent}{node.label}")
         else:
-            print(f"{indent}{node.label}: {node.value}")
+            # Use get_value(static=True) to show cached value without triggering resolvers
+            print(f"{indent}{node.label}: {node.get_value(static=True)}")
 
 
 def demo_fetch_json():
@@ -56,8 +57,10 @@ def demo_fetch_json():
         if node.is_branch:
             print(f"{indent}{node.label}")
         else:
-            value = str(node.value)[:50] + "..." if len(str(node.value)) > 50 else node.value
-            print(f"{indent}{node.label}: {value}")
+            # Use get_value(static=True) to show cached value without triggering resolvers
+            value = node.get_value(static=True)
+            value_str = str(value)[:50] + "..." if len(str(value)) > 50 else value
+            print(f"{indent}{node.label}: {value_str}")
 
 
 def demo_lazy_resolver():
@@ -74,10 +77,10 @@ def demo_lazy_resolver():
     print("Resolver attached but not fetched yet")
     print(f"Node has resolver: {bag.get_node('api_data').resolver is not None}")
 
-    # Access triggers fetch
+    # Access triggers fetch - use get_value() to explicitly trigger resolver
     print("\nAccessing data (triggers fetch)...")
     node = bag.get_node("api_data")
-    value = node.value
+    value = node.get_value()  # This triggers the resolver
 
     print(f"Data loaded: {type(value)}")
     if isinstance(value, Bag):

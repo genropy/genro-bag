@@ -4,7 +4,7 @@
 Parses XSD (XML Schema Definition) files and yields element definitions
 with their children and validation constraints.
 
-Used by XsdSchemaBuilder to generate BagBuilder schemas.
+Used by XsdBuilder to generate BagBuilder schemas.
 """
 
 from __future__ import annotations
@@ -442,7 +442,7 @@ class XsdReader:
         """Build call_args_validations from ComplexSpec."""
         out: dict[str, Any] = {}
         if ct.simple_content:
-            out["value"] = self._render_simple_spec(ct.simple_content, required=False)
+            out["node_value"] = self._render_simple_spec(ct.simple_content, required=False)
         for a in ct.attrs:
             if a.type_spec:
                 out[a.name] = self._render_simple_spec(a.type_spec, required=(a.use == "required"))
@@ -492,7 +492,7 @@ class XsdReader:
         # Simple type
         if tname in self.simple_types or tname in BUILTIN_MAP:
             spec = self._resolve_simple(type_qname)
-            cav = {"value": self._render_simple_spec(spec, required=False)}
+            cav = {"node_value": self._render_simple_spec(spec, required=False)}
             yield (el_name, "", cav)
             return
 

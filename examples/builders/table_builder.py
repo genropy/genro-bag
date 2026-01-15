@@ -1,88 +1,96 @@
 # Copyright 2025 Softwell S.r.l. - SPDX-License-Identifier: Apache-2.0
 
-"""TableBuilder - Example builder using JSON schema with attribute validation.
+"""TableBuilder - Example builder for HTML tables.
 
 Demonstrates:
-- Loading schema from JSON file
-- Pure Python attribute validation from attrs spec
-- =ref references for content categories
-- Structure and attribute validation
+- Using @element decorator with sub_tags for structure validation
+- Building HTML tables with thead, tbody, tr, th, td
+- High-level wrapper class for convenient API
 """
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
 from typing import TYPE_CHECKING
 
 from genro_bag import Bag, BagBuilderBase
+from genro_bag.builders import element
 
 if TYPE_CHECKING:
     from genro_bag import BagNode
 
 
-# Load schema from JSON
-SCHEMA_PATH = Path(__file__).parent / "html_tables.json"
-
-
 class TableBuilder(BagBuilderBase):
-    """Builder for HTML table elements using JSON schema.
+    """Builder for HTML table elements using @element decorators.
 
-    Schema loaded from html_tables.json (in same directory) provides:
-    - Element children constraints (table → thead, tbody, tr, etc.)
-    - Attribute validation via pure Python validation
-    - Reference resolution for content categories (=flow)
+    Defines valid HTML table structure:
+    - table can contain: caption, colgroup, thead, tbody, tfoot, tr
+    - thead/tbody/tfoot can contain: tr
+    - tr can contain: th, td
+    - th/td are leaf elements (contain text)
 
     Example:
-        >>> store = Bag(builder=TableBuilder())
+        >>> store = Bag(builder=TableBuilder)
         >>> table = store.table()
         >>> thead = table.thead()
         >>> tr = thead.tr()
-        >>> tr.th(value='Header 1', scope='col')
-        >>> tr.th(value='Header 2', scope='col')
+        >>> tr.th(value='Header 1')
+        >>> tr.th(value='Header 2')
         >>>
         >>> tbody = table.tbody()
         >>> row = tbody.tr()
-        >>> row.td(value='Cell 1', colspan=2)
+        >>> row.td(value='Cell 1')
         >>> row.td(value='Cell 2')
     """
 
-    def __init__(self):
-        """Initialize builder with schema from JSON."""
-        super().__init__()
-        self._load_schema()
+    @element(sub_tags="caption[:1], colgroup, thead[:1], tbody, tfoot[:1], tr")
+    def table(self, target: Bag, tag: str, **attr) -> BagNode:
+        """Create a table element."""
+        return self.child(target, tag, **attr)
 
-    def _load_schema(self):
-        """Load schema from JSON file."""
-        if SCHEMA_PATH.exists():
-            data = json.loads(SCHEMA_PATH.read_text())
-            # Set _schema from elements
-            self._schema = data.get("elements", {})
-            # Store refs for dynamic _ref_* resolution
-            self._refs = data.get("refs", {})
-        else:
-            # Fallback inline schema
-            self._schema = {
-                "table": {"children": "thead, tbody, tfoot, tr"},
-                "thead": {"children": "tr"},
-                "tbody": {"children": "tr"},
-                "tfoot": {"children": "tr"},
-                "tr": {"children": "th, td"},
-                "th": {"leaf": False},
-                "td": {"leaf": False},
-            }
-            self._refs = {}
+    @element()
+    def caption(self, target: Bag, tag: str, **attr) -> BagNode:
+        """Create a caption element."""
+        return self.child(target, tag, **attr)
 
-    def __getattr__(self, name: str):
-        """Handle _ref_* lookups for dynamic references."""
-        if name.startswith("_ref_"):
-            ref_name = name[5:]  # '_ref_flow' -> 'flow'
-            if ref_name in self._refs:
-                return self._refs[ref_name]
-            raise AttributeError(f"Reference '{ref_name}' not found in schema refs")
+    @element(sub_tags="col")
+    def colgroup(self, target: Bag, tag: str, **attr) -> BagNode:
+        """Create a colgroup element."""
+        return self.child(target, tag, **attr)
 
-        # Delegate to parent for _schema lookup
-        return super().__getattr__(name)
+    @element()
+    def col(self, target: Bag, tag: str, **attr) -> BagNode:
+        """Create a col element (void)."""
+        return self.child(target, tag, **attr)
+
+    @element(sub_tags="tr")
+    def thead(self, target: Bag, tag: str, **attr) -> BagNode:
+        """Create a thead element."""
+        return self.child(target, tag, **attr)
+
+    @element(sub_tags="tr")
+    def tbody(self, target: Bag, tag: str, **attr) -> BagNode:
+        """Create a tbody element."""
+        return self.child(target, tag, **attr)
+
+    @element(sub_tags="tr")
+    def tfoot(self, target: Bag, tag: str, **attr) -> BagNode:
+        """Create a tfoot element."""
+        return self.child(target, tag, **attr)
+
+    @element(sub_tags="th, td")
+    def tr(self, target: Bag, tag: str, **attr) -> BagNode:
+        """Create a tr (table row) element."""
+        return self.child(target, tag, **attr)
+
+    @element()
+    def th(self, target: Bag, tag: str, **attr) -> BagNode:
+        """Create a th (table header cell) element."""
+        return self.child(target, tag, **attr)
+
+    @element()
+    def td(self, target: Bag, tag: str, **attr) -> BagNode:
+        """Create a td (table data cell) element."""
+        return self.child(target, tag, **attr)
 
 
 class HtmlTable:
@@ -99,8 +107,10 @@ class HtmlTable:
     """
 
     def __init__(self):
-        self._store = Bag(builder=TableBuilder())
+        self._store = Bag(builder=TableBuilder)
         self._table = self._store.table()
+        # Save table node reference - don't rely on auto-generated labels
+        self._table_node = self._store.get_node_at(-1)
         self._thead: Bag | None = None
         self._tbody: Bag | None = None
 
@@ -149,14 +159,21 @@ class HtmlTable:
         return tr
 
     def check(self) -> list[str]:
-        """Validate table structure."""
-        return self._store.builder.check(self._table, parent_tag="table")
+        """Validate table structure.
+
+        Returns:
+            List of error messages (empty if valid).
+        """
+        results = self._store.builder.check(self._table)
+        errors = []
+        for path, _node, reasons in results:
+            for reason in reasons:
+                errors.append(f"{path}: {reason}")
+        return errors
 
     def to_html(self, indent: int = 0) -> str:
         """Generate HTML string."""
-        # Get the table node (not its value)
-        table_node = self._store.get_node("table_0")
-        return self._node_to_html(table_node, indent)
+        return self._node_to_html(self._table_node, indent)
 
     def _node_to_html(self, node: BagNode, indent: int = 0) -> str:
         """Convert node to HTML."""
@@ -181,7 +198,7 @@ class HtmlTable:
 
 
 def demo():
-    """Demo of TableBuilder with validation."""
+    """Demo of TableBuilder."""
     print("=" * 60)
     print("TableBuilder Demo")
     print("=" * 60)
@@ -206,41 +223,22 @@ def demo():
     else:
         print("Table structure is valid!")
 
-    # Demo attribute validation
+    # Demo: Using builder directly
     print("\n" + "=" * 60)
-    print("Attribute Validation Demo")
+    print("Direct Builder Usage")
     print("=" * 60)
 
-    store = Bag(builder=TableBuilder())
+    store = Bag(builder=TableBuilder)
     table = store.table()
     tbody = table.tbody()
     tr = tbody.tr()
+    tr.td(value="Direct cell 1")
+    tr.td(value="Direct cell 2")
 
-    # Valid attributes
-    print("\nCreating td with colspan=2 (valid)...")
-    tr.td(value="Merged cell", colspan=2)
-    print("  Success!")
-
-    # Test scope enum on th
-    print("\nCreating th with scope='col' (valid enum)...")
-    tr2 = tbody.tr()
-    tr2.th(value="Header", scope="col")
-    print("  Success!")
-
-    # Invalid attribute
-    print("\nTrying td with colspan=0 (invalid, min=1)...")
-    try:
-        tr.td(value="Bad cell", colspan=0)
-        print("  Created (validation not triggered)")
-    except Exception as e:
-        print(f"  Validation error: {e}")
-
-    print("\nTrying th with scope='invalid' (invalid enum)...")
-    try:
-        tr2.th(value="Bad header", scope="invalid")
-        print("  Created (validation not triggered)")
-    except Exception as e:
-        print(f"  Validation error: {e}")
+    print("Created table with tbody > tr > td structure")
+    errors = store.builder.check()
+    if not errors:
+        print("Structure is valid!")
 
 
 if __name__ == "__main__":

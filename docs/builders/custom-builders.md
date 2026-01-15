@@ -4,10 +4,13 @@ This guide shows how to create your own domain-specific builders.
 
 ## Basic Structure
 
-Every builder extends `BagBuilderBase` and defines elements using either:
+Every builder extends `BagBuilderBase` and defines elements using the `@element` decorator.
 
-1. The `@element` decorator (recommended for complex logic)
-2. The `_schema` dictionary (simpler, declarative)
+```{important}
+**Schemas are never created manually.** If you need to load a schema from a file, use
+`builder_schema_path` with a `.bag.mp` file created by the schema builder tools.
+Do not create JSON or dictionary schemas by hand.
+```
 
 ```{doctest}
 >>> from genro_bag import Bag

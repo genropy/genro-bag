@@ -108,6 +108,13 @@ Builders support two complementary approaches:
 
 Both approaches can be combined in the same builder.
 
+```{important}
+**Schemas are never created manually.** If you need to load a schema from a file,
+use `builder_schema_path` with a `.bag.mp` file created by the schema builder tools.
+Do not create JSON or dictionary schemas by hand - always use `@element` decorators
+or schema builder utilities.
+```
+
 ## Built-in Builders
 
 ### HtmlBuilder
@@ -117,31 +124,10 @@ Complete HTML5 support with 112 tags loaded from W3C schema:
 ```{doctest}
 >>> from genro_bag import Bag
 >>> from genro_bag.builders import HtmlBuilder
->>> builder = HtmlBuilder()
->>> len(builder.ALL_TAGS) > 100
-True
->>> 'div' in builder.ALL_TAGS
-True
->>> 'br' in builder.VOID_ELEMENTS  # Self-closing
-True
-```
-
-### HtmlPage
-
-Complete HTML document structure with head and body:
-
-```{doctest}
->>> from genro_bag.builders import HtmlPage
->>> page = HtmlPage()
->>> page.head.title(value='My Page')  # doctest: +ELLIPSIS
+>>> bag = Bag(builder=HtmlBuilder)
+>>> div = bag.div(id='main')
+>>> div.p(value='Hello World')  # doctest: +ELLIPSIS
 BagNode : ... at ...
->>> page.body.div().p(value='Hello')  # doctest: +ELLIPSIS
-BagNode : ... at ...
->>> html = page.to_html()
->>> '<!DOCTYPE html>' in html
-True
->>> '<title>My Page</title>' in html
-True
 ```
 
 ### XsdBuilder
@@ -152,13 +138,8 @@ Dynamic builder from XML Schema (XSD) files - automatically generates methods fo
 from genro_bag import Bag
 from genro_bag.builders import XsdBuilder
 
-# Load any XSD schema
-xsd_content = open('invoice.xsd').read()
-schema = Bag.from_xml(xsd_content)
-builder = XsdBuilder(schema)
-
-# Use with Bag - methods generated from XSD
-invoice = Bag(builder=builder)
+# Use with Bag - pass XSD file path via builder_xsd_source
+invoice = Bag(builder=XsdBuilder, builder_xsd_source='invoice.xsd')
 invoice.Invoice().Header().Date(value='2025-01-01')
 ```
 

@@ -17,18 +17,16 @@ Creating builders manually for complex XML formats like invoices, financial repo
 from genro_bag import Bag
 from genro_bag.builders import XsdBuilder
 
-# Load XSD schema
-xsd_content = open('schema.xsd').read()
-schema = Bag.from_xml(xsd_content)
+# Use with Bag - pass XSD file path via builder_xsd_source
+doc = Bag(builder=XsdBuilder, builder_xsd_source='schema.xsd')
 
-# Create builder from schema
-builder = XsdBuilder(schema)
-
-# Use with Bag - methods are generated from XSD elements
-doc = Bag(builder=builder)
+# Methods are generated from XSD elements
 root = doc.RootElement(attr1='value')
 child = root.ChildElement()
 child.GrandChild(value='text content')
+
+# Can also use URL
+doc = Bag(builder=XsdBuilder, builder_xsd_source='https://example.com/schema.xsd')
 ```
 
 ## How It Works
@@ -86,13 +84,8 @@ defines the Customer Credit Transfer Initiation message.
 from genro_bag import Bag
 from genro_bag.builders import XsdBuilder
 
-# Load ISO 20022 pain.001 schema
-xsd_content = open('pain.001.001.12.xsd').read()
-schema = Bag.from_xml(xsd_content)
-builder = XsdBuilder(schema)
-
-# Create Credit Transfer document
-doc = Bag(builder=builder)
+# Create Credit Transfer document from ISO 20022 pain.001 schema
+doc = Bag(builder=XsdBuilder, builder_xsd_source='pain.001.001.12.xsd')
 root = doc.Document()
 cstmr = root.CstmrCdtTrfInitn()
 
@@ -198,13 +191,8 @@ The FatturaPA is Italy's mandatory electronic invoice format with a complex XSD 
 from genro_bag import Bag
 from genro_bag.builders import XsdBuilder
 
-# Load official FatturaPA schema
-xsd_content = open('Schema_VFPA12.xsd').read()
-schema = Bag.from_xml(xsd_content)
-builder = XsdBuilder(schema)
-
-# Create invoice - all methods generated from XSD
-invoice = Bag(builder=builder)
+# Create invoice from official FatturaPA schema - all methods generated from XSD
+invoice = Bag(builder=XsdBuilder, builder_xsd_source='Schema_VFPA12.xsd')
 fe = invoice.FatturaElettronica(versione='FPR12')
 
 # Header

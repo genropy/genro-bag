@@ -256,7 +256,18 @@ class BagParser:
 class _BagXmlHandler(sax.handler.ContentHandler):
     """SAX handler for parsing XML into Bag.
 
-    Internal class used by BagParser.from_xml().
+    Uses a stack-based approach where each XML element creates a new Bag
+    that gets populated with child elements. When an element closes, it's
+    added to its parent Bag.
+
+    Attributes:
+        bag_class: The Bag class to instantiate for nested structures.
+        empty: Optional factory for empty element values.
+        raise_on_error: If True, raise on type conversion errors.
+        tag_attribute: If set, use this attribute's value as node label.
+        bags: Stack of (bag, attrs, type) tuples during parsing.
+        value_list: Accumulator for character data between tags.
+        legacy_mode: True if parsing GenRoBag format with _T type markers.
     """
 
     def __init__(
@@ -273,13 +284,13 @@ class _BagXmlHandler(sax.handler.ContentHandler):
         self.tag_attribute = tag_attribute
 
     def startDocument(self) -> None:
-        """SAX callback: initialize parsing state."""
+        """Initialize parsing state with root Bag on stack."""
         self.bags: list[tuple[Any, dict | None, str | None]] = [(self.bag_class(), None, None)]
         self.value_list: list[str] = []
         self.legacy_mode: bool = False
 
     def _get_value(self, dtype: str | None = None) -> str:
-        """Get accumulated character data as string."""
+        """Join accumulated character data, strip newlines, unescape XML entities."""
         if self.value_list:
             if self.value_list[0] == "\n":
                 self.value_list[:] = self.value_list[1:]
@@ -291,7 +302,7 @@ class _BagXmlHandler(sax.handler.ContentHandler):
         return value
 
     def startElement(self, tag_label: str, attributes: Any) -> None:
-        """SAX callback: handle opening tag."""
+        """Push new Bag onto stack, detect legacy format on first element."""
         attrs = {str(k): tytx_decode(saxutils.unescape(v)) for k, v in attributes.items()}
         curr_type: str | None = None
 
@@ -312,11 +323,11 @@ class _BagXmlHandler(sax.handler.ContentHandler):
         self.value_list = []
 
     def characters(self, s: str) -> None:
-        """SAX callback: accumulate character data."""
+        """Accumulate text content between tags."""
         self.value_list.append(s)
 
     def endElement(self, tag_label: str) -> None:
-        """SAX callback: handle closing tag."""
+        """Pop Bag from stack, convert value if typed, add to parent."""
         curr, attrs, curr_type = self.bags.pop()
         value = self._get_value(dtype=curr_type)
         self.value_list = []
@@ -354,7 +365,7 @@ class _BagXmlHandler(sax.handler.ContentHandler):
         self._set_into_parent(tag_label, curr, attrs or {})
 
     def _set_into_parent(self, tag_label: str, curr: Any, attrs: dict) -> None:
-        """Add node to parent bag."""
+        """Add node to parent Bag, handling label from attrs and duplicates."""
         dest = self.bags[-1][0]
 
         # Use _tag attribute as label if present, keep original as xml_tag

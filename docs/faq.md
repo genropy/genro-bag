@@ -296,10 +296,10 @@ div.p(value='Content')
 
 ### How do builders validate structure?
 
-The `@element` decorator defines allowed children:
+The `@element` decorator defines allowed children via `sub_tags`:
 
 ```python
-@element(children=['item'])
+@element(sub_tags='item')
 def menu(self, target, tag, **attr):
     return self.child(target, tag, **attr)
 
@@ -316,7 +316,7 @@ Yes, extend `BagBuilderBase`:
 from genro_bag.builders import BagBuilderBase, element
 
 class MyBuilder(BagBuilderBase):
-    @element(children=['child'])
+    @element(sub_tags='child')
     def parent(self, target, tag, **attr):
         return self.child(target, tag, **attr)
 
