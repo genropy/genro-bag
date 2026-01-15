@@ -57,11 +57,18 @@ class UrlResolver(BagResolver):
     class_kwargs = {
         "cache_time": 300,
         "read_only": True,
+        "retry_policy": {
+            "max_attempts": 3,
+            "delay": 1.0,
+            "backoff": 2.0,
+            "jitter": True,
+            "on": (ConnectionError, TimeoutError, OSError, httpx.TimeoutException),
+        },
         "url": None,
         "method": "get",
         "qs": None,
         "body": None,
-        "timeout": 30,
+        "timeout": 5,
         "as_bag": False,
     }
     class_args = ["url"]

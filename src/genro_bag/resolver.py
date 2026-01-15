@@ -15,17 +15,147 @@ Caching Semantics:
     - cache_time = 0  -> NO cache, load() called ALWAYS
     - cache_time > 0  -> cache for N seconds (TTL)
     - cache_time < 0  -> INFINITE cache (until manual reset())
+
+Retry Policy:
+    - retry_policy = None -> NO retry (default)
+    - retry_policy = "network" -> use predefined RETRY_POLICIES["network"]
+    - retry_policy = {...} -> custom policy dict
 """
 
 from __future__ import annotations
 
 import asyncio
+import functools
 import importlib
 import json
+import random
+import time
+from collections.abc import Callable
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
 from genro_toolbox import smartasync
+
+# =============================================================================
+# RETRY POLICIES - predefined configurations
+# =============================================================================
+
+RETRY_POLICIES: dict[str, dict[str, Any]] = {
+    "network": {
+        "max_attempts": 3,
+        "delay": 1.0,
+        "backoff": 2.0,
+        "jitter": True,
+        "on": (ConnectionError, TimeoutError, OSError),
+    },
+    "aggressive": {
+        "max_attempts": 5,
+        "delay": 0.5,
+        "backoff": 2.0,
+        "jitter": True,
+        "on": (Exception,),
+    },
+    "gentle": {
+        "max_attempts": 2,
+        "delay": 2.0,
+        "backoff": 1.5,
+        "jitter": False,
+        "on": (ConnectionError, TimeoutError),
+    },
+}
+
+
+# =============================================================================
+# RETRY DECORATOR
+# =============================================================================
+
+
+def with_retry(func: Callable) -> Callable:
+    """Decorator that adds retry logic based on resolver's retry_policy.
+
+    Reads self._kw["retry_policy"] to determine retry behavior:
+    - None: no retry, execute function directly
+    - str: lookup in RETRY_POLICIES dict
+    - dict: use as custom policy
+
+    Policy dict keys:
+    - max_attempts: maximum number of attempts (default: 3)
+    - delay: initial delay between retries in seconds (default: 1.0)
+    - backoff: multiplier for delay after each retry (default: 2.0)
+    - jitter: add random jitter to delay (default: True)
+    - on: tuple of exception types to retry on (default: (Exception,))
+    """
+    @functools.wraps(func)
+    def sync_wrapper(self, *args, **kwargs):
+        policy = _get_retry_policy(self)
+        if policy is None:
+            return func(self, *args, **kwargs)
+
+        max_attempts = policy.get("max_attempts", 3)
+        delay = policy.get("delay", 1.0)
+        backoff = policy.get("backoff", 2.0)
+        jitter = policy.get("jitter", True)
+        exceptions = policy.get("on", (Exception,))
+
+        last_error = None
+        current_delay = delay
+
+        for attempt in range(max_attempts):
+            try:
+                return func(self, *args, **kwargs)
+            except exceptions as e:
+                last_error = e
+                if attempt < max_attempts - 1:
+                    sleep_time = current_delay
+                    if jitter:
+                        sleep_time *= (1 + random.random() * 0.1)
+                    time.sleep(sleep_time)
+                    current_delay *= backoff
+
+        raise last_error  # type: ignore[misc]
+
+    @functools.wraps(func)
+    async def async_wrapper(self, *args, **kwargs):
+        policy = _get_retry_policy(self)
+        if policy is None:
+            return await func(self, *args, **kwargs)
+
+        max_attempts = policy.get("max_attempts", 3)
+        delay = policy.get("delay", 1.0)
+        backoff = policy.get("backoff", 2.0)
+        jitter = policy.get("jitter", True)
+        exceptions = policy.get("on", (Exception,))
+
+        last_error = None
+        current_delay = delay
+
+        for attempt in range(max_attempts):
+            try:
+                return await func(self, *args, **kwargs)
+            except exceptions as e:
+                last_error = e
+                if attempt < max_attempts - 1:
+                    sleep_time = current_delay
+                    if jitter:
+                        sleep_time *= (1 + random.random() * 0.1)
+                    await asyncio.sleep(sleep_time)
+                    current_delay *= backoff
+
+        raise last_error  # type: ignore[misc]
+
+    if asyncio.iscoroutinefunction(func):
+        return async_wrapper
+    return sync_wrapper
+
+
+def _get_retry_policy(resolver) -> dict[str, Any] | None:
+    """Get retry policy from resolver, resolving string references."""
+    policy = resolver._kw.get("retry_policy")
+    if policy is None:
+        return None
+    if isinstance(policy, str):
+        return RETRY_POLICIES.get(policy)
+    return policy
 
 if TYPE_CHECKING:
     from .bagnode import BagNode
@@ -77,7 +207,7 @@ class BagResolver:
         # resolver._kw['timeout'] = 30 (default)
     """
 
-    class_kwargs: dict[str, Any] = {"cache_time": 0, "read_only": False}
+    class_kwargs: dict[str, Any] = {"cache_time": 0, "read_only": False, "retry_policy": None}
     class_args: list[str] = []
 
     __slots__ = (
@@ -313,20 +443,24 @@ class BagResolver:
             self.cached_value = result
         return result
 
+    @with_retry
     def _sync_sync_load(self) -> Any:
         """Sync resolver in sync context - calls load()."""
         return self._finalize_result(self.load())
 
+    @with_retry
     @smartasync
     def _sync_async_load(self) -> Any:
         """Sync resolver in async context - wraps load() for async."""
         return self._finalize_result(self.load())
 
+    @with_retry
     def _async_sync_load(self) -> Any:
         """Async resolver in sync context - runs async_load() synchronously."""
         result = smartasync(self.async_load)()
         return self._finalize_result(result)
 
+    @with_retry
     async def _async_async_load(self) -> Any:
         """Async resolver in async context - awaits async_load()."""
         return self._finalize_result(await self.async_load())

@@ -7,6 +7,7 @@ These tests exercise internal code paths through the public Bag interface,
 without directly testing internal modules like bagnode, bag_parse, bag_query.
 """
 
+import pytest
 
 from genro_bag.bag import Bag
 
@@ -1823,6 +1824,28 @@ class TestBagNodeAdditionalCoverage:
         assert node != 42
         assert node != None
 
+    def test_node_eq_exception_in_value_comparison(self):
+        """Node equality returns False when value.__eq__ raises.
+
+        Covers bagnode.py line 138-139: except Exception branch.
+        """
+        from genro_bag.bagnode import BagNode
+
+        class BrokenEq:
+            """A value whose __eq__ always raises."""
+            def __eq__(self, other):
+                raise ValueError("Comparison not allowed")
+
+        node1 = BagNode(None, label="test", value="initial")
+        node2 = BagNode(None, label="test", value="anything")
+
+        # Bypass set_value by directly assigning _value
+        node1._value = BrokenEq()
+
+        # Should return False, not raise
+        assert node1 != node2
+        assert node2 != node1
+
     def test_node_position_without_parent(self):
         """Node position returns None without parent."""
         from genro_bag.bagnode import BagNode
@@ -1831,6 +1854,32 @@ class TestBagNodeAdditionalCoverage:
         node = BagNode(None, label="orphan", value="test")
 
         assert node.position is None
+
+    def test_node_underscore_without_parent_raises(self):
+        """Accessing _.property on orphan node raises ValueError.
+
+        Covers bagnode.py line 204.
+        """
+        from genro_bag.bagnode import BagNode
+
+        node = BagNode(None, label="orphan", value="test")
+
+        with pytest.raises(ValueError, match="Node has no parent"):
+            _ = node._
+
+    def test_set_value_same_value_different_attrs(self):
+        """set_value detects change when value same but attrs differ.
+
+        Covers bagnode.py lines 284-287: attr change detection loop.
+        """
+        bag = Bag()
+        bag.set_item("x", "value", dtype="str")
+        node = bag.get_node("x")
+
+        # Set same value but different attr - should trigger change detection
+        node.set_value("value", _attributes={"dtype": "text"})
+
+        assert node.attr.get("dtype") == "text"
 
     def test_node_fullpath_partial_backref(self):
         """Node fullpath with partial backref chain."""

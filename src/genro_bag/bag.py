@@ -53,7 +53,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, TypeVar, cast
 
-from genro_toolbox import smartcontinuation, smartsplit
+from genro_toolbox import smartawait, smartcontinuation, smartsplit
 from genro_toolbox.decorators import extract_kwargs
 from genro_toolbox.typeutils import safe_is_instance
 
@@ -140,15 +140,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
         self._ins_subscribers: dict = {}
         self._del_subscribers: dict = {}
         self._root_attributes: dict | None = None
-        if builder is not None:
-            if isinstance(builder, type):
-                # It's a class, instantiate it
-                self._builder = builder(self, **builder_kwargs)
-            else:
-                # It's already an instance (child bag inheriting from parent)
-                self._builder = builder
-        else:
-            self._builder = None
+        self._builder = builder(self, **builder_kwargs) if builder else None
 
         if source:
             self.fill_from(source)
@@ -422,6 +414,15 @@ class Bag(BagParser, BagSerializer, BagQuery):
         """
         return self._builder
 
+    @builder.setter
+    def builder(self, value):
+        """Set the builder for this Bag.
+
+        Args:
+            value: A BagBuilderBase instance or None.
+        """
+        self._builder = value
+
     def __getattr__(self, name: str) -> Any:
         """Delegate attribute access to builder if present.
 
@@ -522,8 +523,6 @@ class Bag(BagParser, BagSerializer, BagQuery):
         def finalize(result: tuple[Bag, list[str]]) -> tuple[Any, str | None]:
             """Finalize traversal: handle empty path or create intermediate nodes."""
             curr, pathlist = result
-            if not pathlist:
-                return curr, ""
             if not write_mode:
                 if len(pathlist) > 1:
                     return None, None
@@ -600,7 +599,9 @@ class Bag(BagParser, BagSerializer, BagQuery):
                 new_curr = self._get_new_curr(node, resolved, write_mode)
                 if new_curr is None:
                     return (curr, [segment] + remaining)
-                return self._traverse_inner(new_curr, remaining, write_mode, static)
+                return await smartawait(
+                    self._traverse_inner(new_curr, remaining, write_mode, static)
+                )
 
             return cont()  # type: ignore[no-any-return]
 
@@ -688,8 +689,6 @@ class Bag(BagParser, BagSerializer, BagQuery):
             obj, label = obj_label
             if isinstance(obj, Bag):
                 return obj.get(label, default, static=static)
-            if hasattr(obj, "get"):
-                return obj.get(label, default)
             return default
 
         return smartcontinuation(result, finalize)

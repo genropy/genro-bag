@@ -1972,6 +1972,36 @@ class TestBagStr:
         s = str(bag)
         assert "hello" in s
 
+    def test_str_circular_reference(self):
+        """String representation handles circular references.
+
+        Covers bag.py line 1173: visited node detection.
+        """
+        bag = Bag()
+        bag["name"] = "parent"
+        bag["self_ref"] = bag  # circular reference
+        s = str(bag)
+        assert "name" in s
+        assert "self_ref" in s
+        assert "visited at" in s  # should detect the circular reference
+
+    def test_str_type_with_dot_in_name(self):
+        """String representation handles types with dots in name.
+
+        Covers bag.py line 1184: type name with module prefix.
+        """
+        # Create a class with a dotted __name__ (simulating module.ClassName)
+        class DottedType:
+            pass
+
+        DottedType.__name__ = "mymodule.CustomClass"
+
+        bag = Bag()
+        bag["custom"] = DottedType()
+        s = str(bag)
+        assert "custom" in s
+        assert "CustomClass" in s  # should extract just the class name
+
 
 class TestBagEquality:
     """Test __eq__ and __ne__."""
@@ -3459,3 +3489,62 @@ class TestSerializationEdgeCases:
 
         restored = Bag.from_tytx(original.to_tytx())
         assert restored.get_node("item").tag == "custom_tag"
+
+
+class TestBagCoverageEdgeCases:
+    """Tests for edge cases to improve coverage."""
+
+    def test_fill_from_xml_file(self, tmp_path):
+        """fill_from with format='xml' loads XML file."""
+        xml_content = "<root><item>value</item><number>42</number></root>"
+        xml_file = tmp_path / "data.xml"
+        xml_file.write_text(xml_content)
+
+        bag = Bag()
+        bag.fill_from(str(xml_file), format="xml")
+
+        assert bag["root.item"] == "value"
+        assert bag["root.number"] == "42"
+
+    def test_pop_node_nonexistent_path(self):
+        """pop_node on nonexistent path returns None."""
+        bag = Bag()
+        bag["existing"] = "value"
+
+        result = bag.pop_node("nonexistent.path")
+
+        assert result is None
+
+    def test_pop_node_partial_path(self):
+        """pop_node on partial path (parent exists, child doesn't) returns None."""
+        bag = Bag()
+        bag["parent.child"] = "value"
+
+        result = bag.pop_node("parent.nonexistent")
+
+        assert result is None
+
+    def test_htraverse_parent_beyond_root(self):
+        """Traversing #parent beyond root returns None."""
+        bag = Bag()
+        bag.set_backref()
+        bag["child"] = "value"
+
+        # Try to go up when there's no parent (bag is root)
+        result = bag.get_item("#parent.something", static=True)
+
+        assert result is None
+
+    def test_htraverse_empty_path_after_parent(self):
+        """Empty path after #parent navigation returns the parent bag."""
+        parent = Bag()
+        parent.set_backref()
+        parent["child"] = Bag()
+        child = parent["child"]
+        child["data"] = "value"
+
+        # get_item("#parent") navigates to parent with empty remaining path
+        # This covers line 520: if not pathlist: return curr, ""
+        result = child.get_item("#parent", static=True)
+
+        assert result is parent

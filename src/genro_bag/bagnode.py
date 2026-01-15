@@ -597,10 +597,7 @@ class BagNode:
         if self._attr != other._attr:
             return f"attributes self:{self._attr} --- other:{other._attr}"
         if self._value != other._value:
-            if hasattr(self._value, "diff"):
-                return f"value:{self._value.diff(other._value)}"
-            else:
-                return f"value self:{self._value} --- other:{other._value}"
+            return f"value self:{self._value} --- other:{other._value}"
         return None
 
     def as_tuple(self) -> tuple[str, Any, dict[str, Any], BagResolver | None]:
