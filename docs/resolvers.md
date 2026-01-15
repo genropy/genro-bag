@@ -421,6 +421,64 @@ bag['dynamic'] = BagCbResolver(
 )
 ```
 
+## Modifying Nodes with Resolvers
+
+When a node has a resolver attached, you cannot simply overwrite its value with `set_item`. This protects against accidental data loss - the resolver represents a data source that should be explicitly handled.
+
+### Default Behavior: Raise Error
+
+```python
+from genro_bag import Bag
+from genro_bag.resolvers import BagCbResolver
+
+bag = Bag()
+bag['data'] = BagCbResolver(lambda: 'computed')
+
+# This raises BagNodeException!
+bag.set_item('data', 'new_value')
+# Error: Cannot set value on node 'data' with resolver.
+# Use resolver=False to remove resolver, or resolver=NewResolver to replace it.
+```
+
+### Remove Resolver and Set Value
+
+Use `resolver=False` to explicitly remove the resolver:
+
+```python
+bag.set_item('data', 'plain_value', resolver=False)
+
+node = bag.get_node('data')
+node.resolver  # None - resolver removed
+node.value     # 'plain_value'
+```
+
+### Replace Resolver
+
+Provide a new resolver to replace the existing one:
+
+```python
+new_resolver = BagCbResolver(lambda: 'new_computed')
+bag.set_item('data', None, resolver=new_resolver)
+
+node = bag.get_node('data')
+node.resolver  # new_resolver
+```
+
+### Bracket Notation with Resolvers
+
+The bracket notation `bag['path'] = value` checks if the value is a resolver:
+
+```python
+# This works - assigning a resolver
+bag['data'] = BagCbResolver(lambda: 'computed')
+
+# This raises error - trying to overwrite resolver with plain value
+bag['data'] = 'plain_value'  # BagNodeException!
+
+# To replace, use set_item explicitly
+bag.set_item('data', 'plain_value', resolver=False)
+```
+
 ## Serialization
 
 Resolvers are serializable with TYTX:

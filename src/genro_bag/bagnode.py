@@ -805,12 +805,20 @@ class BagNodeContainer:
         If label exists, updates the existing node's value.
         If label doesn't exist, creates a new BagNode and inserts it.
 
+        Resolver handling (Issue #5):
+            If the existing node has a resolver and the `resolver` parameter is not
+            explicitly provided, a BagException is raised. To modify a node with a
+            resolver, you must explicitly handle the resolver:
+            - resolver=False: Remove resolver and set value
+            - resolver=NewResolver: Replace resolver with a new one
+
         Args:
             label: The node label.
             value: The value to set.
             _position: Position specification (>, <, #n, <label, >label, etc.)
             attr: Optional dict of attributes for new nodes.
-            resolver: Optional resolver for new nodes.
+            resolver: Optional resolver for new nodes. Use False to explicitly
+                remove an existing resolver.
             parent_bag: Parent Bag reference for new nodes.
             _updattr: If True, update attributes instead of replacing.
             _remove_null_attributes: If True, remove None attributes.
@@ -819,9 +827,22 @@ class BagNodeContainer:
 
         Returns:
             The created or updated BagNode.
+
+        Raises:
+            BagNodeException: If node has a resolver and resolver parameter not provided.
         """
         if label in self._dict:
             node = self._dict[label]
+            # Issue #5: handle resolver on existing node
+            if node.resolver is not None and resolver is None:
+                raise BagNodeException(
+                    f"Cannot set value on node '{label}' with resolver. "
+                    "Use resolver=False to remove resolver, or resolver=NewResolver to replace it."
+                )
+            # resolver=False means explicitly remove the resolver
+            if resolver is False:
+                node._resolver = None
+                resolver = None
             node.set_value(
                 resolver if value is None else value,
                 _attributes=attr,

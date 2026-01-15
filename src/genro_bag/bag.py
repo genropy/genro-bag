@@ -729,6 +729,13 @@ class Bag(BagParser, BagSerializer, BagQuery):
         If the path already exists, the value is updated. If it doesn't exist,
         a new node is created at the specified position.
 
+        Resolver handling (Issue #5):
+            If the target node has a resolver and the `resolver` parameter is not
+            explicitly provided, a BagNodeException is raised. To modify a node
+            with a resolver, you must explicitly handle the resolver:
+            - resolver=False: Remove resolver and set value
+            - resolver=NewResolver: Replace resolver with a new one
+
         Args:
             path: Hierarchical path like 'a.b.c'. Empty path is ignored.
                 Supports '?attr' suffix to set a node attribute instead of value.
@@ -747,10 +754,17 @@ class Bag(BagParser, BagSerializer, BagQuery):
                 Used for event-like signals (like JavaScript fireItem).
             do_trigger: If True (default), fire events on change.
                 Set to False to suppress ins/upd events.
+            resolver: Resolver handling for existing nodes with resolvers:
+                - None (default): Raise error if node has resolver
+                - False: Remove existing resolver and set value
+                - BagResolver instance: Replace resolver with new one
             **kwargs: Additional attributes to set on the node.
 
         Returns:
             The created or updated BagNode.
+
+        Raises:
+            BagNodeException: If target node has a resolver and resolver param not provided.
 
         Example:
             >>> bag = Bag()
@@ -764,6 +778,9 @@ class Bag(BagParser, BagSerializer, BagQuery):
             >>> # Fire an event (set then immediately reset to None)
             >>> bag.set_item('event', 'click', _fired=True)
             >>> bag['event']  # None
+            >>> # Handle nodes with resolvers
+            >>> bag['data'] = BagCbResolver(lambda: 'computed')
+            >>> bag.set_item('data', 'new', resolver=False)  # Remove resolver
         """
         # Parse ?attr suffix from path
         attrname = None
