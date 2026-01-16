@@ -16,6 +16,7 @@ from typing import Annotated, Literal
 import pytest
 
 from genro_bag import Bag, BagBuilderBase
+from genro_bag.builder import SchemaBuilder
 from genro_bag.builders import Range, Regex, abstract, element
 
 # =============================================================================
@@ -1043,3 +1044,215 @@ class TestCompileKwargs:
 
         info = Builder._class_schema.get_attr("simple")
         assert "compile_kwargs" not in info or info.get("compile_kwargs") is None
+
+
+class TestSchemaBuilderCompileKwargs:
+    """Tests for compile_kwargs in SchemaBuilder.item()."""
+
+    def test_schema_builder_item_compile_kwargs_dict(self):
+        """SchemaBuilder.item() with compile_kwargs dict stores in schema."""
+        schema = Bag(builder=SchemaBuilder)
+        schema.item("widget", compile_kwargs={"module": "textual.widgets", "class": "Button"})
+
+        info = schema.get_attr("widget")
+        assert info["compile_kwargs"] == {"module": "textual.widgets", "class": "Button"}
+
+    def test_schema_builder_item_compile_separate_params(self):
+        """SchemaBuilder.item() with compile_* params extracts and merges."""
+        schema = Bag(builder=SchemaBuilder)
+        schema.item("container", compile_module="textual.containers", compile_class="Vertical")
+
+        info = schema.get_attr("container")
+        assert info["compile_kwargs"] == {"module": "textual.containers", "class": "Vertical"}
+
+    def test_schema_builder_item_compile_mixed(self):
+        """SchemaBuilder.item() with both compile_kwargs and compile_* params merges."""
+        schema = Bag(builder=SchemaBuilder)
+        schema.item(
+            "horizontal",
+            compile_kwargs={"module": "textual.containers"},
+            compile_class="Horizontal",
+        )
+
+        info = schema.get_attr("horizontal")
+        assert info["compile_kwargs"] == {"module": "textual.containers", "class": "Horizontal"}
+
+    def test_schema_builder_item_without_compile_kwargs(self):
+        """SchemaBuilder.item() without compile_kwargs has no compile_kwargs."""
+        schema = Bag(builder=SchemaBuilder)
+        schema.item("simple", sub_tags="child")
+
+        info = schema.get_attr("simple")
+        assert "compile_kwargs" not in info or info.get("compile_kwargs") is None
+
+
+# =============================================================================
+# Tests for documentation extraction
+# =============================================================================
+
+
+class TestDocumentation:
+    """Tests for documentation extraction from decorated methods."""
+
+    def test_element_docstring_stored_in_schema(self):
+        """@element method docstring is saved as documentation in schema."""
+
+        class Builder(BagBuilderBase):
+            @element()
+            def button(self):
+                """A clickable button element."""
+                ...
+
+        info = Builder._class_schema.get_attr("button")
+        assert info["documentation"] == "A clickable button element."
+
+    def test_element_no_docstring_has_none(self):
+        """@element method without docstring has documentation=None."""
+
+        class Builder(BagBuilderBase):
+            @element()
+            def simple(self): ...
+
+        info = Builder._class_schema.get_attr("simple")
+        assert info.get("documentation") is None
+
+    def test_abstract_docstring_stored_in_schema(self):
+        """@abstract method docstring is saved as documentation in schema."""
+
+        class Builder(BagBuilderBase):
+            @abstract(sub_tags="child")
+            def container(self):
+                """Base container for layout elements."""
+                ...
+
+        info = Builder._class_schema.get_attr("@container")
+        assert info["documentation"] == "Base container for layout elements."
+
+    def test_schema_builder_documentation_param(self):
+        """SchemaBuilder.item() with documentation param stores in schema."""
+        schema = Bag(builder=SchemaBuilder)
+        schema.item("widget", documentation="A generic widget element.")
+
+        info = schema.get_attr("widget")
+        assert info["documentation"] == "A generic widget element."
+
+    def test_schema_builder_no_documentation(self):
+        """SchemaBuilder.item() without documentation has None."""
+        schema = Bag(builder=SchemaBuilder)
+        schema.item("simple")
+
+        info = schema.get_attr("simple")
+        assert info.get("documentation") is None
+
+    def test_get_schema_info_includes_documentation(self):
+        """get_schema_info() returns documentation from schema."""
+
+        class Builder(BagBuilderBase):
+            @element()
+            def input(self):
+                """Text input field."""
+                ...
+
+        bag = Bag(builder=Builder)
+        info = bag.builder.get_schema_info("input")
+        assert info["documentation"] == "Text input field."
+
+
+# =============================================================================
+# Tests for schema_to_md()
+# =============================================================================
+
+
+class TestSchemaToMd:
+    """Tests for schema_to_md() method."""
+
+    def test_schema_to_md_basic(self):
+        """schema_to_md() generates markdown with elements."""
+
+        class Builder(BagBuilderBase):
+            @element()
+            def button(self):
+                """A clickable button."""
+                ...
+
+            @element(sub_tags="span,p")
+            def div(self):
+                """A container element."""
+                ...
+
+        bag = Bag(builder=Builder)
+        md = bag.builder.schema_to_md()
+
+        assert "# Schema: Builder" in md
+        assert "## Elements" in md
+        assert "`button`" in md
+        assert "`div`" in md
+        assert "A clickable button." in md
+        assert "A container element." in md
+
+    def test_schema_to_md_with_abstracts(self):
+        """schema_to_md() includes abstract elements section."""
+
+        class Builder(BagBuilderBase):
+            @abstract(sub_tags="span,p")
+            def flow(self):
+                """Flow content model."""
+                ...
+
+            @element(inherits_from="@flow")
+            def div(self): ...
+
+        bag = Bag(builder=Builder)
+        md = bag.builder.schema_to_md()
+
+        assert "## Abstract Elements" in md
+        assert "`@flow`" in md
+        assert "Flow content model." in md
+        assert "## Elements" in md
+        assert "`div`" in md
+
+    def test_schema_to_md_with_compile_kwargs(self):
+        """schema_to_md() shows compile_kwargs."""
+
+        class Builder(BagBuilderBase):
+            @element(compile_module="textual.widgets", compile_class="Button")
+            def button(self): ...
+
+        bag = Bag(builder=Builder)
+        md = bag.builder.schema_to_md()
+
+        assert "module: textual.widgets" in md
+        assert "class: Button" in md
+
+    def test_schema_to_md_custom_title(self):
+        """schema_to_md() accepts custom title."""
+
+        class Builder(BagBuilderBase):
+            @element()
+            def item(self): ...
+
+        bag = Bag(builder=Builder)
+        md = bag.builder.schema_to_md(title="My Custom Builder")
+
+        assert "# Schema: My Custom Builder" in md
+
+    def test_schema_to_md_table_format(self):
+        """schema_to_md() generates valid markdown tables."""
+
+        class Builder(BagBuilderBase):
+            @element(sub_tags="child")
+            def parent(self):
+                """Parent element."""
+                ...
+
+            @element()
+            def child(self): ...
+
+        bag = Bag(builder=Builder)
+        md = bag.builder.schema_to_md()
+
+        # Check table structure
+        assert "| Name |" in md
+        assert "| --- |" in md
+        assert "| `parent` |" in md
+        assert "| `child` |" in md

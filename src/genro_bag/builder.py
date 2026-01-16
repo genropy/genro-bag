@@ -59,8 +59,8 @@ SchemaBuilder Example:
     >>> from genro_bag.builder import SchemaBuilder
     >>>
     >>> schema = Bag(builder=SchemaBuilder)
-    >>> schema.item('@flow', sub_tags='p,div,span')
-    >>> schema.item('div', inherits_from='@flow')
+    >>> schema.item('@container', sub_tags='child', compile_module='textual.containers')
+    >>> schema.item('vertical', inherits_from='@container', compile_class='Vertical')
     >>> schema.item('br', sub_tags='')  # void element
     >>> schema.builder.compile('schema.msgpack')
 """
@@ -288,6 +288,7 @@ class BagBuilderBase(ABC):
             sub_tags = decorator_info.get("sub_tags", "")
             inherits_from = decorator_info.get("inherits_from", "")
             compile_kwargs = decorator_info.get("compile_kwargs")
+            documentation = obj.__doc__
             call_args_validations = _extract_validators_from_signature(obj)
 
             for tag in tag_list:
@@ -298,6 +299,7 @@ class BagBuilderBase(ABC):
                     sub_tags=sub_tags,
                     inherits_from=inherits_from,
                     compile_kwargs=compile_kwargs,
+                    documentation=documentation,
                     call_args_validations=call_args_validations,
                 )
 
@@ -647,6 +649,179 @@ class BagBuilderBase(ABC):
         raise ValueError(f"Unknown format: {format}")
 
     # -------------------------------------------------------------------------
+    # Schema documentation
+    # -------------------------------------------------------------------------
+
+    def schema_to_md(self, title: str | None = None) -> str:
+        """Generate Markdown documentation for the builder schema.
+
+        Creates a formatted Markdown document with tables for abstract
+        and concrete elements, including all schema information.
+
+        Args:
+            title: Optional title for the document. Defaults to class name.
+
+        Returns:
+            Markdown string with schema documentation.
+        """
+        from .builders.markdown import MarkdownBuilder
+
+        doc = Bag(builder=MarkdownBuilder)
+        builder_name = title or type(self).__name__
+
+        doc.h1(f"Schema: {builder_name}")
+
+        # Collect abstracts and elements
+        abstracts: list[tuple[str, dict]] = []
+        elements: list[tuple[str, dict]] = []
+
+        for node in self.schema:
+            name = node.label
+            info = self.get_schema_info(name)
+            if name.startswith("@"):
+                abstracts.append((name[1:], info))
+            else:
+                elements.append((name, info))
+
+        # Abstract elements section
+        if abstracts:
+            doc.h2("Abstract Elements")
+            table = doc.table()
+            header = table.tr()
+            header.th("Name")
+            header.th("Sub Tags")
+            header.th("Documentation")
+
+            for name, info in sorted(abstracts):
+                row = table.tr()
+                row.td(f"`@{name}`")
+                row.td(f"`{info.get('sub_tags') or '-'}`")
+                row.td(info.get("documentation") or "-")
+
+        # Concrete elements section
+        if elements:
+            doc.h2("Elements")
+            table = doc.table()
+            header = table.tr()
+            header.th("Name")
+            header.th("Inherits")
+            header.th("Sub Tags")
+            header.th("Call Args")
+            header.th("Compile")
+            header.th("Documentation")
+
+            for name, info in sorted(elements):
+                row = table.tr()
+                row.td(f"`{name}`")
+
+                inherits = info.get("inherits_from")
+                row.td(f"`{inherits}`" if inherits else "-")
+
+                sub_tags = info.get("sub_tags")
+                row.td(f"`{sub_tags}`" if sub_tags else "-")
+
+                call_args = info.get("call_args_validations")
+                if call_args:
+                    args_str = ", ".join(call_args.keys())
+                    row.td(f"`{args_str}`")
+                else:
+                    row.td("-")
+
+                compile_kwargs = info.get("compile_kwargs")
+                if compile_kwargs:
+                    compile_str = ", ".join(f"{k}: {v}" for k, v in compile_kwargs.items())
+                    row.td(f"`{compile_str}`")
+                else:
+                    row.td("-")
+
+                row.td(info.get("documentation") or "-")
+
+        return doc.builder.compile()
+
+    # -------------------------------------------------------------------------
+    # Value rendering (for compile)
+    # -------------------------------------------------------------------------
+
+    def _render_value(self, node: BagNode) -> str:
+        """Render node value applying format and template transformations.
+
+        Applies transformations in order:
+        1. value_format (node attr) - format the raw value
+        2. value_template (node attr) - apply runtime template
+        3. compile_callback (schema) - call method to modify context in place
+        4. compile_format (schema) - format from decorator
+        5. compile_template (schema) - structural template from decorator
+
+        Template placeholders available:
+        - {node_value}: the node value
+        - {node_label}: the node label
+        - {attr_name}: any node attribute (e.g., {lang}, {href})
+
+        Args:
+            node: The BagNode to render.
+
+        Returns:
+            Rendered string value.
+        """
+        node_value = node.get_value(static=True)
+        node_value = "" if node_value is None else str(node_value)
+
+        # Build template context: node_value, node_label, and all attributes
+        # Start with default values from schema for optional parameters
+        tag = node.tag or node.label
+        info = self.get_schema_info(tag)
+        call_args = info.get("call_args_validations") or {}
+        template_ctx: dict[str, Any] = {}
+        for param_name, (default, _validators, _type) in call_args.items():
+            if default is not None:
+                template_ctx[param_name] = default
+        # Override with actual node attributes
+        template_ctx.update(node.attr)
+        template_ctx["node_value"] = node_value
+        template_ctx["node_label"] = node.label
+        template_ctx["_node"] = node  # For callbacks needing full node access
+
+        # 1. value_format from node attr (runtime)
+        value_format = node.attr.get("value_format")
+        if value_format:
+            try:
+                node_value = value_format.format(node_value)
+                template_ctx["node_value"] = node_value
+            except (ValueError, KeyError):
+                pass
+
+        # 2. value_template from node attr (runtime)
+        value_template = node.attr.get("value_template")
+        if value_template:
+            node_value = value_template.format(**template_ctx)
+            template_ctx["node_value"] = node_value
+
+        # 3-5. compile_callback, compile_format and compile_template from schema
+        compile_kwargs = info.get("compile_kwargs") or {}
+
+        # 3. compile_callback - call method to modify context in place
+        compile_callback = compile_kwargs.get("callback")
+        if compile_callback:
+            method = getattr(self, compile_callback)
+            method(template_ctx)
+            node_value = template_ctx["node_value"]
+
+        # 4. compile_format from schema
+        compile_format = compile_kwargs.get("format")
+        if compile_format:
+            try:
+                node_value = compile_format.format(node_value)
+                template_ctx["node_value"] = node_value
+            except (ValueError, KeyError):
+                pass
+
+        # 5. compile_template from schema
+        compile_template = compile_kwargs.get("template")
+        if compile_template:
+            node_value = compile_template.format(**template_ctx)
+
+        return node_value
+
     # -------------------------------------------------------------------------
     # Call args validation (internal)
     # -------------------------------------------------------------------------
@@ -943,6 +1118,8 @@ class SchemaBuilder(BagBuilderBase):
         inherits_from: str | None = None,
         handler_name: str | None = None,
         call_args_validations: dict[str, tuple[Any, list, Any]] | None = None,
+        compile_kwargs: dict[str, Any] | None = None,
+        documentation: str | None = None,
         **kwargs: Any,
     ) -> BagNode:
         """Define a schema item (element definition).
@@ -956,10 +1133,20 @@ class SchemaBuilder(BagBuilderBase):
             inherits_from: Abstract element name to inherit sub_tags from.
             handler_name: Method name for custom handler.
             call_args_validations: Validation spec for element attributes.
+            compile_kwargs: Dict of compilation parameters (module, class, etc.).
+            documentation: Documentation string for the element.
+            **kwargs: Additional compile_* parameters are extracted and merged
+                into compile_kwargs. E.g., compile_module='x' -> {'module': 'x'}.
 
         Returns:
             The created schema node.
         """
+        # Extract compile_* from kwargs and merge with compile_kwargs
+        merged_compile = dict(compile_kwargs) if compile_kwargs else {}
+        for key, value in kwargs.items():
+            if key.startswith("compile_"):
+                merged_compile[key[8:]] = value  # strip "compile_" prefix
+
         return self.child(
             _target,
             tag,
@@ -968,6 +1155,8 @@ class SchemaBuilder(BagBuilderBase):
             inherits_from=inherits_from,
             handler_name=handler_name,
             call_args_validations=call_args_validations,
+            compile_kwargs=merged_compile if merged_compile else None,
+            documentation=documentation,
         )
 
     def compile(self, destination: str | Path) -> None:  # type: ignore[override]

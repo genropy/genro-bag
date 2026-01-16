@@ -3,12 +3,13 @@
 
 This module provides builder classes for creating structured Bag hierarchies
 with validation support. Builders enable fluent APIs for specific domains
-like HTML, XML schemas, etc.
+like HTML, XML schemas, Markdown, etc.
 
 Builder Types:
     - **BagBuilderBase**: Abstract base class for custom builders
     - **SchemaBuilder**: Builder for creating schemas programmatically
     - **HtmlBuilder**: HTML5 document builder with element validation
+    - **MarkdownBuilder**: Markdown document builder
     - **XsdBuilder**: Dynamic builder from XSD schema
 
 Example:
@@ -30,6 +31,7 @@ from genro_bag.builder import (
     element,
 )
 from genro_bag.builders.html import HtmlBuilder
+from genro_bag.builders.markdown import MarkdownBuilder
 from genro_bag.builders.xsd import XsdBuilder, XsdReader
 
 __all__ = [
@@ -39,6 +41,7 @@ __all__ = [
     "Range",
     "Regex",
     "HtmlBuilder",
+    "MarkdownBuilder",
     "SchemaBuilder",
     "XsdBuilder",
     "XsdReader",
