@@ -17,6 +17,24 @@ Schema conventions:
     - Abstracts prefixed with '@': '@flow', '@phrasing'
     - Use inherits_from='@abstract' to inherit sub_tags
 
+compile_* parameters:
+    Both @element and @abstract support compile_* parameters for code generation.
+    Parameters can be passed as:
+    - compile_kwargs dict: compile_kwargs={'module': 'x', 'class': 'Y'}
+    - Individual kwargs: compile_module='x', compile_class='Y'
+    - Mixed: both approaches are merged (individual kwargs override dict)
+
+    When using inherits_from, compile_kwargs are inherited from the abstract
+    and merged with the element's own compile_kwargs (element overrides abstract).
+
+    Example:
+        @abstract(sub_tags='child', compile_module='textual.containers')
+        def base_container(self): ...
+
+        @element(inherits_from='@base_container', compile_class='Vertical')
+        def vertical(self): ...
+        # Result: compile_kwargs = {'module': 'textual.containers', 'class': 'Vertical'}
+
 sub_tags cardinality syntax:
     foo      -> any number (0..N)
     foo[1]   -> exactly 1
@@ -83,6 +101,8 @@ def element(
     tags: str | tuple[str, ...] | None = None,
     sub_tags: str | tuple[str, ...] | None = None,
     inherits_from: str | None = None,
+    compile_kwargs: dict[str, Any] | None = None,
+    **kwargs: Any,
 ) -> Callable:
     """Decorator to mark a method as element handler.
 
@@ -94,11 +114,26 @@ def element(
             'a[2],b[0:]' -> a exactly twice, b zero or more
             '' (empty)  -> no children allowed (void element)
         inherits_from: Abstract element name to inherit sub_tags from.
+        compile_kwargs: Dict of compilation parameters (module, class, etc.).
+        **kwargs: Additional compile_* parameters are extracted and merged
+            into compile_kwargs. E.g., compile_module='x' -> {'module': 'x'}.
 
     Example:
         @element(sub_tags='header,content[],footer')
         def page(self): ...
+
+        @element(
+            sub_tags='child',
+            compile_kwargs={'module': 'textual.containers'},
+            compile_class='Vertical',  # merged into compile_kwargs
+        )
+        def container(self): ...
     """
+    # Extract compile_* from kwargs and merge with compile_kwargs
+    merged_compile = dict(compile_kwargs) if compile_kwargs else {}
+    for key, value in kwargs.items():
+        if key.startswith("compile_"):
+            merged_compile[key[8:]] = value  # strip "compile_" prefix
 
     def decorator(func: Callable) -> Callable:
         func._decorator = {  # type: ignore[attr-defined]
@@ -107,6 +142,7 @@ def element(
                 "tags": tags,
                 "sub_tags": sub_tags,
                 "inherits_from": inherits_from,
+                "compile_kwargs": merged_compile if merged_compile else None,
             }.items()
             if v is not None
         }
@@ -117,6 +153,8 @@ def element(
 
 def abstract(
     sub_tags: str | tuple[str, ...] = "",
+    compile_kwargs: dict[str, Any] | None = None,
+    **kwargs: Any,
 ) -> Callable:
     """Decorator to define an abstract element (for inheritance only).
 
@@ -125,6 +163,9 @@ def abstract(
 
     Args:
         sub_tags: Valid child tags with cardinality (see element decorator).
+        compile_kwargs: Dict of compilation parameters (module, class, etc.).
+        **kwargs: Additional compile_* parameters are extracted and merged
+            into compile_kwargs. E.g., compile_module='x' -> {'module': 'x'}.
 
     Example:
         @abstract(sub_tags='span,a,em,strong')
@@ -132,13 +173,27 @@ def abstract(
 
         @element(inherits_from='@phrasing')
         def p(self): ...
+
+        @abstract(
+            sub_tags='child',
+            compile_module='textual.containers',
+        )
+        def base_container(self): ...
     """
+    # Extract compile_* from kwargs and merge with compile_kwargs
+    merged_compile = dict(compile_kwargs) if compile_kwargs else {}
+    for key, value in kwargs.items():
+        if key.startswith("compile_"):
+            merged_compile[key[8:]] = value  # strip "compile_" prefix
 
     def decorator(func: Callable) -> Callable:
-        func._decorator = {  # type: ignore[attr-defined]
+        result: dict[str, Any] = {
             "abstract": True,
             "sub_tags": sub_tags,
         }
+        if merged_compile:
+            result["compile_kwargs"] = merged_compile
+        func._decorator = result  # type: ignore[attr-defined]
         return func
 
     return decorator
@@ -232,6 +287,7 @@ class BagBuilderBase(ABC):
 
             sub_tags = decorator_info.get("sub_tags", "")
             inherits_from = decorator_info.get("inherits_from", "")
+            compile_kwargs = decorator_info.get("compile_kwargs")
             call_args_validations = _extract_validators_from_signature(obj)
 
             for tag in tag_list:
@@ -241,6 +297,7 @@ class BagBuilderBase(ABC):
                     handler_name=handler_name,
                     sub_tags=sub_tags,
                     inherits_from=inherits_from,
+                    compile_kwargs=compile_kwargs,
                     call_args_validations=call_args_validations,
                 )
 
@@ -519,7 +576,12 @@ class BagBuilderBase(ABC):
             abstract_attrs = self.schema.get_attr(inherits_from)
             if abstract_attrs:
                 for k, v in abstract_attrs.items():
-                    if k not in result or not result[k]:
+                    if k == "compile_kwargs":
+                        # Merge compile_kwargs: abstract base + element overrides
+                        inherited = v or {}
+                        current = result.get("compile_kwargs") or {}
+                        result["compile_kwargs"] = {**inherited, **current}
+                    elif k not in result or not result[k]:
                         result[k] = v
 
         sub_tags = result.get("sub_tags")
