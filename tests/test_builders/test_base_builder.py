@@ -774,3 +774,272 @@ class TestValueValidation:
 
         with pytest.raises(ValueError, match=r"expected.*str"):
             bag.input(default=123)
+
+
+# =============================================================================
+# Tests for builder.check()
+# =============================================================================
+
+
+class TestBuilderCheck:
+    """Tests for builder.check() validation method."""
+
+    def test_check_empty_bag_returns_empty_list(self):
+        """check() on empty bag returns empty list."""
+
+        class Builder(BagBuilderBase):
+            @element()
+            def item(self): ...
+
+        bag = Bag(builder=Builder)
+        result = bag.builder.check()
+        assert result == []
+
+    def test_check_valid_bag_returns_empty_list(self):
+        """check() on valid bag returns empty list."""
+
+        class Builder(BagBuilderBase):
+            @element(sub_tags="inner")
+            def outer(self): ...
+
+            @element(sub_tags="")
+            def inner(self): ...
+
+        bag = Bag(builder=Builder)
+        outer_node = bag.outer()
+        outer_node.inner()
+
+        result = bag.builder.check()
+        assert result == []
+
+    def test_check_finds_invalid_nodes(self):
+        """check() finds nodes with missing required children."""
+
+        class Builder(BagBuilderBase):
+            @element(sub_tags="required[1]")
+            def container(self): ...
+
+            @element(sub_tags="")
+            def required(self): ...
+
+        bag = Bag(builder=Builder)
+        bag.container()  # Missing required child
+
+        result = bag.builder.check()
+        assert len(result) == 1
+        path, node, reasons = result[0]
+        assert "container_0" in path
+        assert "required" in reasons
+
+    def test_check_walks_nested_bags(self):
+        """check() recursively walks nested Bag structures."""
+
+        class Builder(BagBuilderBase):
+            @element(sub_tags="middle")
+            def wrapper(self): ...
+
+            @element(sub_tags="leaf[1]")
+            def middle(self): ...
+
+            @element(sub_tags="")
+            def leaf(self): ...
+
+        bag = Bag(builder=Builder)
+        wrapper_node = bag.wrapper()
+        wrapper_node.middle()  # Missing required leaf
+
+        result = bag.builder.check()
+        assert len(result) == 1
+        path, node, reasons = result[0]
+        assert "middle" in path
+        assert "leaf" in reasons
+
+    def test_check_accepts_explicit_bag(self):
+        """check() can validate an explicit bag parameter."""
+
+        class Builder(BagBuilderBase):
+            @element(sub_tags="inner[1]")
+            def outer(self): ...
+
+            @element(sub_tags="")
+            def inner(self): ...
+
+        bag = Bag(builder=Builder)
+        bag.outer()  # Missing required child
+
+        other_bag = Bag(builder=Builder)
+        outer_node = other_bag.outer()
+        outer_node.inner()  # Valid
+
+        # Check the invalid bag explicitly
+        result = bag.builder.check(bag)
+        assert len(result) == 1
+
+        # Check the valid bag explicitly
+        result = bag.builder.check(other_bag)
+        assert result == []
+
+
+# =============================================================================
+# Tests for builder.compile()
+# =============================================================================
+
+
+class TestBuilderCompile:
+    """Tests for builder.compile() output method."""
+
+    def test_compile_defaults_to_xml(self):
+        """compile() defaults to XML format."""
+
+        class Builder(BagBuilderBase):
+            @element()
+            def item(self): ...
+
+        bag = Bag(builder=Builder)
+        bag.item("content")
+
+        result = bag.builder.compile()
+        # XML uses tag name, not label
+        assert "<item" in result
+        assert "content" in result
+
+    def test_compile_xml_format(self):
+        """compile(format='xml') produces valid XML."""
+
+        class Builder(BagBuilderBase):
+            @element()
+            def div(self): ...
+
+        bag = Bag(builder=Builder)
+        bag.div("hello")
+
+        result = bag.builder.compile(format="xml")
+        assert result.startswith("<")
+        # XML uses tag name
+        assert "<div" in result
+
+    def test_compile_json_format(self):
+        """compile(format='json') produces JSON."""
+
+        class Builder(BagBuilderBase):
+            @element()
+            def item(self): ...
+
+        bag = Bag(builder=Builder)
+        bag.item("value")
+
+        result = bag.builder.compile(format="json")
+        assert "item_0" in result
+        assert "value" in result
+
+    def test_compile_unknown_format_raises(self):
+        """compile() raises ValueError for unknown format."""
+
+        class Builder(BagBuilderBase):
+            @element()
+            def item(self): ...
+
+        bag = Bag(builder=Builder)
+        bag.item()
+
+        with pytest.raises(ValueError, match="Unknown format"):
+            bag.builder.compile(format="yaml")
+
+
+# =============================================================================
+# Tests for compile_kwargs
+# =============================================================================
+
+
+class TestCompileKwargs:
+    """Tests for compile_kwargs in @element and @abstract decorators."""
+
+    def test_element_compile_kwargs_dict(self):
+        """@element with compile_kwargs dict stores in schema."""
+
+        class Builder(BagBuilderBase):
+            @element(compile_kwargs={"module": "textual.containers", "class": "Vertical"})
+            def vertical(self): ...
+
+        info = Builder._class_schema.get_attr("vertical")
+        assert info["compile_kwargs"] == {"module": "textual.containers", "class": "Vertical"}
+
+    def test_element_compile_separate_params(self):
+        """@element with compile_* params extracts and merges."""
+
+        class Builder(BagBuilderBase):
+            @element(compile_module="textual.widgets", compile_class="Button")
+            def button(self): ...
+
+        info = Builder._class_schema.get_attr("button")
+        assert info["compile_kwargs"] == {"module": "textual.widgets", "class": "Button"}
+
+    def test_element_compile_mixed(self):
+        """@element with both compile_kwargs and compile_* params merges."""
+
+        class Builder(BagBuilderBase):
+            @element(
+                compile_kwargs={"module": "textual.containers"},
+                compile_class="Horizontal",
+            )
+            def horizontal(self): ...
+
+        info = Builder._class_schema.get_attr("horizontal")
+        assert info["compile_kwargs"] == {"module": "textual.containers", "class": "Horizontal"}
+
+    def test_abstract_compile_kwargs(self):
+        """@abstract with compile_* params stores in schema."""
+
+        class Builder(BagBuilderBase):
+            @abstract(sub_tags="child", compile_module="textual.containers")
+            def base_container(self): ...
+
+        info = Builder._class_schema.get_attr("@base_container")
+        assert info["compile_kwargs"] == {"module": "textual.containers"}
+
+    def test_inherits_compile_kwargs_merge(self):
+        """Element inherits and merges compile_kwargs from abstract."""
+
+        class Builder(BagBuilderBase):
+            @abstract(sub_tags="child", compile_module="textual.containers")
+            def base_container(self): ...
+
+            @element(inherits_from="@base_container", compile_class="Vertical")
+            def vertical(self): ...
+
+        bag = Bag(builder=Builder)
+        info = bag.builder.get_schema_info("vertical")
+
+        # Should have merged: module from abstract + class from element
+        assert info["compile_kwargs"] == {"module": "textual.containers", "class": "Vertical"}
+
+    def test_inherits_compile_kwargs_override(self):
+        """Element can override inherited compile_kwargs values."""
+
+        class Builder(BagBuilderBase):
+            @abstract(
+                sub_tags="child",
+                compile_module="textual.containers",
+                compile_class="Container",
+            )
+            def base_container(self): ...
+
+            @element(inherits_from="@base_container", compile_class="Vertical")
+            def vertical(self): ...
+
+        bag = Bag(builder=Builder)
+        info = bag.builder.get_schema_info("vertical")
+
+        # class should be overridden, module inherited
+        assert info["compile_kwargs"]["module"] == "textual.containers"
+        assert info["compile_kwargs"]["class"] == "Vertical"
+
+    def test_element_without_compile_kwargs(self):
+        """Element without compile_kwargs has no compile_kwargs in schema."""
+
+        class Builder(BagBuilderBase):
+            @element()
+            def simple(self): ...
+
+        info = Builder._class_schema.get_attr("simple")
+        assert "compile_kwargs" not in info or info.get("compile_kwargs") is None

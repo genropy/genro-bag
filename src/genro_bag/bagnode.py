@@ -59,6 +59,9 @@ class BagNode:
         _invalid_reasons: List of validation error messages. Empty list means valid.
             This attribute is reserved for external validation systems (e.g., TreeStore
             builders) to populate. The BagNode itself does not set validation errors.
+        _compiled: Dict for compilation data. Reserved for builders to store compiled
+            objects, references, or any compilation-related data. Initialized lazily
+            on first access via the `compiled` property.
     """
 
     __slots__ = (
@@ -71,6 +74,7 @@ class BagNode:
         "tag",
         "xml_tag",
         "_invalid_reasons",
+        "_compiled",
     )
 
     def __init__(
@@ -106,6 +110,7 @@ class BagNode:
         self.tag = tag
         self.xml_tag = xml_tag
         self._invalid_reasons: list[str] = []
+        self._compiled: dict[str, Any] | None = None
 
         # Set parent (uses property setter)
         self.parent_bag = parent_bag
@@ -351,6 +356,22 @@ class BagNode:
         if self._resolver is not None:
             self._resolver.reset()
         self.set_value(None)
+
+    # -------------------------------------------------------------------------
+    # Compiled Property
+    # -------------------------------------------------------------------------
+
+    @property
+    def compiled(self) -> dict[str, Any]:
+        """Get compilation data dict (lazy initialization).
+
+        Returns a dict that builders can use to store compiled objects,
+        references, or any compilation-related data. The dict is created
+        on first access.
+        """
+        if self._compiled is None:
+            self._compiled = {}
+        return self._compiled
 
     # -------------------------------------------------------------------------
     # Attribute Methods
