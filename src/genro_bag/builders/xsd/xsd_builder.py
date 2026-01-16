@@ -66,25 +66,24 @@ class XsdBuilder(BagBuilderBase):
         super().__init__(bag)
         self._schema = schema_bag
 
-    def compile(self, format: str = "xml", full_validate: bool = False) -> str:
-        """Compile the bag to output format.
+    def compile(self, full_validate: bool = False) -> str:
+        """Compile the bag to XML.
 
         Args:
-            format: Output format ('xml' or 'json').
-            full_validate: If True and format='xml', validate the output
-                against the original XSD schema using xmlschema library.
+            full_validate: If True, validate the output against the original
+                XSD schema using xmlschema library.
                 Requires xmlschema to be installed.
 
         Returns:
-            The compiled document as string.
+            The compiled XML document as string.
 
         Raises:
             ImportError: If full_validate=True but xmlschema is not installed.
             xmlschema.XMLSchemaValidationError: If validation fails.
         """
-        result = super().compile(format)
+        result = self.bag.to_xml()
 
-        if full_validate and format == "xml":
+        if full_validate:
             self._validate_with_xsd(result)
 
         return result

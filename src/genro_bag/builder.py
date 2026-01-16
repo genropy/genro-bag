@@ -639,8 +639,13 @@ class BagBuilderBase(ABC):
     # Output
     # -------------------------------------------------------------------------
 
-    def compile(self, format: str = "xml") -> str:
-        """Compile the bag to output format."""
+    def compile(self, *args: Any, **kwargs: Any) -> Any:
+        """Compile the bag to output format.
+
+        This is a base implementation that subclasses can override.
+        Return type varies by builder (str, Iterator, bytes, None, etc.).
+        """
+        format = kwargs.get("format", "xml")
         if format == "xml":
             result = self.bag.to_xml()
             return result if result is not None else ""
