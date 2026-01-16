@@ -727,10 +727,21 @@ class BagBuilderBase(ABC):
                 else:
                     row.td("-")
 
-                compile_kwargs = info.get("compile_kwargs")
-                if compile_kwargs:
-                    compile_str = ", ".join(f"{k}: {v}" for k, v in compile_kwargs.items())
-                    row.td(f"`{compile_str}`")
+                compile_kwargs = info.get("compile_kwargs") or {}
+                compile_parts = []
+                if "template" in compile_kwargs:
+                    # Escape backticks in template for markdown display
+                    tmpl = compile_kwargs["template"].replace("`", "\\`")
+                    tmpl = tmpl.replace("\n", "\\n")
+                    compile_parts.append(f"template: {tmpl}")
+                if "callback" in compile_kwargs:
+                    compile_parts.append(f"callback: {compile_kwargs['callback']}")
+                # Other compile_kwargs (module, class, etc.)
+                for k, v in compile_kwargs.items():
+                    if k not in ("template", "callback"):
+                        compile_parts.append(f"{k}: {v}")
+                if compile_parts:
+                    row.td("`" + ", ".join(compile_parts) + "`")
                 else:
                     row.td("-")
 

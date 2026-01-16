@@ -141,6 +141,25 @@ Complete HTML5 support with 112 tags loaded from W3C schema:
 BagNode : ... at ...
 ```
 
+### MarkdownBuilder
+
+Build Markdown documents programmatically with `compile()` to generate the final output:
+
+```{doctest}
+>>> from genro_bag import Bag
+>>> from genro_bag.builders import MarkdownBuilder
+>>> doc = Bag(builder=MarkdownBuilder)
+>>> doc.h1("My Document")  # doctest: +ELLIPSIS
+BagNode : ...
+>>> doc.p("Introduction paragraph.")  # doctest: +ELLIPSIS
+BagNode : ...
+>>> md = doc.builder.compile()
+>>> "# My Document" in md
+True
+```
+
+See [Markdown Builder](markdown-builder.md) for complete documentation.
+
 ### XsdBuilder
 
 Dynamic builder from XML Schema (XSD) files - automatically generates methods for all elements defined in the schema:
@@ -164,6 +183,7 @@ See [XSD Builder](xsd-builder.md) for complete documentation.
 quickstart
 custom-builders
 html-builder
+markdown-builder
 xsd-builder
 validation
 advanced
