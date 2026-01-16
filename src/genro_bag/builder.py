@@ -533,7 +533,7 @@ class BagBuilderBase(ABC):
         """Add a child to a node. Validation is delegated to child()."""
         if not isinstance(node.value, Bag):
             node.value = Bag()
-            node.value._builder = self
+            node.value.builder = self
 
         return self.child(node.value, child_tag, node_position=node_position, **attrs)
 

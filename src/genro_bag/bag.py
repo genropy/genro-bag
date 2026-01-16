@@ -140,7 +140,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
         self._ins_subscribers: dict = {}
         self._del_subscribers: dict = {}
         self._root_attributes: dict | None = None
-        self._builder = builder(self, **builder_kwargs) if builder else None
+        self.builder = builder(self, **builder_kwargs) if builder else None
 
         if source:
             self.fill_from(source)

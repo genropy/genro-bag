@@ -3548,3 +3548,25 @@ class TestBagCoverageEdgeCases:
         result = child.get_item("#parent", static=True)
 
         assert result is parent
+
+    def test_node_compiled_property(self):
+        """node.compiled returns a dict for storing compilation data."""
+        bag = Bag()
+        bag["item"] = "value"
+        node = bag.get_node("item")
+
+        # First access creates empty dict
+        compiled = node.compiled
+        assert compiled == {}
+        assert isinstance(compiled, dict)
+
+        # Can store data
+        node.compiled["obj"] = "some_widget"
+        node.compiled["class"] = "MyClass"
+
+        # Data persists
+        assert node.compiled["obj"] == "some_widget"
+        assert node.compiled["class"] == "MyClass"
+
+        # Same dict instance returned
+        assert node.compiled is compiled
