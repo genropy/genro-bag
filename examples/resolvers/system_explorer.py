@@ -82,11 +82,18 @@ def create_explorer() -> Bag:
     # System info (lazy, cached 5 seconds)
     bag['system'] = BagCbResolver(get_system_info, cache_time=5)
 
-    # Home directory (lazy - files get resolvers based on extension)
-    bag['home'] = DirectoryResolver(str(Path.home()))
+    # Home directory (lazy - common text files readable)
+    # ext mapping: xml files as Bag, txt/md/py/json as raw bytes
+    bag['home'] = DirectoryResolver(
+        str(Path.home()),
+        ext='xml,txt,md:txt,py:txt,json:txt'
+    )
 
-    # Current working directory
-    bag['cwd'] = DirectoryResolver(os.getcwd())
+    # Current working directory (same extensions)
+    bag['cwd'] = DirectoryResolver(
+        os.getcwd(),
+        ext='xml,txt,md:txt,py:txt,json:txt'
+    )
 
     return bag
 
