@@ -1,6 +1,6 @@
 # Basic Usage
 
-This guide covers the fundamental operations for working with Bag: creating, storing, accessing, and manipulating hierarchical data.
+This guide covers fundamental operations: creating, storing, accessing, and manipulating data.
 
 ## Creating a Bag
 
@@ -20,8 +20,6 @@ This guide covers the fundamental operations for working with Bag: creating, sto
 
 ### Simple Assignment
 
-Use bracket notation with dot-separated paths:
-
 ```{doctest}
 >>> from genro_bag import Bag
 
@@ -29,7 +27,6 @@ Use bracket notation with dot-separated paths:
 >>> bag['user'] = 'Alice'
 >>> bag['config.debug'] = True
 >>> bag['config.database.host'] = 'localhost'
->>> bag['config.database.port'] = 5432
 ```
 
 Intermediate Bags are created automatically when you assign to nested paths.
@@ -62,26 +59,6 @@ For more control, use `set_item()` which accepts attributes and positioning:
 >>> bag['missing']  # Returns None for missing keys
 ```
 
-### By Path
-
-Access nested values with dot-separated paths:
-
-```{doctest}
->>> from genro_bag import Bag
-
->>> bag = Bag()
->>> bag['config.database.host'] = 'localhost'
->>> bag['config.database.port'] = 5432
-
->>> bag['config.database.host']
-'localhost'
-
->>> # Get intermediate Bag
->>> db = bag['config.database']
->>> db['host']
-'localhost'
-```
-
 ### By Index
 
 Access by position using `#n` syntax:
@@ -100,51 +77,6 @@ Access by position using `#n` syntax:
 3
 ```
 
-## Node Attributes
-
-Every node can have attributes separate from its value:
-
-```{doctest}
->>> from genro_bag import Bag
-
->>> bag = Bag()
->>> bag.set_item('api_key', 'sk-xxx', env='production', expires=2025)
-
->>> # Get value
->>> bag['api_key']
-'sk-xxx'
-
->>> # Get attribute with ?attr syntax
->>> bag['api_key?env']
-'production'
->>> bag['api_key?expires']
-2025
-
->>> # Get all attributes
->>> node = bag.get_node('api_key')
->>> node.attr
-{'env': 'production', 'expires': 2025}
-```
-
-### Setting Attributes
-
-```{doctest}
->>> from genro_bag import Bag
-
->>> bag = Bag()
->>> bag['user'] = 'Alice'
-
->>> # Set attribute after creation
->>> bag['user?role'] = 'admin'
->>> bag['user?role']
-'admin'
-
->>> # Or via set_item with _attributes
->>> bag.set_item('server', 'prod-01', _attributes={'region': 'eu', 'tier': 1})
->>> bag['server?region']
-'eu'
-```
-
 ## Iteration
 
 ### Iterating Over Nodes
@@ -154,7 +86,6 @@ Every node can have attributes separate from its value:
 
 >>> bag = Bag({'a': 1, 'b': 2, 'c': 3})
 
->>> # Iterate yields BagNode objects
 >>> for node in bag:
 ...     print(f"{node.label}: {node.value}")
 a: 1
@@ -191,7 +122,6 @@ c: 3
 >>> list(bag.keys())
 ['a', 'c']
 
->>> # Pop returns the value
 >>> bag.pop('a')
 1
 >>> list(bag.keys())
@@ -233,24 +163,21 @@ Control where new items are inserted:
 >>> bag.set_item('before_last', 2.5, node_position='<last')
 >>> list(bag.keys())
 ['first', 'middle', 'before_last', 'last']
-
->>> # Insert after a label
->>> bag.set_item('after_first', 1.5, node_position='>first')
->>> list(bag.keys())
-['first', 'after_first', 'middle', 'before_last', 'last']
 ```
 
 Position syntax:
 
-- `<` - Prepend (insert at beginning)
-- `>` - Append (insert at end, default)
-- `<label` - Insert before the node with given label
-- `>label` - Insert after the node with given label
-- `#n` - Insert at numeric index
+| Syntax | Meaning |
+|--------|---------|
+| `<` | Prepend (beginning) |
+| `>` | Append (end, default) |
+| `<label` | Before node with label |
+| `>label` | After node with label |
+| `#n` | At numeric index |
 
 ## Nested Bags
 
-Values can be Bags themselves, creating hierarchies:
+Values can be Bags themselves:
 
 ```{doctest}
 >>> from genro_bag import Bag
@@ -307,10 +234,3 @@ To access the BagNode object (not just the value):
 >>> node.attr
 {'role': 'admin'}
 ```
-
-## Next Steps
-
-- Learn about [Query Syntax](query-syntax.md) for extracting data
-- Explore [Serialization](serialization.md) for saving/loading
-- Understand [Resolvers](resolvers.md) for lazy loading
-- Master [Subscriptions](subscriptions.md) for reactivity

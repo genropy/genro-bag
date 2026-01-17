@@ -1,8 +1,17 @@
-# Builders System
+# Builders
 
-The Builders system provides **domain-specific fluent APIs** for constructing Bag structures with validation support. Instead of manually calling `set_item()`, builders let you use intuitive method calls that match your domain vocabulary.
+The Builders system provides **domain-specific fluent APIs** for constructing Bag structures with validation support.
 
-## Why Builders?
+## When Do You Need Builders?
+
+You need builders when:
+
+- **Structure has rules**: HTML, XML, configuration schemas
+- **Validation at build time**: Catch errors early, not at runtime
+- **Domain-specific vocabulary**: Methods like `div()`, `p()`, `h1()` instead of `set_item()`
+- **Output generation**: Compile to HTML, Markdown, XML, etc.
+
+## The Core Idea
 
 Without a builder, constructing a nested structure requires explicit paths:
 
@@ -175,10 +184,10 @@ invoice.Invoice().Header().Date(value='2025-01-01')
 
 See [XSD Builder](xsd-builder.md) for complete documentation.
 
-## Documentation
+## What's Next?
 
 ```{toctree}
-:maxdepth: 2
+:maxdepth: 1
 
 quickstart
 custom-builders
@@ -187,4 +196,6 @@ markdown-builder
 xsd-builder
 validation
 advanced
+examples
+faq
 ```
