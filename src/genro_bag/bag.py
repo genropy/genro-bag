@@ -20,10 +20,10 @@ Example:
     localhost
 
 Async Usage with Resolvers:
-    When using Bag with resolvers, the ``static`` parameter controls behavior:
+    By default, accessing values triggers resolvers. Use ``static=True`` to
+    access cached values without triggering:
 
-    - ``static=True``: Always returns direct data (no resolver trigger)
-    - ``static=False``: May trigger resolver if cache expired
+        cached = bag.get_item("path", static=True)  # No resolver trigger
 
     In **sync context**, no special handling is needed - async resolvers are
     automatically awaited via ``@smartasync``.
@@ -33,16 +33,8 @@ Async Usage with Resolvers:
         from genro_toolbox import smartawait
 
         async def get_data():
-            result = await smartawait(bag.get_item("path", static=False))
+            result = await smartawait(bag.get_item("path"))
             return result
-
-    Or explicitly check for coroutine::
-
-        import inspect
-
-        result = bag.get_item("path", static=False)
-        if inspect.iscoroutine(result):
-            result = await result
 """
 
 from __future__ import annotations
@@ -672,11 +664,11 @@ class Bag(BagParser, BagSerializer, BagQuery):
             >>> bag['config.db.host'] = 'localhost'
             >>> bag.get_item('config.db.host')
             'localhost'
-            >>> bag['config.db.host']  # static=True, no resolver trigger
-            'localhost'
-            >>> # With resolver (static=False), in async context use smartawait:
+            >>> # Check cache without triggering resolver:
+            >>> cached = bag.get_item('path', static=True)
+            >>> # In async context use smartawait:
             >>> from genro_toolbox import smartawait
-            >>> result = await smartawait(bag.get_item('path.with.resolver', static=False))
+            >>> result = await smartawait(bag.get_item('path.with.resolver'))
         """
         if not path:
             return self

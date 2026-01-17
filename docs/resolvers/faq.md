@@ -91,19 +91,19 @@ Use `smartawait`:
 from genro_toolbox import smartawait
 
 async def get_data():
-    return await smartawait(bag.get_item('api', static=False))
+    return await smartawait(bag.get_item('api'))
 ```
 
 ### Why do I get a coroutine instead of the value?
 
-In async context with `static=False`, you may get a coroutine:
+In async context, `get_item()` may return a coroutine:
 
 ```python
 # This might return a coroutine
-result = bag.get_item('api', static=False)
+result = bag.get_item('api')
 
 # Always safe:
-result = await smartawait(bag.get_item('api', static=False))
+result = await smartawait(bag.get_item('api'))
 ```
 
 ### Can I use sync resolvers in async code?
@@ -209,5 +209,5 @@ bag['data'] = BagCbResolver(bad_resolver)
 result = bag['api']  # Might be a coroutine!
 
 # RIGHT
-result = await smartawait(bag.get_item('api', static=False))
+result = await smartawait(bag.get_item('api'))
 ```

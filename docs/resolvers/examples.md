@@ -260,7 +260,7 @@ users['all'] = BagCbResolver(
 
 # In async context
 from genro_toolbox import smartawait
-all_users = await smartawait(users.get_item('all', static=False))
+all_users = await smartawait(users.get_item('all'))
 ```
 
 ## Pattern: Resolver Chain

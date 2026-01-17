@@ -183,8 +183,8 @@ class BagQuery:
         Two modes of operation:
 
         1. **Generator mode** (no callback): Returns a generator yielding
-           (path, node) tuples for all nodes in the tree. Always uses static
-           mode (no resolver triggering). This is the recommended approach.
+           (path, node) tuples for all nodes in the tree. This is the
+           recommended approach.
 
         2. **Legacy callback mode**: Calls callback(node, **kwargs) for each
            node. Supports early exit (if callback returns truthy value),
@@ -195,7 +195,6 @@ class BagQuery:
                 If provided, call callback(node, **kwargs) for each node.
             static: If True (default), don't trigger resolvers during traversal.
                 If False, resolvers may be triggered to compute nested Bag values.
-                Ignored in generator mode (always static).
             **kwargs: Passed to callback. Special keys:
                 - _pathlist: list of labels from root (auto-updated by walk)
                 - _indexlist: list of indices from root (auto-updated by walk)
@@ -243,12 +242,12 @@ class BagQuery:
                         return result
             return None
 
-        # Generator mode - always uses static=True to avoid triggering resolvers
+        # Generator mode - uses static parameter (default True)
         def _walk_gen(bag: Bag, prefix: str) -> Iterator[tuple[str, BagNode]]:
             for node in bag._nodes:
                 path = f"{prefix}.{node.label}" if prefix else node.label
                 yield path, node
-                value = node.get_value(static=True)
+                value = node.get_value(static=static)
                 if isinstance(value, Bag):
                     yield from _walk_gen(value, path)
 
@@ -263,6 +262,7 @@ class BagQuery:
         leaf: bool = True,
         branch: bool = True,
         limit: int | None = None,
+        static: bool = True,
     ) -> list | Iterator:
         """Query Bag elements, extracting specified data.
 
@@ -272,7 +272,7 @@ class BagQuery:
                 - '#k': label of each item
                 - '#v': value of each item
                 - '#v.path': inner values of each item
-                - '#__v': static value (bypassing resolver)
+                - '#__v': static value (always bypasses resolver)
                 - '#a': all attributes of each item
                 - '#a.attrname': specific attribute for each item
                 - '#p': path (full path from root, useful with deep=True)
@@ -284,6 +284,8 @@ class BagQuery:
             leaf: If True (default), include leaf nodes (non-Bag values).
             branch: If True (default), include branch nodes (Bag values).
             limit: Maximum number of results to return. None means no limit.
+            static: If True (default), don't trigger resolvers during traversal.
+                If False, resolvers may be triggered to compute values.
 
         Returns:
             List of tuples, or generator if iter=True.
@@ -336,23 +338,25 @@ class BagQuery:
             elif callable(w):
                 return w(node)
             elif w == "#v":
-                v = node.static_value
+                v = node.get_value(static=static)
                 # With deep=True, Bag values return None (content comes in later iterations)
                 return None if is_deep and isinstance(v, Bag) else v
             elif w.startswith("#v."):
                 inner_path = w.split(".", 1)[1]
-                return node.value[inner_path] if hasattr(node.value, "get_item") else None
+                value = node.get_value(static=static)
+                return value[inner_path] if hasattr(value, "get_item") else None
             elif w == "#__v":
-                return node.static_value
+                return node.static_value  # Always static, ignores parameter
             elif w.startswith("#a"):
                 attr = w.split(".", 1)[1] if "." in w else None
                 return node.get_attr(attr)
             else:
-                return node.value[w] if hasattr(node.value, "__getitem__") else None
+                value = node.get_value(static=static)
+                return value[w] if hasattr(value, "__getitem__") else None
 
         def _should_include(node: BagNode) -> bool:
             """Check if node should be included based on leaf/branch filters."""
-            is_branch = isinstance(node.static_value, Bag)
+            is_branch = isinstance(node.get_value(static=static), Bag)
             if is_branch and not branch:
                 return False
             if not is_branch and not leaf:
@@ -364,7 +368,7 @@ class BagQuery:
             count = 0
             if deep:
                 # Use walk() for recursive traversal
-                for path, node in obj.walk():
+                for path, node in obj.walk(static=static):
                     if _should_include(node):
                         if len(whatsplit) == 1:
                             yield _extract_value(node, whatsplit[0], path, True)

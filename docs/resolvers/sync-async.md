@@ -67,7 +67,7 @@ data = bag['api']
 
 ### In Async Code
 
-Use `get_item()` with `static=False` and `smartawait`:
+Use `get_item()` with `smartawait`:
 
 ```python
 from genro_bag import Bag
@@ -79,13 +79,13 @@ bag['api'] = UrlResolver('https://api.example.com/data')
 
 async def fetch_data():
     # Use get_item + smartawait for async access
-    data = await smartawait(bag.get_item('api', static=False))
+    data = await smartawait(bag.get_item('api'))
     return data
 ```
 
 ## Why `smartawait`?
 
-In async context, `bag.get_item('api', static=False)` may return:
+In async context, `bag.get_item('api')` may return:
 - The value directly (if cached)
 - A coroutine (if resolver needs to load)
 
@@ -95,15 +95,12 @@ In async context, `bag.get_item('api', static=False)` may return:
 from genro_toolbox import smartawait
 
 # Always safe - works whether result is value or coroutine
-result = await smartawait(bag.get_item('api', static=False))
+result = await smartawait(bag.get_item('api'))
 ```
 
 ## The `static` Parameter
 
-| `static` | Behavior |
-|----------|----------|
-| `True` | Return cached value only, never trigger resolver |
-| `False` | Trigger resolver if needed (default for `get_item`) |
+By default, accessing a value triggers the resolver if needed. Use `static=True` to check the cache without triggering:
 
 ```python
 # Check if value is cached without triggering load
@@ -111,8 +108,8 @@ cached = bag.get_item('api', static=True)
 if cached is None:
     print("Not loaded yet")
 
-# Trigger load if needed
-data = bag.get_item('api', static=False)
+# Normal access triggers resolver (default behavior)
+data = bag.get_item('api')
 ```
 
 ## Complete Example
@@ -146,7 +143,7 @@ print(weather['temperature'])
 # === ASYNC CONTEXT ===
 async def main():
     # Use get_item + smartawait
-    weather = await smartawait(bag.get_item('weather', static=False))
+    weather = await smartawait(bag.get_item('weather'))
     print(weather['temperature'])
 
 import asyncio
@@ -192,7 +189,7 @@ True             True                     → await async_load()
 data = bag['api']
 
 # ✅ CORRECT
-data = await smartawait(bag.get_item('api', static=False))
+data = await smartawait(bag.get_item('api'))
 ```
 
 ### 3. Use static=True to Check Cache
@@ -218,8 +215,9 @@ data2 = bag['api']  # No request, instant return
 | Context | How to Access |
 |---------|--------------|
 | Sync code | `bag['key']` or `bag.get_item('key')` |
-| Async code | `await smartawait(bag.get_item('key', static=False))` |
+| Async code | `await smartawait(bag.get_item('key'))` |
 
 The resolver system automatically bridges sync/async boundaries, so you can:
+
 - Use async resolvers in sync code (they run synchronously)
 - Use sync resolvers in async code (they're wrapped appropriately)

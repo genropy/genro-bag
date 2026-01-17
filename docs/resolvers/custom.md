@@ -128,7 +128,7 @@ bag['data'] = AsyncApiResolver(
 )
 
 # Access
-result = await smartawait(bag.get_item('data', static=False))
+result = await smartawait(bag.get_item('data'))
 ```
 
 ## Example: File Watcher

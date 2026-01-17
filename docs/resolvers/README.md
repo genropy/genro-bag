@@ -76,7 +76,7 @@ result = bag['data']
 
 # In async code - use smartawait
 from genro_toolbox import smartawait
-result = await smartawait(bag.get_item('data', static=False))
+result = await smartawait(bag.get_item('data'))
 ```
 
 ## Custom Resolvers
