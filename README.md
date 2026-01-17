@@ -7,34 +7,33 @@
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-A **hierarchical dictionary** for Python: a tree of named nodes with values and attributes.
+An **intermediate representation** for structured data in Python.
 
-## The Core Idea
+## What is Bag?
 
-```python
-from genro_bag import Bag
+A Bag is an abstraction that bridges the gap between how humans think about structured data and how software implements it.
 
-bag = Bag()
-bag['config.database.host'] = 'localhost'
-bag['config.database.port'] = 5432
+When you work with configuration files, API responses, form data, or document structures, they all share the same fundamental shape: **named things containing values, organized in a hierarchy, with additional properties attached**.
 
-bag['config.database.host']  # 'localhost'
-```
+Yet in code, we scatter this across dictionaries, classes, JSON, XML, database rows—each with its own access patterns and limitations.
 
-Three concepts, that's all:
+A Bag unifies these patterns into a single, consistent model:
 
-| Concept | Syntax | Example |
-|---------|--------|---------|
-| **Path** | `bag['a.b.c']` | Navigate hierarchy with dots |
-| **Value** | `bag['key'] = value` | Each node holds a value |
-| **Attribute** | `bag['key?attr']` | Each node can have metadata |
+- **Nodes** — Named containers that hold a value
+- **Hierarchy** — Nodes can contain other nodes, forming a tree
+- **Attributes** — Each node carries metadata alongside its value
+- **Paths** — Navigate the tree with familiar dot notation
 
-```python
-bag.set_item('user', 'Alice', role='admin', active=True)
+## The Layered Design
 
-bag['user']        # 'Alice'
-bag['user?role']   # 'admin'
-```
+Bag provides progressive capability. Start simple, add layers when needed:
+
+| Layer | Purpose |
+|-------|---------|
+| **Core Bag** | The fundamental container: paths, values, attributes |
+| **Resolvers** | Values that compute themselves: lazy loading, API calls |
+| **Subscriptions** | React to changes: validation, logging, computed properties |
+| **Builders** | Domain-specific languages: HTML, Markdown, XML schemas |
 
 ## Install
 
@@ -42,71 +41,17 @@ bag['user?role']   # 'admin'
 pip install genro-bag
 ```
 
-## Learn More
+## Documentation
+
+Full documentation with examples: [genro-bag.readthedocs.io](https://genro-bag.readthedocs.io/)
 
 | Section | Description |
 |---------|-------------|
-| **[Core Bag](docs/bag/)** | Basic usage, paths, attributes, serialization |
-| **[Resolvers](docs/resolvers/)** | Lazy loading, API calls, computed values |
-| **[Subscriptions](docs/subscriptions/)** | React to changes, validation, logging |
-| **[Builders](docs/builders/)** | Domain-specific languages (HTML, Markdown, XSD) |
-
-## When You Need More
-
-Bag is intentionally minimal at its core. As your needs grow:
-
-### Resolvers — Values that compute themselves
-
-```python
-from genro_bag.resolvers import BagCbResolver, UrlResolver
-
-bag['now'] = BagCbResolver(lambda: datetime.now().isoformat())
-bag['api'] = UrlResolver('https://api.example.com/data', cache_time=300)
-
-bag['now']  # Computed on access
-bag['api']  # Fetched from network, cached 5 minutes
-```
-
-### Subscriptions — React to changes
-
-```python
-def on_change(**kw):
-    print(f"Changed: {kw['node'].label} = {kw['node'].value}")
-
-bag.subscribe('watcher', any=on_change)
-bag['count'] = 1  # Prints: "Changed: count = 1"
-```
-
-### Builders — Domain-specific structure
-
-```python
-from genro_bag.builders import HtmlBuilder
-
-page = Bag(builder=HtmlBuilder)
-div = page.div(class_='container')
-div.h1(value='Welcome')
-div.p(value='Hello, World!')
-
-page.to_xml(pretty=True)
-```
-
-## Why Bag?
-
-Instead of combining `omegaconf` + `pydantic` + `munch` + `rxpy` + `lxml` + custom glue:
-
-| Need | Typical solution | With Bag |
-|------|------------------|----------|
-| Hierarchical data | dict + manual nesting | Native path access |
-| Configuration | omegaconf, hydra | Bag + builders |
-| Lazy values | @property, decorators | Transparent resolvers |
-| Reactivity | rxpy, signals | Location-based subscriptions |
-| XML/JSON | lxml, xmltodict | Unified serialization |
-
-*One coherent model. Less glue. More domain logic.*
-
-## Documentation
-
-Full documentation: [genro-bag.readthedocs.io](https://genro-bag.readthedocs.io/)
+| **[Getting Started](https://genro-bag.readthedocs.io/en/latest/getting-started.html)** | Learn the three core concepts |
+| **[Core Bag](https://genro-bag.readthedocs.io/en/latest/bag/)** | Basic usage, paths, attributes, serialization |
+| **[Resolvers](https://genro-bag.readthedocs.io/en/latest/resolvers/)** | Lazy loading, API calls, computed values |
+| **[Subscriptions](https://genro-bag.readthedocs.io/en/latest/subscriptions/)** | React to changes, validation, logging |
+| **[Builders](https://genro-bag.readthedocs.io/en/latest/builders/)** | Domain-specific languages (HTML, Markdown, XSD) |
 
 ## Development
 

@@ -76,6 +76,8 @@ from genro_toolbox import smartawait
 result = await smartawait(bag.get_item('data', static=False))
 ```
 
+→ [Sync and Async Guide](sync-async.md)
+
 ### Serialization
 
 Resolvers survive serialization with TYTX:
@@ -122,6 +124,7 @@ class DatabaseResolver(BagResolver):
 :maxdepth: 1
 
 builtin
+sync-async
 custom
 examples
 faq

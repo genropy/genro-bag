@@ -93,10 +93,13 @@ html_theme_options = {
     "style_external_links": True,
 }
 
+# GitHub repository URL (shown in sidebar)
+html_theme_options["display_version"] = True
+
 html_static_path = ["_static"]
 html_css_files = []  # No custom CSS yet
 
-# HTML context (GitHub integration)
+# HTML context (GitHub integration - shows "Edit on GitHub" link on each page)
 html_context = {
     "display_github": True,
     "github_user": "genropy",
@@ -104,6 +107,10 @@ html_context = {
     "github_version": "main",
     "conf_py_path": "/docs/",
 }
+
+# Direct link to GitHub repository (shown below logo in sidebar)
+html_theme_options["logo_only"] = False
+html_theme_options["vcs_pageview_mode"] = "blob"
 
 # Autodoc configuration
 autodoc_default_options = {

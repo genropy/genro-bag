@@ -328,39 +328,39 @@ class BagBuilderBase(ABC):
         if name.startswith("_"):
             raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
-        def wrapper(destination_bag: Bag, *args: Any, _tag: str = name, **kwargs: Any) -> Any:
+        def wrapper(destination_bag: Bag, *args: Any, node_tag: str = name, **kwargs: Any) -> Any:
             try:
-                method = self._get_method(_tag)
+                method = self._get_method(node_tag)
             except KeyError as err:
-                raise AttributeError(f"'{type(self).__name__}' has no element '{_tag}'") from err
-            kwargs["tag"] = _tag
+                raise AttributeError(f"'{type(self).__name__}' has no element '{node_tag}'") from err
+            kwargs["node_tag"] = node_tag
             return method(destination_bag, *args, **kwargs)
 
         return wrapper
 
     def _default_element(
         self,
-        _target: Bag,
+        build_where: Bag,
         node_value: Any = None,
         node_label: str | None = None,
-        tag: str = "",
+        node_tag: str = "",
         **attr: Any,
     ) -> BagNode:
         """Default handler for elements without custom handler.
 
         Args:
-            _target: The destination Bag.
+            build_where: The destination Bag where the node will be created.
             node_value: Node content (positional). Becomes node.value.
             node_label: Optional explicit label for the node.
-            tag: The tag name for the element (passed via kwargs).
+            node_tag: The tag name for the element (passed via kwargs).
             **attr: Node attributes.
         """
-        return self.child(_target, tag, node_value, node_label=node_label, **attr)
+        return self.child(build_where, node_tag, node_value, node_label=node_label, **attr)
 
     def child(
         self,
-        _target: Bag,
-        _tag: str,
+        build_where: Bag,
+        node_tag: str,
         node_value: Any = None,
         node_label: str | None = None,
         node_position: str | int | None = None,
@@ -370,31 +370,31 @@ class BagBuilderBase(ABC):
 
         Raises ValueError if validation fails, KeyError if parent tag not in schema.
         """
-        target_node = _target._parent_node
-        if target_node and target_node.tag:
-            target_info = self.get_schema_info(target_node.tag)
-            self._accept_child(target_node, target_info, _tag, node_position)
+        parent_node = build_where._parent_node
+        if parent_node and parent_node.tag:
+            parent_info = self.get_schema_info(parent_node.tag)
+            self._accept_child(parent_node, parent_info, node_tag, node_position)
 
-        child_info = self.get_schema_info(_tag)
+        child_info = self.get_schema_info(node_tag)
         self._validate_call_args(child_info, node_value, attr)
 
-        node_label = node_label or self._auto_label(_target, _tag)
-        child_node = _target.set_item(node_label, node_value, node_position=node_position, **attr)
-        child_node.tag = _tag
+        node_label = node_label or self._auto_label(build_where, node_tag)
+        child_node = build_where.set_item(node_label, node_value, node_position=node_position, **attr)
+        child_node.tag = node_tag
 
-        if target_node:
-            self._validate_sub_tags(target_node, target_info)
+        if parent_node:
+            self._validate_sub_tags(parent_node, parent_info)
 
         self._validate_sub_tags(child_node, child_info)
 
         return child_node
 
-    def _auto_label(self, _target: Bag, _tag: str) -> str:
+    def _auto_label(self, build_where: Bag, node_tag: str) -> str:
         """Generate unique label for a node: tag_0, tag_1, ..."""
         n = 0
-        while f"{_tag}_{n}" in _target._nodes:
+        while f"{node_tag}_{n}" in build_where._nodes:
             n += 1
-        return f"{_tag}_{n}"
+        return f"{node_tag}_{n}"
 
     def _validate_call_args(
         self,
@@ -969,12 +969,8 @@ def _extract_validators_from_signature(fn: Callable) -> dict[str, tuple[Any, lis
     """Extract type hints with validators from function signature."""
     skip_params = {
         "self",
-        "target",
-        "tag",
-        "label",
-        "_target",
-        "_tag",
-        "_label",
+        "build_where",
+        "node_tag",
         "node_label",
         "node_position",
     }
@@ -1127,8 +1123,8 @@ class SchemaBuilder(BagBuilderBase):
     @element()
     def item(
         self,
-        _target: Bag,
-        tag: str,
+        build_where: Bag,
+        node_tag: str,
         node_value: str,
         sub_tags: str | None = None,
         inherits_from: str | None = None,
@@ -1141,8 +1137,8 @@ class SchemaBuilder(BagBuilderBase):
         """Define a schema item (element definition).
 
         Args:
-            _target: The destination Bag.
-            tag: The element tag ('item').
+            build_where: The destination Bag where the node will be created.
+            node_tag: The element tag ('item').
             node_value: Element name to define (e.g., 'div', '@flow').
             node_label: Ignored, node_value is used as label.
             sub_tags: Valid child tags with cardinality syntax.
@@ -1164,8 +1160,8 @@ class SchemaBuilder(BagBuilderBase):
                 merged_compile[key[8:]] = value  # strip "compile_" prefix
 
         return self.child(
-            _target,
-            tag,
+            build_where,
+            node_tag,
             node_label=node_value,
             sub_tags=sub_tags,
             inherits_from=inherits_from,

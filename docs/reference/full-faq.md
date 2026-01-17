@@ -290,8 +290,8 @@ A builder provides a fluent API for constructing validated Bag structures:
 ```python
 bag = Bag(builder=HtmlBuilder)
 div = bag.div(id='main')
-div.h1(value='Title')
-div.p(value='Content')
+div.h1('Title')
+div.p('Content')
 ```
 
 ### How do builders validate structure?
@@ -300,12 +300,11 @@ The `@element` decorator defines allowed children via `sub_tags`:
 
 ```python
 @element(sub_tags='item')
-def menu(self, target, tag, **attr):
-    return self.child(target, tag, **attr)
+def menu(self): ...
 
 # menu can only contain 'item' elements
-menu.item(value='OK')      # Works
-menu.div(value='Error')    # Raises BuilderChildError
+menu.item('OK')      # Works
+menu.div('Error')    # Raises BuilderChildError
 ```
 
 ### Can I create custom builders?
@@ -317,12 +316,10 @@ from genro_bag.builders import BagBuilderBase, element
 
 class MyBuilder(BagBuilderBase):
     @element(sub_tags='child')
-    def parent(self, target, tag, **attr):
-        return self.child(target, tag, **attr)
+    def parent(self): ...
 
     @element()
-    def child(self, target, tag, value=None, **attr):
-        return self.child(target, tag, value=value, **attr)
+    def child(self): ...
 ```
 
 ### Why do node labels have `_0` suffix?

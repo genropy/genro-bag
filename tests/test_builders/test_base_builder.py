@@ -44,9 +44,9 @@ class TestElementDecoratorHandlerDetection:
 
         class Builder(BagBuilderBase):
             @element()
-            def item(self, target, tag, **attr):
+            def item(self, build_where, node_tag, **attr):
                 attr.setdefault("custom", "value")
-                return self.child(target, tag, **attr)
+                return self.child(build_where, node_tag, **attr)
 
         # Schema should have handler_name='_el_item'
         node = Builder._class_schema.get_node("item")
@@ -345,9 +345,9 @@ class TestBagBuilderBase:
 
         class Builder(BagBuilderBase):
             @element()
-            def item(self, target, tag, **attr):
+            def item(self, build_where, node_tag, **attr):
                 attr["custom"] = "injected"
-                return self.child(target, tag, **attr)
+                return self.child(build_where, node_tag, **attr)
 
         bag = Bag(builder=Builder)
         node = bag.item()
@@ -492,8 +492,8 @@ class TestAnnotatedValidation:
 
         class Builder(BagBuilderBase):
             @element()
-            def td(self, target, tag, colspan: Annotated[int, Range(ge=1, le=10)] = None, **attr):
-                return self.child(target, tag, colspan=colspan, **attr)
+            def td(self, build_where, node_tag, colspan: Annotated[int, Range(ge=1, le=10)] = None, **attr):
+                return self.child(build_where, node_tag, colspan=colspan, **attr)
 
         bag = Bag(builder=Builder)
         bag.td(colspan=5)  # Should not raise
@@ -503,8 +503,8 @@ class TestAnnotatedValidation:
 
         class Builder(BagBuilderBase):
             @element()
-            def td(self, target, tag, colspan: Annotated[int, Range(ge=1, le=10)] = None, **attr):
-                return self.child(target, tag, colspan=colspan, **attr)
+            def td(self, build_where, node_tag, colspan: Annotated[int, Range(ge=1, le=10)] = None, **attr):
+                return self.child(build_where, node_tag, colspan=colspan, **attr)
 
         bag = Bag(builder=Builder)
         with pytest.raises(ValueError, match="must be >= 1"):
@@ -515,8 +515,8 @@ class TestAnnotatedValidation:
 
         class Builder(BagBuilderBase):
             @element()
-            def td(self, target, tag, colspan: Annotated[int, Range(ge=1, le=10)] = None, **attr):
-                return self.child(target, tag, colspan=colspan, **attr)
+            def td(self, build_where, node_tag, colspan: Annotated[int, Range(ge=1, le=10)] = None, **attr):
+                return self.child(build_where, node_tag, colspan=colspan, **attr)
 
         bag = Bag(builder=Builder)
         with pytest.raises(ValueError, match="must be <= 10"):
@@ -527,8 +527,8 @@ class TestAnnotatedValidation:
 
         class Builder(BagBuilderBase):
             @element()
-            def td(self, target, tag, scope: Literal["row", "col"] = None, **attr):
-                return self.child(target, tag, scope=scope, **attr)
+            def td(self, build_where, node_tag, scope: Literal["row", "col"] = None, **attr):
+                return self.child(build_where, node_tag, scope=scope, **attr)
 
         bag = Bag(builder=Builder)
         bag.td(scope="row")  # Should not raise
@@ -538,8 +538,8 @@ class TestAnnotatedValidation:
 
         class Builder(BagBuilderBase):
             @element()
-            def td(self, target, tag, scope: Literal["row", "col"] = None, **attr):
-                return self.child(target, tag, scope=scope, **attr)
+            def td(self, build_where, node_tag, scope: Literal["row", "col"] = None, **attr):
+                return self.child(build_where, node_tag, scope=scope, **attr)
 
         bag = Bag(builder=Builder)
         with pytest.raises(ValueError, match="expected"):
@@ -552,12 +552,12 @@ class TestAnnotatedValidation:
             @element()
             def email(
                 self,
-                target,
-                tag,
+                build_where,
+                node_tag,
                 address: Annotated[str, Regex(r"^[\w\.-]+@[\w\.-]+\.\w+$")] = None,
                 **attr,
             ):
-                return self.child(target, tag, address=address, **attr)
+                return self.child(build_where, node_tag, address=address, **attr)
 
         bag = Bag(builder=Builder)
         bag.email(address="test@example.com")  # Should not raise
@@ -569,12 +569,12 @@ class TestAnnotatedValidation:
             @element()
             def email(
                 self,
-                target,
-                tag,
+                build_where,
+                node_tag,
                 address: Annotated[str, Regex(r"^[\w\.-]+@[\w\.-]+\.\w+$")] = None,
                 **attr,
             ):
-                return self.child(target, tag, address=address, **attr)
+                return self.child(build_where, node_tag, address=address, **attr)
 
         bag = Bag(builder=Builder)
         with pytest.raises(ValueError, match="must match pattern"):
@@ -586,9 +586,9 @@ class TestAnnotatedValidation:
         class Builder(BagBuilderBase):
             @element()
             def payment(
-                self, target, tag, amount: Annotated[Decimal, Range(ge=0, le=1000)] = None, **attr
+                self, build_where, node_tag, amount: Annotated[Decimal, Range(ge=0, le=1000)] = None, **attr
             ):
-                return self.child(target, tag, amount=amount, **attr)
+                return self.child(build_where, node_tag, amount=amount, **attr)
 
         bag = Bag(builder=Builder)
         bag.payment(amount=Decimal("500.50"))  # Should not raise
@@ -663,8 +663,8 @@ class TestValueValidation:
 
         class Builder(BagBuilderBase):
             @element()
-            def item(self, target, tag, node_value=None, **attr):
-                return self.child(target, tag, node_value, **attr)
+            def item(self, build_where, node_tag, node_value=None, **attr):
+                return self.child(build_where, node_tag, node_value, **attr)
 
         bag = Bag(builder=Builder)
         node = bag.item("contenuto")
@@ -675,8 +675,8 @@ class TestValueValidation:
 
         class Builder(BagBuilderBase):
             @element()
-            def item(self, target, tag, node_value=None, **attr):
-                return self.child(target, tag, node_value, **attr)
+            def item(self, build_where, node_tag, node_value=None, **attr):
+                return self.child(build_where, node_tag, node_value, **attr)
 
         bag = Bag(builder=Builder)
         node = bag.item(node_value="contenuto")
@@ -687,11 +687,11 @@ class TestValueValidation:
 
         class Builder(BagBuilderBase):
             @element()
-            def input(self, target, tag, node_value=None, *, default=None, **attr):
+            def input(self, build_where, node_tag, node_value=None, *, default=None, **attr):
                 # default è un attributo, node_value è il contenuto
                 if default is not None:
                     attr["default"] = default
-                return self.child(target, tag, node_value, **attr)
+                return self.child(build_where, node_tag, node_value, **attr)
 
         bag = Bag(builder=Builder)
         node = bag.input("node content", default="attr value")
@@ -703,8 +703,8 @@ class TestValueValidation:
 
         class Builder(BagBuilderBase):
             @element()
-            def number(self, target, tag, node_value: int = None, **attr):
-                return self.child(target, tag, node_value, **attr)
+            def number(self, build_where, node_tag, node_value: int = None, **attr):
+                return self.child(build_where, node_tag, node_value, **attr)
 
         bag = Bag(builder=Builder)
         node = bag.number(42)
@@ -719,9 +719,9 @@ class TestValueValidation:
         class Builder(BagBuilderBase):
             @element()
             def amount(
-                self, target, tag, node_value: Annotated[Decimal, Range(ge=0)] = None, **attr
+                self, build_where, node_tag, node_value: Annotated[Decimal, Range(ge=0)] = None, **attr
             ):
-                return self.child(target, tag, node_value, **attr)
+                return self.child(build_where, node_tag, node_value, **attr)
 
         bag = Bag(builder=Builder)
         node = bag.amount(Decimal("10"))
@@ -736,9 +736,9 @@ class TestValueValidation:
         class Builder(BagBuilderBase):
             @element()
             def code(
-                self, target, tag, node_value: Annotated[str, Regex(r"^[A-Z]{3}$")] = None, **attr
+                self, build_where, node_tag, node_value: Annotated[str, Regex(r"^[A-Z]{3}$")] = None, **attr
             ):
-                return self.child(target, tag, node_value, **attr)
+                return self.child(build_where, node_tag, node_value, **attr)
 
         bag = Bag(builder=Builder)
         node = bag.code("ABC")
@@ -763,11 +763,11 @@ class TestValueValidation:
 
         class Builder(BagBuilderBase):
             @element()
-            def input(self, target, tag, default: str = None, **attr):
+            def input(self, build_where, node_tag, default: str = None, **attr):
                 # default è un attributo con validazione tipo
                 if default is not None:
                     attr["default"] = default
-                return self.child(target, tag, **attr)
+                return self.child(build_where, node_tag, **attr)
 
         bag = Bag(builder=Builder)
         node = bag.input(default="text")

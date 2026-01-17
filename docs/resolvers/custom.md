@@ -249,35 +249,24 @@ class TypedResolver(BagResolver):
 
 ## Architecture
 
-```
-┌─────────────────────────────────────────────────┐
-│                 BagResolver                     │
-│  ┌──────────────────────────────────────────┐  │
-│  │  class_args = ['arg1', 'arg2']           │  │
-│  │  class_kwargs = {'cache_time': 0, ...}   │  │
-│  │                                          │  │
-│  │  _kw: dict        # All arguments        │  │
-│  │  _cache_time      # From kwargs          │  │
-│  │  _cached_value    # Stored result        │  │
-│  │  _cache_timestamp # When cached          │  │
-│  │                                          │  │
-│  │  load() → value   # Override this        │  │
-│  │  reset()          # Clear cache          │  │
-│  └──────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────┘
-            │
-            │ extends
-            ▼
-┌─────────────────────────────────────────────────┐
-│              YourCustomResolver                 │
-│  ┌──────────────────────────────────────────┐  │
-│  │  class_args = ['query']                  │  │
-│  │  class_kwargs = {'connection': None}     │  │
-│  │                                          │  │
-│  │  def load(self):                         │  │
-│  │      query = self._kw['query']           │  │
-│  │      conn = self._kw['connection']       │  │
-│  │      return conn.execute(query)          │  │
-│  └──────────────────────────────────────────┘  │
-└─────────────────────────────────────────────────┘
+```{mermaid}
+classDiagram
+    BagResolver <|-- YourCustomResolver
+
+    class BagResolver {
+        +class_args: list
+        +class_kwargs: dict
+        -_kw: dict
+        -_cache_time
+        -_cached_value
+        -_cache_timestamp
+        +load() value
+        +reset()
+    }
+
+    class YourCustomResolver {
+        +class_args = ['query']
+        +class_kwargs = connection: None
+        +load() executes query
+    }
 ```

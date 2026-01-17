@@ -290,38 +290,3 @@ True
 >>> bag['missing'] is None
 True
 ```
-
----
-
-## Architecture
-
-```
-┌─────────────────────────────────────────────────────┐
-│                      Bag                            │
-│  ┌─────────────────────────────────────────────┐   │
-│  │  BagNode     BagNode     BagNode            │   │
-│  │  ├─label     ├─label     ├─label            │   │
-│  │  ├─value     ├─value     ├─value (Bag)──┐   │   │
-│  │  └─attr{}    └─attr{}    └─attr{}       │   │   │
-│  │                                         │   │   │
-│  │              ┌──────────────────────────┘   │   │
-│  │              ▼                              │   │
-│  │           ┌─────────────────────────┐      │   │
-│  │           │  Nested Bag             │      │   │
-│  │           │  ├─BagNode              │      │   │
-│  │           │  ├─BagNode              │      │   │
-│  │           │  └─BagNode              │      │   │
-│  │           └─────────────────────────┘      │   │
-│  └─────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────┘
-
-Path Access: bag['a.b.c'] → Bag → BagNode → Bag → BagNode → value
-Attr Access: bag['a?x']   → Bag → BagNode → attr['x']
-```
-
-**Core Components:**
-
-- **Bag**: Ordered container of BagNodes
-- **BagNode**: Single node with label, value, and attributes
-- **Path**: Dot-separated string for hierarchical access
-- **Attribute**: Key-value metadata attached to nodes

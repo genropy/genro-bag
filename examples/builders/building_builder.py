@@ -4,13 +4,13 @@
 
 A didactic example showing how to use @element decorator for:
 - Structure validation with sub_tags parameter
-- Simple elements (single node)
-- Complex elements (nested structures created by a single method call)
+- Cardinality constraints ([:1], [1:], etc.)
+- Using `tags` parameter to map multiple tags to the same handler
 """
 
 from __future__ import annotations
 
-from genro_bag import Bag, BagBuilderBase, BagNode
+from genro_bag import Bag, BagBuilderBase
 from genro_bag.builders import element
 
 
@@ -95,20 +95,10 @@ class Building:
 class BuildingBuilder(BagBuilderBase):
     """Builder for describing building structures.
 
-    This builder demonstrates two types of elements:
-
-    1. SIMPLE ELEMENTS: Create a single node
-       - Most elements (floor, apartment, bed, table, etc.)
-       - Return a Bag (branch) or BagNode (leaf)
-
-    2. COMPLEX ELEMENTS: Create a nested structure
-       - Example: wardrobe(drawers=4, doors=2) creates:
-         wardrobe
-           └── chest_of_drawers
-           │     └── drawer (x4)
-           └── door (x2)
-       - A single method call creates multiple nodes
-       - Useful for composite structures with internal logic
+    Demonstrates:
+    - sub_tags for structure validation
+    - Cardinality: [:1] (max 1), [1:] (min 1), [] (any)
+    - tags parameter to map multiple tag names to one handler
 
     Hierarchy:
         building
@@ -119,158 +109,68 @@ class BuildingBuilder(BagBuilderBase):
                               kitchen: fridge, oven, sink, table, chair
                               bathroom: toilet, shower, sink
                               bedroom: bed, wardrobe, desk, chair
-                                wardrobe (COMPLEX):
-                                  └── chest_of_drawers
-                                  │     └── drawer (multiple)
-                                  └── door (multiple)
                               living_room: sofa, tv, table, chair
                               dining_room: table, chair
 
     Example:
-        >>> store = Bag(builder=BuildingBuilder())
+        >>> store = Bag(builder=BuildingBuilder)
         >>> building = store.building(name='Casa Mia')
         >>> floor1 = building.floor(number=1)
         >>> apt = floor1.apartment(number='1A')
-        >>>
-        >>> # Simple elements
         >>> kitchen = apt.kitchen()
         >>> kitchen.fridge(brand='Samsung')
-        >>>
-        >>> # Complex element - creates nested structure
-        >>> bedroom = apt.bedroom()
-        >>> bedroom.wardrobe(drawers=6, doors=3, color='oak')
-        >>>
         >>> errors = store.builder.check(building)
     """
 
     # === Building level ===
 
     @element(sub_tags="floor")
-    def building(self, target: Bag, tag: str, name: str = "", **attr) -> BagNode:
-        """Create a building. Can contain only floors."""
-        return self.child(target, tag, name=name, **attr)
+    def building(self): ...
 
     # === Floor level ===
 
     @element(sub_tags="apartment, corridor, stairs")
-    def floor(self, target: Bag, tag: str, number: int = 0, **attr) -> BagNode:
-        """Create a floor. Can contain apartments, corridors, stairs."""
-        return self.child(target, tag, number=number, **attr)
+    def floor(self): ...
 
     # === Floor elements ===
 
     @element(sub_tags="kitchen[:1], bathroom[1:], bedroom, living_room[:1], dining_room[:1]")
-    def apartment(self, target: Bag, tag: str, number: str = "", **attr) -> BagNode:
-        """Create an apartment. Must have at least 1 bathroom, max 1 kitchen/living/dining."""
-        return self.child(target, tag, number=number, **attr)
+    def apartment(self): ...
 
     @element()
-    def corridor(self, target: Bag, tag: str, **attr) -> BagNode:
-        """Create a corridor."""
-        return self.child(target, tag, **attr)
+    def corridor(self): ...
 
     @element()
-    def stairs(self, target: Bag, tag: str, **attr) -> BagNode:
-        """Create stairs."""
-        return self.child(target, tag, **attr)
+    def stairs(self): ...
 
     # === Rooms ===
 
     @element(sub_tags="fridge[:1], oven[:2], sink[:1], table, chair")
-    def kitchen(self, target: Bag, tag: str, **attr) -> BagNode:
-        """Create a kitchen. Max 1 fridge, max 2 ovens, max 1 sink."""
-        return self.child(target, tag, **attr)
+    def kitchen(self): ...
 
     @element(sub_tags="toilet[:1], shower[:1], sink[:1]")
-    def bathroom(self, target: Bag, tag: str, **attr) -> BagNode:
-        """Create a bathroom. Max 1 of each fixture."""
-        return self.child(target, tag, **attr)
+    def bathroom(self): ...
 
     @element(sub_tags="bed, wardrobe, desk, chair")
-    def bedroom(self, target: Bag, tag: str, **attr) -> BagNode:
-        """Create a bedroom. Can contain bedroom furniture."""
-        return self.child(target, tag, **attr)
+    def bedroom(self): ...
 
     @element(sub_tags="sofa, tv, table, chair")
-    def living_room(self, target: Bag, tag: str, **attr) -> BagNode:
-        """Create a living room. Can contain living room furniture."""
-        return self.child(target, tag, **attr)
+    def living_room(self): ...
 
     @element(sub_tags="table, chair")
-    def dining_room(self, target: Bag, tag: str, **attr) -> BagNode:
-        """Create a dining room. Can contain dining furniture."""
-        return self.child(target, tag, **attr)
+    def dining_room(self): ...
 
     # === Appliances and fixtures ===
-    # Using tags parameter to map multiple tags to same method
+    # Using tags parameter to map multiple tags to same handler
 
     @element(tags="fridge, oven, sink, toilet, shower")
-    def appliance(self, target: Bag, tag: str, **attr) -> BagNode:
-        """Create an appliance/fixture."""
-        return self.child(target, tag, **attr)
+    def appliance(self): ...
 
-    # === Simple furniture ===
+    # === Furniture ===
+    # Using tags parameter to map multiple tags to same handler
 
-    @element(tags="bed, desk, table, chair, sofa, tv")
-    def furniture(self, target: Bag, tag: str, **attr) -> BagNode:
-        """Create a simple piece of furniture."""
-        return self.child(target, tag, **attr)
-
-    # === Complex furniture (nested structures) ===
-    # A single method call can create multiple nodes
-
-    @element(sub_tags="chest_of_drawers[:1], door")
-    def wardrobe(self, target: Bag, tag: str, drawers: int = 4, doors: int = 2, **attr) -> BagNode:
-        """Create a wardrobe with chest of drawers and doors.
-
-        This is an example of a COMPLEX ELEMENT: a single method call
-        creates a nested structure with multiple children.
-
-        Args:
-            target: The Bag to add to.
-            tag: The tag name (always 'wardrobe').
-            drawers: Number of drawers in the chest (default 4).
-            doors: Number of doors (default 2).
-            **attr: Additional attributes.
-
-        Returns:
-            The wardrobe BagNode (for potential further customization).
-
-        Example:
-            >>> bedroom.wardrobe(drawers=6, doors=3, color='white')
-            # Creates:
-            # wardrobe (color=white)
-            #   └── chest_of_drawers
-            #   │     └── drawer (number=1)
-            #   │     └── drawer (number=2)
-            #   │     ...
-            #   └── door (number=1)
-            #   └── door (number=2)
-            #   └── door (number=3)
-        """
-        wardrobe = self.child(target, tag, **attr)
-
-        # Create chest of drawers with N drawers
-        if drawers > 0:
-            chest = wardrobe.chest_of_drawers()
-            for i in range(drawers):
-                chest.drawer(number=i + 1)
-
-        # Create doors
-        for i in range(doors):
-            wardrobe.door(number=i + 1)
-
-        return wardrobe
-
-    @element(sub_tags="drawer")
-    def chest_of_drawers(self, target: Bag, tag: str, **attr) -> BagNode:
-        """Create a chest of drawers container."""
-        return self.child(target, tag, **attr)
-
-    @element(tags="drawer, door")
-    def wardrobe_part(self, target: Bag, tag: str, **attr) -> BagNode:
-        """Create a wardrobe component (drawer or door)."""
-        return self.child(target, tag, **attr)
+    @element(tags="bed, desk, table, chair, sofa, tv, wardrobe")
+    def furniture(self): ...
 
 
 def demo():
@@ -303,10 +203,10 @@ def demo():
     bathroom.shower()
     bathroom.sink()
 
-    # Add bedroom with complex wardrobe
+    # Add bedroom
     bedroom = apt1a.bedroom()
     bedroom.bed(size="queen")
-    bedroom.wardrobe(drawers=6, doors=3, color="oak")
+    bedroom.wardrobe(color="oak")
     bedroom.desk()
     bedroom.chair()
 
@@ -344,7 +244,7 @@ def demo():
     bad_floor = bad_building.floor(number=1)
     bad_apt = bad_floor.apartment(number="1A")
 
-    # Invalid: fridge in dining room (not allowed by children spec)
+    # Invalid: fridge in dining room (not allowed by sub_tags)
     dining = bad_apt.dining_room()
     dining.fridge()  # This is invalid!
 

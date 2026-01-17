@@ -20,30 +20,24 @@ Let's create a simple menu structure:
 ...     """Builder for navigation menus."""
 ...
 ...     @element(sub_tags='item,separator')
-...     def menu(self, target, tag, **attr):
-...         """Create a menu container."""
-...         return self.child(target, tag, **attr)
+...     def menu(self): ...
 ...
 ...     @element()
-...     def item(self, target, tag, value=None, **attr):
-...         """Create a menu item (leaf with text)."""
-...         return self.child(target, tag, value=value or '', **attr)
+...     def item(self): ...
 ...
 ...     @element()
-...     def separator(self, target, tag, **attr):
-...         """Create a visual separator."""
-...         return self.child(target, tag, value='---', **attr)
+...     def separator(self): ...
 
 >>> # Use the builder
 >>> bag = Bag(builder=MenuBuilder)
 >>> menu = bag.menu(id='main-nav')
->>> menu.item(value='Home', href='/')  # doctest: +ELLIPSIS
+>>> menu.item('Home', href='/')  # doctest: +ELLIPSIS
 BagNode : ... at ...
->>> menu.item(value='Products', href='/products')  # doctest: +ELLIPSIS
+>>> menu.item('Products', href='/products')  # doctest: +ELLIPSIS
 BagNode : ... at ...
 >>> menu.separator()  # doctest: +ELLIPSIS
 BagNode : ... at ...
->>> menu.item(value='Contact', href='/contact')  # doctest: +ELLIPSIS
+>>> menu.item('Contact', href='/contact')  # doctest: +ELLIPSIS
 BagNode : ... at ...
 
 >>> # Check the structure

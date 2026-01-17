@@ -33,64 +33,44 @@ class TableBuilder(BagBuilderBase):
         >>> table = store.table()
         >>> thead = table.thead()
         >>> tr = thead.tr()
-        >>> tr.th(value='Header 1')
-        >>> tr.th(value='Header 2')
+        >>> tr.th('Header 1')
+        >>> tr.th('Header 2')
         >>>
         >>> tbody = table.tbody()
         >>> row = tbody.tr()
-        >>> row.td(value='Cell 1')
-        >>> row.td(value='Cell 2')
+        >>> row.td('Cell 1')
+        >>> row.td('Cell 2')
     """
 
     @element(sub_tags="caption[:1], colgroup, thead[:1], tbody, tfoot[:1], tr")
-    def table(self, target: Bag, tag: str, **attr) -> BagNode:
-        """Create a table element."""
-        return self.child(target, tag, **attr)
+    def table(self): ...
 
     @element()
-    def caption(self, target: Bag, tag: str, **attr) -> BagNode:
-        """Create a caption element."""
-        return self.child(target, tag, **attr)
+    def caption(self): ...
 
     @element(sub_tags="col")
-    def colgroup(self, target: Bag, tag: str, **attr) -> BagNode:
-        """Create a colgroup element."""
-        return self.child(target, tag, **attr)
+    def colgroup(self): ...
 
     @element()
-    def col(self, target: Bag, tag: str, **attr) -> BagNode:
-        """Create a col element (void)."""
-        return self.child(target, tag, **attr)
+    def col(self): ...
 
     @element(sub_tags="tr")
-    def thead(self, target: Bag, tag: str, **attr) -> BagNode:
-        """Create a thead element."""
-        return self.child(target, tag, **attr)
+    def thead(self): ...
 
     @element(sub_tags="tr")
-    def tbody(self, target: Bag, tag: str, **attr) -> BagNode:
-        """Create a tbody element."""
-        return self.child(target, tag, **attr)
+    def tbody(self): ...
 
     @element(sub_tags="tr")
-    def tfoot(self, target: Bag, tag: str, **attr) -> BagNode:
-        """Create a tfoot element."""
-        return self.child(target, tag, **attr)
+    def tfoot(self): ...
 
     @element(sub_tags="th, td")
-    def tr(self, target: Bag, tag: str, **attr) -> BagNode:
-        """Create a tr (table row) element."""
-        return self.child(target, tag, **attr)
+    def tr(self): ...
 
     @element()
-    def th(self, target: Bag, tag: str, **attr) -> BagNode:
-        """Create a th (table header cell) element."""
-        return self.child(target, tag, **attr)
+    def th(self): ...
 
     @element()
-    def td(self, target: Bag, tag: str, **attr) -> BagNode:
-        """Create a td (table data cell) element."""
-        return self.child(target, tag, **attr)
+    def td(self): ...
 
 
 class HtmlTable:
@@ -138,7 +118,7 @@ class HtmlTable:
             self._thead = self._table.thead()
         tr = self._thead.tr(**row_attrs)
         for cell in cells:
-            tr.th(value=str(cell), scope="col")
+            tr.th(str(cell), scope="col")
         return self._thead
 
     def add_row(self, cells: list, **row_attrs) -> Bag:
@@ -155,7 +135,7 @@ class HtmlTable:
             self._tbody = self._table.tbody()
         tr = self._tbody.tr(**row_attrs)
         for cell in cells:
-            tr.td(value=str(cell))
+            tr.td(str(cell))
         return tr
 
     def check(self) -> list[str]:
@@ -232,8 +212,8 @@ def demo():
     table = store.table()
     tbody = table.tbody()
     tr = tbody.tr()
-    tr.td(value="Direct cell 1")
-    tr.td(value="Direct cell 2")
+    tr.td("Direct cell 1")
+    tr.td("Direct cell 2")
 
     print("Created table with tbody > tr > td structure")
     errors = store.builder.check()

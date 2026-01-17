@@ -14,61 +14,32 @@ This guide covers advanced builder patterns for complex use cases.
 ...     """Base builder with common UI elements."""
 ...
 ...     @element()
-...     def container(self, target, tag, **attr):
-...         return self.child(target, tag, **attr)
+...     def container(self): ...
 ...
 ...     @element()
-...     def text(self, target, tag, value=None, **attr):
-...         return self.child(target, tag, value=value or '', **attr)
+...     def text(self): ...
 
 >>> class ExtendedUIBuilder(BaseUIBuilder):
 ...     """Extended builder with additional elements."""
 ...
 ...     @element()
-...     def button(self, target, tag, value=None, **attr):
-...         return self.child(target, tag, value=value or 'Click', **attr)
+...     def button(self): ...
 ...
 ...     @element(sub_tags='option')
-...     def select(self, target, tag, **attr):
-...         return self.child(target, tag, **attr)
+...     def select(self): ...
 ...
 ...     @element()
-...     def option(self, target, tag, value=None, **attr):
-...         return self.child(target, tag, value=value or '', **attr)
+...     def option(self): ...
 
 >>> bag = Bag(builder=ExtendedUIBuilder)
 >>> cont = bag.container()  # From parent
->>> cont.text(value='Label')  # From parent
+>>> cont.text('Label')  # From parent
 BagNode : ... at ...
->>> cont.button(value='Submit')  # From child
+>>> cont.button('Submit')  # From child
 BagNode : ... at ...
 >>> sel = cont.select()  # From child
->>> sel.option(value='A')  # doctest: +ELLIPSIS
+>>> sel.option('A')  # doctest: +ELLIPSIS
 BagNode : ... at ...
-```
-
-### Overriding Methods
-
-```{doctest}
->>> from genro_bag import Bag
->>> from genro_bag.builders import BagBuilderBase, element
-
->>> class BaseBuilder(BagBuilderBase):
-...     @element()
-...     def item(self, target, tag, value=None, **attr):
-...         return self.child(target, tag, value=value, **attr)
-
->>> class StyledBuilder(BaseBuilder):
-...     @element()
-...     def item(self, target, tag, value=None, style='default', **attr):
-...         # Add automatic styling
-...         attr['class_'] = f'item-{style}'
-...         return self.child(target, tag, value=value, **attr)
-
->>> bag = Bag(builder=StyledBuilder)
->>> item = bag.item(value='Styled', style='highlight')
->>> item.attr['class_']
-'item-highlight'
 ```
 
 ## SchemaBuilder: Programmatic Schema Creation
@@ -210,106 +181,16 @@ bag = Bag(builder=MyBuilder, builder_schema_path='custom_schema.msgpack')
 
 ## Custom Validation
 
-### Pre-Build Validation
-
-Validate before creating nodes:
-
-```{doctest}
->>> from genro_bag import Bag
->>> from genro_bag.builders import BagBuilderBase, element
-
->>> class ValidatedBuilder(BagBuilderBase):
-...     @element()
-...     def email_field(self, target, tag, value=None, **attr):
-...         if value and '@' not in value:
-...             raise ValueError(f"Invalid email: {value}")
-...         return self.child(target, tag, value=value or '', **attr)
-...
-...     @element()
-...     def positive_number(self, target, tag, value=None, **attr):
-...         if value is not None:
-...             num = float(value)
-...             if num <= 0:
-...                 raise ValueError(f"Must be positive: {value}")
-...         return self.child(target, tag, value=value, **attr)
-
->>> bag = Bag(builder=ValidatedBuilder)
->>> bag.email_field(value='test@example.com')  # doctest: +ELLIPSIS
-BagNode : ... at ...
-
->>> try:
-...     bag.email_field(value='invalid')
-... except ValueError as e:
-...     'Invalid email' in str(e)
-True
-```
-
-### Post-Build Validation
-
-Validate complete structures:
-
-```{doctest}
->>> from genro_bag import Bag
->>> from genro_bag.builders import BagBuilderBase, element
-
->>> class FormBuilder(BagBuilderBase):
-...     @element(sub_tags='field')
-...     def form(self, target, tag, **attr):
-...         return self.child(target, tag, **attr)
-...
-...     @element()
-...     def field(self, target, tag, name=None, value=None, **attr):
-...         if name:
-...             attr['name'] = name
-...         return self.child(target, tag, value=value or '', **attr)
-...
-...     def validate_form(self, form_bag):
-...         """Ensure all fields have names."""
-...         errors = []
-...         for node in form_bag:
-...             if node.tag == 'field' and 'name' not in node.attr:
-...                 errors.append(f"Field '{node.label}' missing 'name' attribute")
-...         return errors
-
->>> bag = Bag(builder=FormBuilder)
->>> form = bag.form()
->>> form.field(name='email', value='')  # doctest: +ELLIPSIS
-BagNode : ... at ...
->>> form.field(value='no name')  # Missing name
-BagNode : ... at ...
-
->>> errors = bag.builder.validate_form(form)
->>> len(errors) > 0
-True
->>> 'missing' in errors[0]
-True
-```
+For custom validation logic, see [Validation](validation.md).
 
 ## Performance Tips
 
-### 1. Cache Schema Loading
-
-```python
-# Good: Load schema once
-_cached_schema = None
-
-def get_schema():
-    global _cached_schema
-    if _cached_schema is None:
-        _cached_schema = load_schema_from_file()
-    return _cached_schema
-
-class MyBuilder(BagBuilderBase):
-    def __init__(self):
-        self._schema = get_schema()
-```
-
-### 2. Use Batch Operations
+### 1. Use Batch Operations
 
 ```python
 # Instead of validating each step:
 for data in large_dataset:
-    parent.item(value=data)
+    parent.item(data)
 
 # Validate once at the end:
 errors = builder.check(parent, parent_tag='list')
@@ -325,30 +206,19 @@ errors = builder.check(parent, parent_tag='list')
 ...     """Builder for application configuration."""
 ...
 ...     @element(sub_tags='database,cache[:1],logging[:1],features[]')
-...     def config(self, target, tag, env='production', **attr):
-...         attr['env'] = env
-...         return self.child(target, tag, **attr)
+...     def config(self): ...
 ...
 ...     @element()
-...     def database(self, target, tag, host='localhost', port=5432, **attr):
-...         attr['host'] = host
-...         attr['port'] = port
-...         return self.child(target, tag, **attr)
+...     def database(self): ...
 ...
 ...     @element()
-...     def cache(self, target, tag, enabled=True, ttl=3600, **attr):
-...         attr['enabled'] = enabled
-...         attr['ttl'] = ttl
-...         return self.child(target, tag, **attr)
+...     def cache(self): ...
 ...
 ...     @element()
-...     def logging(self, target, tag, level='INFO', **attr):
-...         attr['level'] = level
-...         return self.child(target, tag, **attr)
+...     def logging(self): ...
 ...
 ...     @element()
-...     def features(self, target, tag, value=None, **attr):
-...         return self.child(target, tag, value=value or '', **attr)
+...     def features(self): ...
 
 >>> bag = Bag(builder=ConfigBuilder)
 >>> config = bag.config(env='development')
@@ -358,7 +228,7 @@ errors = builder.check(parent, parent_tag='list')
 <genro_bag.bag.Bag object at ...>
 >>> config.logging(level='DEBUG')  # doctest: +ELLIPSIS
 <genro_bag.bag.Bag object at ...>
->>> config.features(value='dark_mode,beta_ui')  # doctest: +ELLIPSIS
+>>> config.features('dark_mode,beta_ui')  # doctest: +ELLIPSIS
 BagNode : ... at ...
 
 >>> # Validate structure

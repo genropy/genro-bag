@@ -97,36 +97,25 @@ BagNode : ... at ...
 <genro_bag.bag.Bag object at ...>
 ```
 
-### Two Ways to Define Elements
+### Element Definitions
 
-Builders support two complementary approaches:
+Define elements using `@element` decorator with empty method bodies:
 
-1. **Decorated Methods** - Using `@element` decorator for full control:
+```python
+from genro_bag.builders import BagBuilderBase, element
 
-   ```python
-   from genro_bag.builders import BagBuilderBase, element
+class MenuBuilder(BagBuilderBase):
+    @element(sub_tags='item,separator')
+    def menu(self): ...
 
-   class MenuBuilder(BagBuilderBase):
-       @element(sub_tags='item,separator')
-       def menu(self, target, tag, **attr):
-           return self.child(target, tag, **attr)
-   ```
+    @element()
+    def item(self): ...
 
-2. **Simple Elements** - Using empty method bodies for elements without custom logic:
+    @element()
+    def separator(self): ...
+```
 
-   ```python
-   class TableBuilder(BagBuilderBase):
-       @element(sub_tags='tr[]')
-       def table(self): ...
-
-       @element(sub_tags='td[],th[]')
-       def tr(self): ...
-
-       @element()
-       def td(self): ...
-   ```
-
-Both approaches can be combined in the same builder.
+The `sub_tags` parameter specifies which child elements are allowed.
 
 ```{important}
 **Schemas are never created manually.** If you need to load a schema from a file,
