@@ -649,20 +649,20 @@ class Bag(BagParser, BagSerializer, BagQuery):
 
     # -------------------- get_item --------------------------------
 
-    def get_item(self, path: str, default: Any = None, static: bool = True) -> Any:
+    def get_item(self, path: str, default: Any = None, static: bool = False) -> Any:
         """Get value at a hierarchical path.
 
         Traverses the Bag hierarchy following the dot-separated path and returns
         the value at the final location.
 
-        By default does NOT trigger resolvers (static=True).
-        Use static=False to trigger resolvers during traversal.
+        By default triggers resolvers (static=False).
+        Use static=True to avoid triggering resolvers during traversal.
 
         Args:
             path: Hierarchical path like 'a.b.c'. Empty path returns self.
                 Supports '?attr' suffix to get attribute instead of value.
             default: Value to return if path not found.
-            static: If False, trigger resolvers during traversal. Default True.
+            static: If True, do not trigger resolvers during traversal. Default False.
 
         Returns:
             The value at the path if found, otherwise default.
@@ -694,12 +694,12 @@ class Bag(BagParser, BagSerializer, BagQuery):
         return smartcontinuation(result, finalize)
 
     def __getitem__(self, path: str) -> Any:
-        """Get value at path (no resolver trigger).
+        """Get value at path, triggering resolvers.
 
-        Delegates to get_item with static=True (default).
-        Use bag.get_item(path, static=False) to trigger resolvers.
+        Delegates to get_item with static=False (default).
+        Use bag.get_item(path, static=True) to avoid triggering resolvers.
         """
-        return self.get_item(path)
+        return self.get_item(path, static=False)
 
     # -------------------- set_item --------------------------------
 
@@ -1428,15 +1428,15 @@ class Bag(BagParser, BagSerializer, BagQuery):
         as_tuple: bool = False,
         autocreate: bool = False,
         default: Any = None,
-        static: bool = True,
+        static: bool = False,
     ) -> BagNode | tuple[Bag, BagNode | None] | None:
         """Get the BagNode at a path.
 
         Unlike get_item which returns the value, this returns the BagNode itself,
         giving access to attributes and other node properties.
 
-        By default does NOT trigger resolvers (static=True).
-        Use static=False to trigger resolvers during traversal.
+        By default triggers resolvers (static=False).
+        Use static=True to avoid triggering resolvers during traversal.
 
         Args:
             path: Hierarchical path. If None or empty, returns the parent_node
@@ -1444,7 +1444,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
             as_tuple: If True, return (container_bag, node) tuple.
             autocreate: If True, create node if not found.
             default: Default value for autocreated node.
-            static: If False, trigger resolvers during traversal. Default True.
+            static: If True, do not trigger resolvers during traversal. Default False.
 
         Returns:
             The BagNode at the path, or None if not found.
