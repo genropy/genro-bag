@@ -2,180 +2,6 @@
 
 This guide covers advanced builder patterns for complex use cases.
 
-## Reference Resolution
-
-Builders support `=ref` syntax to reference reusable element groups.
-
-### Defining References
-
-Define `_ref_<name>` properties on your builder:
-
-```{doctest}
->>> from genro_bag import Bag
->>> from genro_bag.builders import BagBuilderBase, element
-
->>> class HtmlLikeBuilder(BagBuilderBase):
-...     """Builder with content category references."""
-...
-...     @property
-...     def _ref_inline(self):
-...         """Inline elements: text formatting."""
-...         return 'span, strong, em, a, code'
-...
-...     @property
-...     def _ref_block(self):
-...         """Block elements: structural."""
-...         return 'div, p, ul, ol'
-...
-...     @property
-...     def _ref_flow(self):
-...         """Flow content: both inline and block."""
-...         return '=inline, =block'  # Combine other refs!
-...
-...     @element(sub_tags='=flow')  # Use reference
-...     def div(self, target, tag, **attr):
-...         return self.child(target, tag, **attr)
-...
-...     @element(sub_tags='=inline')
-...     def p(self, target, tag, value=None, **attr):
-...         return self.child(target, tag, value=value, **attr)
-...
-...     @element()
-...     def span(self, target, tag, value=None, **attr):
-...         return self.child(target, tag, value=value or '', **attr)
-...
-...     @element()
-...     def strong(self, target, tag, value=None, **attr):
-...         return self.child(target, tag, value=value or '', **attr)
-...
-...     @element()
-...     def em(self, target, tag, value=None, **attr):
-...         return self.child(target, tag, value=value or '', **attr)
-...
-...     @element()
-...     def a(self, target, tag, value=None, **attr):
-...         return self.child(target, tag, value=value or '', **attr)
-...
-...     @element()
-...     def code(self, target, tag, value=None, **attr):
-...         return self.child(target, tag, value=value or '', **attr)
-...
-...     @element(sub_tags='li')
-...     def ul(self, target, tag, **attr):
-...         return self.child(target, tag, **attr)
-...
-...     @element(sub_tags='li')
-...     def ol(self, target, tag, **attr):
-...         return self.child(target, tag, **attr)
-...
-...     @element(sub_tags='=flow')
-...     def li(self, target, tag, value=None, **attr):
-...         return self.child(target, tag, value=value, **attr)
-
->>> bag = Bag(builder=HtmlLikeBuilder)
->>> div = bag.div()
->>> div.p(value='Paragraph text')  # block in flow ✓
-BagNode : ... at ...
->>> div.span(value='Inline text')  # inline in flow ✓
-BagNode : ... at ...
->>> ul = div.ul()  # block in flow ✓
->>> ul.li(value='Item')  # doctest: +ELLIPSIS
-BagNode : ... at ...
-```
-
-### Reference Resolution Chain
-
-References can reference other references:
-
-```{doctest}
->>> from genro_bag import Bag
->>> from genro_bag.builders import BagBuilderBase
-
->>> class ChainedRefBuilder(BagBuilderBase):
-...     @property
-...     def _ref_text(self):
-...         return 'span, strong'
-...
-...     @property
-...     def _ref_media(self):
-...         return 'img, video'
-...
-...     @property
-...     def _ref_all(self):
-...         return '=text, =media, div'  # Combines both + div
-...
-...     @element(sub_tags='=all')
-...     def container(self): ...
-...
-...     @element()
-...     def div(self): ...
-...
-...     @element()
-...     def span(self): ...
-...
-...     @element()
-...     def strong(self): ...
-...
-...     @element(sub_tags='')  # void element
-...     def img(self): ...
-...
-...     @element()
-...     def video(self): ...
-
->>> bag = Bag(builder=ChainedRefBuilder)
->>> container = bag.container()
->>> container.div()  # doctest: +ELLIPSIS
-<genro_bag.bag.Bag object at ...>
->>> container.img()  # doctest: +ELLIPSIS
-BagNode : ... at ...
-```
-
-### Dynamic References via Properties
-
-For dynamic reference lookup, use `_ref_*` properties:
-
-```{doctest}
->>> from genro_bag import Bag
->>> from genro_bag.builders import BagBuilderBase, element
-
->>> class DynamicRefBuilder(BagBuilderBase):
-...     @property
-...     def _ref_controls(self):
-...         return 'button,input,select'
-...
-...     @property
-...     def _ref_display(self):
-...         return 'span,div,label'
-...
-...     @element(sub_tags='=controls,=display')
-...     def form(self): ...
-...
-...     @element()
-...     def button(self): ...
-...
-...     @element(sub_tags='')
-...     def input(self): ...
-...
-...     @element()
-...     def select(self): ...
-...
-...     @element()
-...     def span(self): ...
-...
-...     @element()
-...     def div(self): ...
-...
-...     @element()
-...     def label(self): ...
-
->>> bag = Bag(builder=DynamicRefBuilder)
->>> form = bag.form()
->>> form.button(value='Submit')  # control
-BagNode : ... at ...
->>> form.label(value='Name:')   # display
-BagNode : ... at ...
-```
-
 ## Builder Inheritance
 
 ### Extending Existing Builders
@@ -243,42 +69,6 @@ BagNode : ... at ...
 >>> item = bag.item(value='Styled', style='highlight')
 >>> item.attr['class_']
 'item-highlight'
-```
-
-## Nested Builders
-
-### Different Builders for Subtrees
-
-Use `_builder` parameter to change builder mid-tree:
-
-```{doctest}
->>> from genro_bag import Bag
->>> from genro_bag.builders import BagBuilderBase, element
-
->>> class OuterBuilder(BagBuilderBase):
-...     @element()
-...     def outer(self, target, tag, **attr):
-...         return self.child(target, tag, **attr)
-...
-...     @element()
-...     def wrapper(self, target, tag, inner_builder=None, **attr):
-...         # Pass different builder for this subtree
-...         return self.child(target, tag, _builder=inner_builder, **attr)
-
->>> class InnerBuilder(BagBuilderBase):
-...     @element()
-...     def inner_item(self, target, tag, value=None, **attr):
-...         return self.child(target, tag, value=value or '', **attr)
-
->>> outer_builder = OuterBuilder()
->>> inner_builder = InnerBuilder()
-
->>> bag = Bag(builder=outer_builder)
->>> wrapper = bag.wrapper(inner_builder=inner_builder)
-
->>> # Now wrapper uses InnerBuilder
->>> wrapper.inner_item(value='Inside')  # doctest: +ELLIPSIS
-BagNode : ... at ...
 ```
 
 ## SchemaBuilder: Programmatic Schema Creation
@@ -351,9 +141,6 @@ Save the schema for reuse:
 ```python
 # Save to MessagePack (binary, compact)
 schema.builder.compile('my_schema.msgpack')
-
-# Or save to JSON (human-readable)
-schema.builder.compile('my_schema.json', transport='json')
 ```
 
 ### Using Compiled Schema
@@ -517,17 +304,7 @@ class MyBuilder(BagBuilderBase):
         self._schema = get_schema()
 ```
 
-### 2. Avoid Excessive Validation
-
-Disable validation for trusted input:
-
-```python
-@element(validate=False)  # Skip attribute validation
-def trusted_input(self, target, tag, **attr):
-    return self.child(target, tag, **attr)
-```
-
-### 3. Use Batch Operations
+### 2. Use Batch Operations
 
 ```python
 # Instead of validating each step:
