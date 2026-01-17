@@ -1,39 +1,92 @@
 # genro-bag
 
-[![PyPI version](https://img.shields.io/pypi/v/genro-bag?v=0.7.1)](https://pypi.org/project/genro-bag/)
+[![PyPI version](https://img.shields.io/pypi/v/genro-bag)](https://pypi.org/project/genro-bag/)
 [![Tests](https://github.com/genropy/genro-bag/actions/workflows/tests.yml/badge.svg)](https://github.com/genropy/genro-bag/actions/workflows/tests.yml)
 [![codecov](https://codecov.io/gh/genropy/genro-bag/branch/main/graph/badge.svg)](https://codecov.io/gh/genropy/genro-bag)
 [![Documentation](https://readthedocs.org/projects/genro-bag/badge/?version=latest)](https://genro-bag.readthedocs.io/)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-An **intermediate representation** for structured data in Python.
+## An Intermediate Representation for Structured Data
 
-## What is Bag?
+A **Bag** is an intermediate representation (IR) for hierarchical data in Python.
 
-A Bag is an abstraction that bridges the gap between how humans think about structured data and how software implements it.
+### What is an Intermediate Representation?
 
-When you work with configuration files, API responses, form data, or document structures, they all share the same fundamental shape: **named things containing values, organized in a hierarchy, with additional properties attached**.
+In compiler design, an IR is a data structure that sits between source code and machine code. It captures the essential structure while abstracting away format-specific details, making it easier to analyze, transform, and generate output.
 
-Yet in code, we scatter this across dictionaries, classes, JSON, XML, database rows—each with its own access patterns and limitations.
+The same principle applies to data: configuration files, API responses, documents, and UI structures all share a common shape—**named things containing values, organized hierarchically, with metadata attached**—but we typically scatter this across dictionaries, classes, JSON, XML, and database rows.
 
-A Bag unifies these patterns into a single, consistent model:
+A Bag provides a **canonical representation** for this common pattern:
 
-- **Nodes** — Named containers that hold a value
-- **Hierarchy** — Nodes can contain other nodes, forming a tree
-- **Attributes** — Each node carries metadata alongside its value
-- **Paths** — Navigate the tree with familiar dot notation
+```mermaid
+flowchart LR
+    subgraph Sources
+        JSON[JSON file]
+        XML[XML file]
+        API[API response]
+        DB[Database]
+        Input[User input]
+    end
 
-## The Layered Design
+    subgraph BAG[" "]
+        Tree["Unified tree<br/>of named nodes"]
+    end
 
-Bag provides progressive capability. Start simple, add layers when needed:
+    subgraph Outputs
+        HTML[HTML]
+        XMLout[XML]
+        DBout[Database]
+        JSONout[JSON]
+        UI[UI]
+    end
 
-| Layer | Purpose |
-|-------|---------|
-| **Core Bag** | The fundamental container: paths, values, attributes |
-| **Resolvers** | Values that compute themselves: lazy loading, API calls |
-| **Subscriptions** | React to changes: validation, logging, computed properties |
-| **Builders** | Domain-specific languages: HTML, Markdown, XML schemas |
+    JSON --> Tree
+    XML --> Tree
+    API --> Tree
+    DB --> Tree
+    Input --> Tree
+
+    Tree --> HTML
+    Tree --> XMLout
+    Tree --> DBout
+    Tree --> JSONout
+    Tree --> UI
+```
+
+### Why an IR?
+
+**Decoupling**: Your application logic works with one structure, regardless of input/output formats. Change your data source from XML to JSON? Your code doesn't change.
+
+**Uniformity**: One access pattern (`bag['path.to.value']`), one way to attach metadata, one subscription model—instead of learning different APIs for each library.
+
+**Transformation**: Operate on the structure itself: walk the tree, filter nodes, transform values, validate structure—without knowing if it came from a file, an API, or a database.
+
+**Round-tripping**: Serialize to XML, JSON, or MessagePack and back, preserving types, attributes, and structure—including lazy-loaded values (resolvers).
+
+### The Core Model
+
+Every node in a Bag has:
+
+| Component | Purpose |
+|-----------|---------|
+| **Label** | The node's name (key in the hierarchy) |
+| **Value** | The data it holds (any Python value, or another Bag) |
+| **Attributes** | Metadata attached to the node |
+| **Tag** | Optional semantic type (like XML elements) |
+
+Access is path-based: `bag['config.database.host']` navigates the hierarchy using dot notation.
+
+### Progressive Capability
+
+Bag provides four layers—use only what you need:
+
+| Layer | Purpose | Use When |
+|-------|---------|----------|
+| **Core Bag** | Paths, values, attributes, serialization | Always |
+| **Resolvers** | Lazy-loaded, computed values | API calls, DB queries, expensive computations |
+| **Subscriptions** | React to changes | Validation, logging, sync, computed properties |
+| **Builders** | Domain-specific languages | HTML, Markdown, XML with structure validation |
 
 ## Install
 
@@ -43,15 +96,22 @@ pip install genro-bag
 
 ## Documentation
 
-Full documentation with examples: [genro-bag.readthedocs.io](https://genro-bag.readthedocs.io/)
+| Resource | Description |
+|----------|-------------|
+| [**Full Documentation**](https://genro-bag.readthedocs.io/) | Complete guide with examples |
+| [**Why Bag?**](https://genro-bag.readthedocs.io/en/latest/reference/why-bag.html) | Detailed comparison with alternatives |
+| [**Getting Started**](https://genro-bag.readthedocs.io/en/latest/getting-started.html) | Learn the core concepts |
 
-| Section | Description |
-|---------|-------------|
-| **[Getting Started](https://genro-bag.readthedocs.io/en/latest/getting-started.html)** | Learn the three core concepts |
-| **[Core Bag](https://genro-bag.readthedocs.io/en/latest/bag/)** | Basic usage, paths, attributes, serialization |
-| **[Resolvers](https://genro-bag.readthedocs.io/en/latest/resolvers/)** | Lazy loading, API calls, computed values |
-| **[Subscriptions](https://genro-bag.readthedocs.io/en/latest/subscriptions/)** | React to changes, validation, logging |
-| **[Builders](https://genro-bag.readthedocs.io/en/latest/builders/)** | Domain-specific languages (HTML, Markdown, XSD) |
+### In This Repository
+
+| Directory | Description |
+|-----------|-------------|
+| [`src/genro_bag/`](src/genro_bag/) | Core implementation |
+| [`src/genro_bag/resolvers/`](src/genro_bag/resolvers/) | Built-in resolvers (URL, Directory, OpenAPI) |
+| [`src/genro_bag/builders/`](src/genro_bag/builders/) | Built-in builders (HTML, Markdown, XSD) |
+| [`examples/`](examples/) | Usage examples |
+| [`tests/`](tests/) | Test suite (1500+ tests) |
+| [`docs/`](docs/) | Sphinx documentation source |
 
 ## Development
 
@@ -60,10 +120,8 @@ pip install -e ".[dev]"
 pytest
 ```
 
-1500+ tests, 88%+ coverage.
-
 ## License
 
-Apache License 2.0 - see [LICENSE](LICENSE) for details.
+Apache License 2.0 — see [LICENSE](LICENSE) for details.
 
-Copyright 2025 Softwell S.r.l. - Genropy Team
+Copyright 2025 Softwell S.r.l. — Genropy Team
