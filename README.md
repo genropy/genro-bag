@@ -88,6 +88,17 @@ Bag provides four layers—use only what you need:
 | **Subscriptions** | React to changes | Validation, logging, sync, computed properties |
 | **Builders** | Domain-specific languages | HTML, Markdown, XML with structure validation |
 
+## Interactive Notebooks
+
+Try genro-bag directly in your browser with Google Colab:
+
+| Notebook | Topics |
+|----------|--------|
+| [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/genropy/genro-bag/blob/main/notebooks/01-core-bag.ipynb) | **Core Bag** — Paths, values, attributes, serialization |
+| [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/genropy/genro-bag/blob/main/notebooks/02-resolvers.ipynb) | **Resolvers** — Lazy loading, caching, custom resolvers |
+| [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/genropy/genro-bag/blob/main/notebooks/03-subscriptions.ipynb) | **Subscriptions** — Events, validation, computed properties |
+| [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/genropy/genro-bag/blob/main/notebooks/04-builders.ipynb) | **Builders** — DSL, structure validation, cardinality |
+
 ## Install
 
 ```bash
