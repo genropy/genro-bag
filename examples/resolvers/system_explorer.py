@@ -82,11 +82,18 @@ def create_explorer() -> Bag:
     # System info (lazy, cached 5 seconds)
     bag['system'] = BagCbResolver(get_system_info, cache_time=5)
 
-    # Home directory (lazy, no file content)
-    bag['home'] = DirectoryResolver(str(Path.home()), max_depth=1, ext='')
+    # Home directory (lazy listing only - subdirs become nested resolvers)
+    # ext='' with processors={'default': False} = list files without loading content
+    bag['home'] = DirectoryResolver(
+        str(Path.home()),
+        processors={'default': False}  # Don't try to load file contents
+    )
 
-    # Current working directory (lazy, no file content)
-    bag['cwd'] = DirectoryResolver(os.getcwd(), max_depth=2, ext='')
+    # Current working directory (same - lazy listing)
+    bag['cwd'] = DirectoryResolver(
+        os.getcwd(),
+        processors={'default': False}
+    )
 
     return bag
 
