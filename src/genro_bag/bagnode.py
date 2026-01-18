@@ -223,17 +223,19 @@ class BagNode:
         """Set the node's value."""
         self.set_value(value)
 
-    def get_value(self, static: bool = False) -> Any:
+    def get_value(self, static: bool = False, **kwargs: Any) -> Any:
         """Return the value of the BagNode.
 
         Args:
             static: If True, return raw value without triggering resolver.
+            **kwargs: Additional keyword arguments passed to the resolver.
+                These override both resolver defaults and node attributes.
 
         Returns:
             The node's value, possibly resolved via resolver.
         """
         if self._resolver is not None:
-            return self._resolver(static=static)
+            return self._resolver(static=static, **kwargs)
         return self._value
 
     def set_value(
@@ -346,9 +348,17 @@ class BagNode:
 
     @resolver.setter
     def resolver(self, resolver: BagResolver | None) -> None:
-        """Set the node's resolver, establishing bidirectional link."""
+        """Set the node's resolver, establishing bidirectional link.
+
+        The resolver reads parameters from three sources with priority:
+        1. call_kwargs passed to resolver()
+        2. node attributes (set via set_attr)
+        3. resolver default parameters (_kw)
+
+        Cache is automatically invalidated when effective parameters change.
+        """
         if resolver is not None:
-            resolver.parent_node = self  # snake_case per Decision #9
+            resolver.parent_node = self
         self._resolver = resolver
 
     def reset_resolver(self) -> None:

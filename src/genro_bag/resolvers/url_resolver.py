@@ -1,9 +1,10 @@
 # Copyright 2025 Softwell S.r.l. - SPDX-License-Identifier: Apache-2.0
-# ruff: noqa: SIM118
+# ruff: noqa: SIM118, SIM102
 """UrlResolver - resolver that loads content from an HTTP URL."""
 
 from __future__ import annotations
 
+import re
 from typing import Any
 from urllib.parse import urlencode
 
@@ -79,6 +80,11 @@ class UrlResolver(BagResolver):
         Builds the full URL with query string, makes the HTTP request,
         and returns the response based on configuration.
 
+        Dynamic parameters (via get_item kwargs):
+            _body: Request body (overrides constructor body).
+            arg_0, arg_1, ...: Path parameters to substitute {placeholders}.
+            Other kwargs: Query string parameters (merged with constructor qs).
+
         Returns:
             bytes: Raw response content (default).
             Bag: If as_bag=True or read_only=False, parses response based
@@ -91,23 +97,59 @@ class UrlResolver(BagResolver):
         url = self._kw["url"]
         method = self._kw["method"]
         qs = self._kw["qs"]
-        body: Bag | None = self._kw["body"]
+        body: Bag | dict | None = self._kw["body"]
         timeout = self._kw["timeout"]
         as_bag = self._kw["as_bag"]
 
-        # Build URL with query string (filter None values)
+        # Extract dynamic parameters from _kw (passed via get_item kwargs)
+        # _body overrides constructor body
+        if "_body" in self._kw:
+            body = self._kw["_body"]
+
+        # Collect path args (arg_0, arg_1, ...) and extra qs params
+        path_args = []
+        extra_qs = {}
+        for key, value in self._kw.items():
+            if key.startswith("arg_") and value is not None:
+                try:
+                    idx = int(key[4:])
+                    while len(path_args) <= idx:
+                        path_args.append(None)
+                    path_args[idx] = value
+                except ValueError:
+                    pass
+            elif key not in self.class_kwargs and key not in self.internal_params and not key.startswith("_"):
+                # Extra kwarg → query string parameter
+                if value is not None:
+                    extra_qs[key] = value
+
+        # Substitute path parameters {placeholder} with arg_0, arg_1, ...
+        if path_args and "{" in url:
+            placeholders = re.findall(r"\{([^}]+)\}", url)
+            for i, placeholder in enumerate(placeholders):
+                if i < len(path_args) and path_args[i] is not None:
+                    url = url.replace(f"{{{placeholder}}}", str(path_args[i]))
+
+        # Merge query string: constructor qs + extra kwargs
+        merged_qs = {}
         if qs:
-            qs_dict = self._qs_to_dict(qs)
-            if qs_dict:
-                separator = "&" if "?" in url else "?"
-                url = f"{url}{separator}{urlencode(qs_dict)}"
+            merged_qs.update(self._qs_to_dict(qs))
+        merged_qs.update(extra_qs)
+
+        # Build URL with query string (filter None values)
+        if merged_qs:
+            separator = "&" if "?" in url else "?"
+            url = f"{url}{separator}{urlencode(merged_qs)}"
 
         async with httpx.AsyncClient() as client:
             request_method = getattr(client, method)
             kwargs = {"timeout": timeout}
 
             if body is not None:
-                kwargs["json"] = body.as_dict()
+                if isinstance(body, Bag):
+                    kwargs["json"] = body.as_dict()
+                else:
+                    kwargs["json"] = body
 
             response = await request_method(url, **kwargs)
             response.raise_for_status()

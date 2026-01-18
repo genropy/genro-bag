@@ -209,6 +209,7 @@ class BagResolver:
 
     class_kwargs: dict[str, Any] = {"cache_time": 0, "read_only": False, "retry_policy": None}
     class_args: list[str] = []
+    internal_params: set[str] = {"cache_time", "read_only", "retry_policy"}
 
     __slots__ = (
         "_kw",  # dict: all parameters from class_kwargs/class_args
@@ -218,6 +219,7 @@ class BagResolver:
         "_fingerprint",  # int: hash for __eq__ comparison
         "_cache_last_update",  # datetime | None: last load() timestamp
         "_cached_value",  # Any: cached result when standalone (no parent node)
+        "_last_effective_fingerprint",  # int | None: fingerprint of last effective params
     )
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -240,6 +242,7 @@ class BagResolver:
         # Cache state
         self._cache_last_update: datetime | None = None
         self._cached_value: Any = None
+        self._last_effective_fingerprint: int | None = None
 
         # Build _kw dict from class_args and class_kwargs
         self._kw: dict[str, Any] = {}
@@ -285,6 +288,10 @@ class BagResolver:
             "kwargs": self._kw,
         }
         return hash(json.dumps(data, sort_keys=True, default=str))
+
+    def _compute_effective_fingerprint(self, effective_kw: dict[str, Any]) -> int:
+        """Compute hash based on effective parameters for cache invalidation."""
+        return hash(json.dumps(effective_kw, sort_keys=True, default=str))
 
     # =========================================================================
     # PARENT NODE PROPERTY
@@ -347,6 +354,7 @@ class BagResolver:
     def reset(self) -> None:
         """Invalidate cache, forcing reload on next call."""
         self._cache_last_update = None
+        self._last_effective_fingerprint = None
 
     @property
     def expired(self) -> bool:
@@ -391,34 +399,58 @@ class BagResolver:
     # __call__ - MAIN ENTRY POINT
     # =========================================================================
 
-    def __call__(self, static: bool = False, **kwargs: Any) -> Any:
+    def __call__(self, static: bool = False, **call_kwargs: Any) -> Any:
         """Resolve and return the value.
 
         Args:
             static: If True, return cached value without triggering load.
-            **kwargs: Temporary parameter overrides (only for read_only=True).
+            **call_kwargs: Override parameters for this call only.
 
         Returns:
             The resolved value, or a coroutine if in async context.
+
+        Parameter Priority (highest to lowest):
+            1. call_kwargs: Parameters passed to this call
+            2. node.attr: Attributes on the parent node (if attached)
+            3. resolver._kw: Default parameters set at construction
+
+        Cache Invalidation:
+            Cache is invalidated when the effective parameters (after merging)
+            differ from the parameters used in the last load. This is detected
+            by comparing fingerprints of the effective_kw dict.
         """
-        # If static=True, always return cached value without triggering load
         if static:
             return self.cached_value
 
-        # If not read_only and cache valid, return cached value
-        if not self.read_only and not self.expired:
+        # Build effective parameters: resolver < node < call_kwargs
+        effective_kw = dict(self._kw)
+        if self._parent_node:
+            for key in self._kw:
+                if key not in self.internal_params and key in self._parent_node.attr:
+                    effective_kw[key] = self._parent_node.attr[key]
+        effective_kw.update(call_kwargs)
+
+        # Compute fingerprint of effective parameters
+        current_fingerprint = self._compute_effective_fingerprint(effective_kw)
+
+        # Check if cache is still valid (same params AND not expired)
+        if (
+            not self.read_only
+            and current_fingerprint == self._last_effective_fingerprint
+            and not self.expired
+        ):
             return self.cached_value
 
-        # Handle temporary kwargs overrides
-        if kwargs:
-            original_kw = self._kw
-            self._kw = {**original_kw, **kwargs}
-            try:
-                return self._dispatch_load()
-            finally:
-                self._kw = original_kw
+        # Parameters changed or cache expired, need to reload
+        self._last_effective_fingerprint = current_fingerprint
 
-        return self._dispatch_load()
+        # Temporarily set _kw to effective_kw for load()
+        original_kw = self._kw
+        self._kw = effective_kw
+        try:
+            return self._dispatch_load()
+        finally:
+            self._kw = original_kw
 
     def _dispatch_load(self) -> Any:
         """Dispatch to correct load method based on sync/async context."""
@@ -579,6 +611,7 @@ class BagCbResolver(BagResolver):
     """Resolver that calls a callback function to get the value.
 
     The callback can be sync or async - handled automatically.
+    Extra kwargs are passed to the callback when load() is called.
 
     Parameters (class_args):
         callback: Callable that returns the value. Can be sync or async.
@@ -586,34 +619,34 @@ class BagCbResolver(BagResolver):
     Parameters (class_kwargs):
         cache_time: Cache duration in seconds. Default 0 (no cache).
         read_only: If True, value is not stored in node._value. Default False.
-            Note: read_only is forced to False when cache_time != 0, because
-            caching requires storing the value. Set cache_time=0 if you need
-            read_only=True behavior.
 
     Example:
-        >>> from datetime import datetime
-        >>> resolver = BagCbResolver(datetime.now)
-        >>> resolver()  # returns current datetime
-        datetime.datetime(2026, 1, 5, 10, 30, 45, 123456)
+        >>> def somma(a, b):
+        ...     return a + b
+        >>> resolver = BagCbResolver(somma, a=3, b=5)
+        >>> resolver()  # returns 8
+        8
+
+        >>> # Parameters are stored in node attributes when attached
+        >>> bag = Bag()
+        >>> bag.set_item('calc', resolver)
+        >>> bag['calc']  # returns 8
+        8
+        >>> bag.set_attr('calc', a=10)  # changes parameter, invalidates cache
+        >>> bag['calc']  # returns 15
+        15
 
         >>> # With async callback
-        >>> async def fetch_data():
-        ...     await asyncio.sleep(0.1)
-        ...     return {'status': 'ok'}
-        >>> resolver = BagCbResolver(fetch_data)
+        >>> async def fetch_data(url, timeout=30):
+        ...     async with httpx.AsyncClient() as client:
+        ...         return await client.get(url, timeout=timeout)
+        >>> resolver = BagCbResolver(fetch_data, url='http://...', timeout=10)
         >>> await resolver()  # works in async context
-        {'status': 'ok'}
-
-        >>> # With caching
-        >>> resolver = BagCbResolver(datetime.now, cache_time=60)
-        >>> t1 = resolver()
-        >>> t2 = resolver()  # same value, cached
-        >>> t1 == t2
-        True
     """
 
     class_kwargs = {"cache_time": 0, "read_only": False}
     class_args = ["callback"]
+    internal_params = {"cache_time", "read_only", "retry_policy", "callback"}
 
     @property
     def is_async(self) -> bool:
@@ -621,9 +654,11 @@ class BagCbResolver(BagResolver):
         return asyncio.iscoroutinefunction(self._kw["callback"])
 
     def load(self) -> Any:
-        """Call sync callback and return its result."""
-        return self._kw["callback"]()
+        """Call sync callback with parameters from _kw."""
+        params = {k: v for k, v in self._kw.items() if k not in self.internal_params}
+        return self._kw["callback"](**params)
 
     async def async_load(self) -> Any:
-        """Call async callback and return its result."""
-        return await self._kw["callback"]()
+        """Call async callback with parameters from _kw."""
+        params = {k: v for k, v in self._kw.items() if k not in self.internal_params}
+        return await self._kw["callback"](**params)

@@ -601,7 +601,9 @@ class Bag(BagParser, BagSerializer, BagQuery):
 
     # -------------------- get (single level) --------------------------------
 
-    def get(self, label: str, default: Any = None, static: bool = True) -> Any:
+    def get(
+        self, label: str, default: Any = None, static: bool = True, **kwargs: Any
+    ) -> Any:
         """Get value at a single level (no path traversal).
 
         Unlike get_item/`__getitem__`, this method only looks at direct children
@@ -612,6 +614,8 @@ class Bag(BagParser, BagSerializer, BagQuery):
                 Supports '?attr' suffix to get a node attribute instead of value.
             default: Value to return if label not found.
             static: If True, don't trigger resolvers. Default True.
+            **kwargs: Additional keyword arguments passed to the resolver.
+                These override both resolver defaults and node attributes.
 
         Returns:
             The node's value if found, otherwise default.
@@ -637,11 +641,15 @@ class Bag(BagParser, BagSerializer, BagQuery):
         node = self._nodes.get(label)
         if not node:
             return default
-        return node.get_attr(attrname) if attrname else node.get_value(static=static)
+        return (
+            node.get_attr(attrname) if attrname else node.get_value(static=static, **kwargs)
+        )
 
     # -------------------- get_item --------------------------------
 
-    def get_item(self, path: str, default: Any = None, static: bool = False) -> Any:
+    def get_item(
+        self, path: str, default: Any = None, static: bool = False, **kwargs: Any
+    ) -> Any:
         """Get value at a hierarchical path.
 
         Traverses the Bag hierarchy following the dot-separated path and returns
@@ -655,6 +663,8 @@ class Bag(BagParser, BagSerializer, BagQuery):
                 Supports '?attr' suffix to get attribute instead of value.
             default: Value to return if path not found.
             static: If True, do not trigger resolvers during traversal. Default False.
+            **kwargs: Additional keyword arguments passed to the resolver at the
+                final path. These override both resolver defaults and node attributes.
 
         Returns:
             The value at the path if found, otherwise default.
@@ -666,6 +676,8 @@ class Bag(BagParser, BagSerializer, BagQuery):
             'localhost'
             >>> # Check cache without triggering resolver:
             >>> cached = bag.get_item('path', static=True)
+            >>> # Pass params to resolver:
+            >>> result = bag.get_item('calc', a=10, b=20)
             >>> # In async context use smartawait:
             >>> from genro_toolbox import smartawait
             >>> result = await smartawait(bag.get_item('path.with.resolver'))
@@ -680,7 +692,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
         def finalize(obj_label):
             obj, label = obj_label
             if isinstance(obj, Bag):
-                return obj.get(label, default, static=static)
+                return obj.get(label, default, static=static, **kwargs)
             return default
 
         return smartcontinuation(result, finalize)
@@ -1179,6 +1191,70 @@ class Bag(BagParser, BagSerializer, BagQuery):
                 if isinstance(value, bytes):
                     value = value.decode("UTF-8", "ignore")
                 lines.append(f"{idx} - ({type_name}) {node.label}: {value}  {attr}")
+
+        return "\n".join(lines)
+
+    def to_string(self, static: bool = True, _visited: dict | None = None, _prefix: str = "", _is_last: bool = True) -> str:
+        """Return ASCII tree representation of bag contents.
+
+        Args:
+            static: If False, triggers resolvers to get current values.
+            _visited: Internal - tracks visited nodes for circular refs.
+            _prefix: Internal - indentation prefix for nested bags.
+            _is_last: Internal - whether this is the last sibling.
+
+        Example:
+            >>> bag = Bag()
+            >>> bag.set_item('user', inner_bag, name='John')
+            >>> print(bag.to_string())
+            user [name='John']
+            ├── age: 30
+            └── city: Rome
+        """
+        if _visited is None:
+            _visited = {}
+
+        lines = []
+        nodes = list(self._nodes)
+
+        for idx, node in enumerate(nodes):
+            is_last = idx == len(nodes) - 1
+            value = node.get_value(static=static)
+
+            # Format attributes
+            attrs = node.attr
+            attr_str = ""
+            if attrs:
+                attr_str = " [" + ", ".join(f"{k}={repr(v)}" for k, v in attrs.items()) + "]"
+
+            # Tree characters
+            branch = "└── " if is_last else "├── "
+            child_prefix = _prefix + ("    " if is_last else "│   ")
+
+            if isinstance(value, Bag):
+                node_id = id(node)
+                backref = "(*)" if value.backref else ""
+
+                if node_id in _visited:
+                    lines.append(f"{_prefix}{branch}{node.label}{backref}{attr_str} → (circular ref)")
+                else:
+                    _visited[node_id] = node.label
+                    lines.append(f"{_prefix}{branch}{node.label}{backref}{attr_str}")
+                    inner = value.to_string(static=static, _visited=_visited, _prefix=child_prefix, _is_last=is_last)
+                    if inner:
+                        lines.append(inner)
+            else:
+                # Format value representation
+                if value is None:
+                    value_str = "None"
+                elif isinstance(value, bytes):
+                    value_str = value.decode("UTF-8", "ignore")
+                elif isinstance(value, str) and len(value) > 50:
+                    value_str = repr(value[:47] + "...")
+                else:
+                    value_str = repr(value) if isinstance(value, str) else str(value)
+
+                lines.append(f"{_prefix}{branch}{node.label}: {value_str}{attr_str}")
 
         return "\n".join(lines)
 
