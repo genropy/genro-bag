@@ -227,12 +227,26 @@ class BagNode:
         """Return the value of the BagNode.
 
         Args:
-            static: If True, return raw value without triggering resolver.
-            **kwargs: Additional keyword arguments passed to the resolver.
-                These override both resolver defaults and node attributes.
+            static: If True, return cached value without triggering resolver.
+            **kwargs: Parameters passed to the resolver. These have the highest
+                priority in the parameter merge chain.
 
         Returns:
             The node's value, possibly resolved via resolver.
+
+        Parameter Priority (when resolver is present):
+            1. kwargs passed here (highest priority)
+            2. node.attr (attributes set on this node)
+            3. resolver._kw (resolver's default parameters)
+
+        Example:
+            # Resolver with default multiplier=2
+            node.resolver = CalcResolver(base=10, multiplier=2)
+
+            node.get_value()  # uses multiplier=2 from resolver
+            node.set_attr(multiplier=5)
+            node.get_value()  # uses multiplier=5 from node.attr
+            node.get_value(multiplier=10)  # uses multiplier=10 from kwargs
         """
         if self._resolver is not None:
             return self._resolver(static=static, **kwargs)

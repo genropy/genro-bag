@@ -168,43 +168,61 @@ class BagResolver:
     instead of being stored statically. The result can be cached for a
     configurable duration.
 
-    read_only Mode (how BagNode.get_value interacts with resolver):
-        - read_only=True: Each call to get_value() invokes resolver(),
-          which calls load(). The result is returned directly, NOT stored in
-          node._value. Good for computed/dynamic values that shouldn't be cached
-          in the node itself.
+    Parameter Flow:
+        Parameters can come from three sources, with priority (highest first):
+        1. call_kwargs: passed to get_item()/get_value() at call time
+        2. node.attr: attributes on the parent BagNode
+        3. resolver._kw: default parameters set at resolver construction
 
-        - read_only=False (default): When cache expires, get_value() calls
-          resolver() which calls load(), then stores the result in node._value.
-          Subsequent calls return node._value until cache expires again. Good for
-          expensive operations where you want the node to hold the cached result.
+        The resolver merges these into effective_kw before calling load().
+        Cache is invalidated when effective parameters change.
 
-        NOTE: If cache_time != 0, read_only is forced to False (caching implies
-        storing the value).
+        Example flow:
+            bag.get_item('data', x=10)  # call_kwargs: x=10
+                -> node.get_value(x=10)
+                    -> resolver(x=10)
+                        -> effective_kw = {**resolver._kw, **node.attr, x: 10}
+                        -> load() uses self._kw (which is effective_kw)
+
+    read_only Mode:
+        - read_only=True: Each call invokes load(). Result is NOT stored in
+          node._value. Good for computed/dynamic values.
+        - read_only=False (default): Result is stored in node._value and cached.
+          Good for expensive operations.
+        NOTE: If cache_time != 0, read_only is forced to False.
 
     Class Attributes:
         class_kwargs: dict of {param_name: default_value}
             Parameters with defaults, passable as keyword args.
-            - 'cache_time': 0 = no cache, >0 = TTL in seconds, <0 = infinite cache
-            - 'read_only': if True, resolved value is NOT saved in node._value
-              (default: False, ignored when cache_time != 0)
+            - 'cache_time': 0 = no cache, >0 = TTL seconds, <0 = infinite
+            - 'read_only': if True, value is NOT saved in node._value
+            - 'retry_policy': retry config or preset name ('network', 'aggressive')
 
         class_args: list of positional parameter names
             Required parameters, passable as positional args.
-            Order in class_args corresponds to order in *args.
+
+        internal_params: set of parameter names that are internal
+            These parameters (cache_time, read_only, retry_policy) are NOT
+            read from node.attr during parameter merging. They control
+            resolver behavior, not computation parameters.
 
     Example:
-        class UrlResolver(BagResolver):
-            class_kwargs = {'cache_time': 300, 'read_only': False, 'timeout': 30}
-            class_args = ['url']
+        class CalcResolver(BagResolver):
+            class_kwargs = {'cache_time': 60, 'multiplier': 2}
+            class_args = ['base']
+            internal_params = {'cache_time', 'read_only', 'retry_policy'}
 
             def load(self):
-                return fetch(self._kw['url'], timeout=self._kw['timeout'])
+                return self._kw['base'] * self._kw['multiplier']
 
-        resolver = UrlResolver('http://...', cache_time=60)
-        # resolver._kw['url'] = 'http://...'
-        # resolver._kw['cache_time'] = 60 (overrides default 300)
-        # resolver._kw['timeout'] = 30 (default)
+        bag['calc'] = CalcResolver(10, multiplier=3)  # base=10, multiplier=3
+        bag['calc']  # -> 30 (uses resolver defaults)
+
+        bag.set_attr('calc', multiplier=5)  # override via node attr
+        bag['calc']  # -> 50 (reads multiplier from node.attr)
+
+        bag.get_item('calc', multiplier=7)  # override via call_kwargs
+        # -> 70 (call_kwargs has highest priority)
     """
 
     class_kwargs: dict[str, Any] = {"cache_time": 0, "read_only": False, "retry_policy": None}
