@@ -43,7 +43,7 @@ import asyncio
 import os
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, TypeVar, cast
+from typing import Any, cast
 
 from genro_toolbox import smartawait, smartcontinuation, smartsplit
 from genro_toolbox.decorators import extract_kwargs
@@ -52,27 +52,8 @@ from genro_toolbox.typeutils import safe_is_instance
 from .bag_parse import BagParser
 from .bag_query import BagQuery
 from .bag_serialize import BagSerializer
-from .bagnode import BagNode, BagNodeContainer
+from .bagnode import BagNode, BagNodeContainer, BagNodeException
 from .resolver import BagCbResolver
-
-_T = TypeVar("_T", str, list)
-
-
-def _normalize_path(path: _T) -> _T:
-    """Normalize a path for Bag access.
-
-    Args:
-        path: Path as dot-separated string or list of segments.
-
-    Returns:
-        The path unchanged (validation only).
-
-    Note:
-        Legacy genropy supported non-string paths (int, etc.) with automatic
-        conversion. This is now handled by the compatibility layer.
-        See: genro-bag-compat.normalizeItemPath()
-    """
-    return path
 
 
 class Bag(BagParser, BagSerializer, BagQuery):
@@ -612,6 +593,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
         Args:
             label: Node label to look up. Can be a string label or '#n' index.
                 Supports '?attr' suffix to get a node attribute instead of value.
+                Supports '?attr1&attr2' to get multiple attributes as tuple.
             default: Value to return if label not found.
             static: If True, don't trigger resolvers. Default True.
             **kwargs: Additional keyword arguments passed to the resolver.
@@ -619,6 +601,8 @@ class Bag(BagParser, BagSerializer, BagQuery):
 
         Returns:
             The node's value if found, otherwise default.
+            When using ?attr syntax, returns the attribute value.
+            When using ?attr1&attr2 syntax, returns tuple of attribute values.
 
         Example:
             >>> bag = Bag()
@@ -627,21 +611,23 @@ class Bag(BagParser, BagSerializer, BagQuery):
             1
             >>> bag.get('missing', 'default')
             'default'
-            >>> bag.set_item('x', 42, _attributes={'type': 'int'})
-            >>> bag.get('x?type')  # get attribute
+            >>> bag.set_item('x', 42, _attributes={'type': 'int', 'size': 4})
+            >>> bag.get('x?type')  # get single attribute
             'int'
+            >>> bag.get('x?type&size')  # get multiple attributes
+            ('int', 4)
         """
         if not label:
             return self
         if label == "#parent":
             return self.parent
-        query_string = None
+        _query_string = None
         if "?" in label:
-            label, query_string = label.split("?", 1)
+            label, _query_string = label.split("?", 1)
         node = self._nodes.get(label)
         if not node:
             return default
-        return node.get_value(static=static, _query_string=query_string, **kwargs)
+        return node.get_value(static=static, _query_string=_query_string, **kwargs)
 
     # -------------------- get_item --------------------------------
 
@@ -682,8 +668,6 @@ class Bag(BagParser, BagSerializer, BagQuery):
         """
         if not path:
             return self
-
-        path = _normalize_path(path)
 
         result = self._htraverse(path, static=static)
 
@@ -740,7 +724,10 @@ class Bag(BagParser, BagSerializer, BagQuery):
         Args:
             path: Hierarchical path like 'a.b.c'. Empty path is ignored.
                 Supports '?attr' suffix to set a node attribute instead of value.
-            value: Value to set at the path (or attribute value if ?attr syntax).
+                Supports '?attr1&attr2&attr3' to set multiple attributes at once
+                (value must be a tuple with matching length).
+            value: Value to set at the path. When using ?attr syntax, this is the
+                attribute value. When using ?attr1&attr2 syntax, must be a tuple.
             _attributes: Optional dict of attributes to set on the node.
             node_position: Position for new nodes. Supports:
                 - '>': Append at end (default)
@@ -776,6 +763,9 @@ class Bag(BagParser, BagSerializer, BagQuery):
             >>> # Set a single attribute using ?attr syntax
             >>> bag.set_item('a.b.c?myattr', 'attr_value')
             >>> bag.get('a.b.c?myattr')  # 'attr_value'
+            >>> # Set multiple attributes using ?attr1&attr2 syntax
+            >>> bag.set_item('a.b.c?x&y&z', (1, 2, 3))
+            >>> bag.get('a.b.c?x')  # 1
             >>> # Fire an event (set then immediately reset to None)
             >>> bag.set_item('event', 'click', _fired=True)
             >>> bag['event']  # None
@@ -783,64 +773,73 @@ class Bag(BagParser, BagSerializer, BagQuery):
             >>> bag['data'] = BagCbResolver(lambda: 'computed')
             >>> bag.set_item('data', 'new', resolver=False)  # Remove resolver
         """
-        # Parse ?attr suffix from path
-        attrname = None
-        if "?" in path:
-            path, attrname = path.rsplit("?", 1)
+        # Merge kwargs into _attributes
         if kwargs:
             _attributes = dict(_attributes or {})
             _attributes.update(kwargs)
 
-        # If value is a resolver, extract it (legacy compatibility)
-        if safe_is_instance(value, "genro_bag.resolver.BagResolver"):
-            resolver = value
-            value = None
-
-        # Handle resolver.attributes if present
-        if resolver is not None and hasattr(resolver, "attributes") and resolver.attributes:
-            _attributes = dict(_attributes or ())
-            _attributes.update(resolver.attributes)
-
-        path = _normalize_path(path)
         result, label = self._htraverse(path, write_mode=True)
         obj = cast("Bag", result)
+        _query_string = None
+        if "?" in label:
+            label, _query_string = label.split("?", 1)
 
         if label is None or label.startswith("#"):
             raise BagException("Cannot create new node with #n syntax")
+        node = obj._nodes.get(label)
 
-        if attrname:
-            # ?attr syntax: set attribute on node (create if needed)
-            node = cast("BagNode | None", obj._nodes.get(label))
-            if node is None:
-                # Create the node first with None value
-                node = obj._nodes.set(
-                    label,
-                    None,
-                    node_position,
-                    attr=_attributes,
-                    parent_bag=obj,
-                    _reason=_reason,
-                    do_trigger=do_trigger,
-                )
-            node.set_attr({attrname: value}, trigger=do_trigger)
-            return node
-
-        node = obj._nodes.set(
-            label,
-            value,
-            node_position,
-            attr=_attributes,
-            resolver=resolver,
-            parent_bag=obj,
-            _updattr=_updattr,
-            _remove_null_attributes=_remove_null_attributes,
-            _reason=_reason,
-            do_trigger=do_trigger,
-        )
+        if _query_string:
+            qs = _query_string.split("&")
+            if len(qs) == 1:
+                _attributes = {qs[0]: value}
+            else:
+                if not isinstance(value, tuple) or len(value) != len(qs):
+                    raise BagNodeException("Wrong attributes assignment")
+                _attributes = dict(zip(qs, value, strict=True))
+            value=None
+        if not node:
+            node = obj._nodes.set(
+                label,
+                value,
+                node_position,
+                attr=_attributes,
+                resolver=resolver,
+                parent_bag=obj,
+                _updattr=_updattr,
+                _remove_null_attributes=_remove_null_attributes,
+                _reason=_reason,
+                do_trigger=do_trigger,
+            )
+        elif _query_string:
+            node.set_attr(
+                    _attributes,
+                    trigger=do_trigger,
+                    _updattr=_updattr,
+                    _remove_null_attributes=_remove_null_attributes,
+            )
+        else:
+            if resolver is False:
+                node.resolver = None
+            elif resolver is not None:
+                node.resolver = resolver
+            if (node.resolver is not None
+                and value is not None
+                and not safe_is_instance(value, "genro_bag.resolver.BagResolver")):
+                    raise BagNodeException(
+                        f"Cannot set value on node '{node.label}' that has a resolver. "
+                        "Use resolver=False to remove it first."
+                    )
+            node.set_value(
+                    value,
+                    trigger=do_trigger,
+                    _attributes=_attributes,
+                    _updattr=_updattr,
+                    _remove_null_attributes=_remove_null_attributes,
+                    _reason=_reason
+            )
 
         if _fired:
-            # Reset to None without triggering (event was already fired with the value)
-            obj._nodes.set(label, None, parent_bag=obj, _reason=_reason, do_trigger=False)
+            node.set_value(None, trigger=False)
 
         return node
 

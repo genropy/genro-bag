@@ -81,6 +81,23 @@ Values represent *what* the data is. Attributes represent *how* to interpret or 
 >>> bag['item?missing']  # Missing attribute returns None
 ```
 
+### Multiple Attributes
+
+Use `&` to get multiple attributes as a tuple:
+
+```{doctest}
+>>> from genro_bag import Bag
+
+>>> bag = Bag()
+>>> bag.set_item('item', 100, x=1, y=2, z=3)
+
+>>> bag['item?x&y&z']
+(1, 2, 3)
+
+>>> bag['item?x&y']
+(1, 2)
+```
+
 ### All Attributes
 
 ```{doctest}
