@@ -1675,6 +1675,49 @@ class TestBagSetItemAttrSyntax:
         assert bag["a.b.c"] is None
         assert bag["a.b.c?color"] == "red"
 
+    def test_set_multiple_attrs_with_query_string(self):
+        """?alfa&beta&gamma sets multiple attributes from tuple."""
+        bag = Bag()
+        bag["node"] = "value"
+        bag["node?alfa&beta&gamma"] = (1, 2, 3)
+
+        node = bag.get_node("node")
+        assert node.value == "value"  # value unchanged
+        assert node.attr.get("alfa") == 1
+        assert node.attr.get("beta") == 2
+        assert node.attr.get("gamma") == 3
+
+    def test_set_multiple_attrs_creates_node_if_missing(self):
+        """?alfa&beta&gamma creates node with None value if missing."""
+        bag = Bag()
+        bag["node?alfa&beta&gamma"] = (10, 20, 30)
+
+        node = bag.get_node("node")
+        assert node.value is None
+        assert node.attr.get("alfa") == 10
+        assert node.attr.get("beta") == 20
+        assert node.attr.get("gamma") == 30
+
+    def test_set_multiple_attrs_wrong_length_raises(self):
+        """?alfa&beta&gamma with wrong tuple length raises."""
+        from genro_bag.bagnode import BagNodeException
+
+        bag = Bag()
+        bag["node"] = "value"
+
+        with pytest.raises(BagNodeException, match="Wrong attributes assignment"):
+            bag["node?alfa&beta&gamma"] = (1, 2)  # only 2 values for 3 keys
+
+    def test_set_multiple_attrs_non_tuple_raises(self):
+        """?alfa&beta&gamma with non-tuple value raises."""
+        from genro_bag.bagnode import BagNodeException
+
+        bag = Bag()
+        bag["node"] = "value"
+
+        with pytest.raises(BagNodeException, match="Wrong attributes assignment"):
+            bag["node?alfa&beta&gamma"] = "not a tuple"
+
 
 class TestBagAsDict:
     """Test as_dict method."""
@@ -2661,7 +2704,7 @@ class TestBagCoverageMissing:
 
     # Lines 687-688: resolver with attributes
     def test_set_item_resolver_with_attributes(self):
-        """set_item with resolver that has attributes merges them."""
+        """set_item with resolver - resolver.attributes are used dynamically, not merged."""
         from genro_bag.resolver import BagResolver
 
         class AttrResolver(BagResolver):
@@ -2673,8 +2716,11 @@ class TestBagCoverageMissing:
         bag = Bag()
         bag.set_item("x", None, resolver=AttrResolver(), color="blue")
         node = bag.get_node("x")
+        # kwargs are set on node
         assert node.attr.get("color") == "blue"
-        assert node.attr.get("from_resolver") is True
+        # resolver.attributes are NOT merged into node.attr at set_item time
+        # they are used dynamically when accessing the value
+        assert node.attr.get("from_resolver") is None
 
     # Line 694: set_item with #n syntax raises
     def test_set_item_hash_n_syntax(self):
