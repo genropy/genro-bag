@@ -21,6 +21,7 @@ from collections.abc import Callable, Iterator
 from typing import TYPE_CHECKING, Any
 
 from genro_toolbox import safe_is_instance, smartsplit
+from genro_tytx import from_tytx
 
 if TYPE_CHECKING:
     from .bag import Bag
@@ -223,11 +224,19 @@ class BagNode:
         """Set the node's value."""
         self.set_value(value)
 
-    def get_value(self, static: bool = False, **kwargs: Any) -> Any:
+    def get_value(
+        self, static: bool = False, _query_string: str | None = None, **kwargs: Any
+    ) -> Any:
         """Return the value of the BagNode.
 
         Args:
             static: If True, return cached value without triggering resolver.
+            _query_string: Optional query string from path suffix (after '?').
+                - None: return node value (possibly via resolver)
+                - 'attr': return single attribute value
+                - 'attr1&attr2': return tuple of attribute values
+                - 'key=val&key2=val2': pass as kwargs to resolver (requires resolver)
+                Values can include type suffix: 'price=34::F' for float conversion.
             **kwargs: Parameters passed to the resolver. These have the highest
                 priority in the parameter merge chain.
 
@@ -248,6 +257,18 @@ class BagNode:
             node.get_value()  # uses multiplier=5 from node.attr
             node.get_value(multiplier=10)  # uses multiplier=10 from kwargs
         """
+        if _query_string is not None:
+            parsed_qs = from_tytx(f"{_query_string}::QS")
+            if isinstance(parsed_qs, list):
+                # Attributes: ?color or ?color&size
+                attrs = [self._attr.get(k) for k in parsed_qs]
+                return attrs[0] if len(attrs) == 1 else tuple(attrs)
+            else:
+                # Dict → kwargs for resolver
+                if not self._resolver:
+                    raise BagNodeException("Cannot use kwargs syntax without resolver")
+                kwargs.update(parsed_qs)
+
         if self._resolver is not None:
             return self._resolver(static=static, **kwargs)
         return self._value

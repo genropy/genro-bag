@@ -76,9 +76,8 @@ class TxtDocResolver(BagResolver):
 
     Parameters (class_kwargs):
         cache_time: Cache duration in seconds. Default 500.
-        read_only: If True, value is not stored in node._value. Default True,
-            but effectively False because cache_time=500 forces read_only=False.
-            Set cache_time=0 if you need true read_only behavior.
+        read_only: If True, value is not stored in node._value. Default True.
+            Independent from cache_time (internal cache).
 
     Returns:
         bytes: Raw file content. Caller must decode if text is needed.
@@ -115,9 +114,8 @@ class SerializedBagResolver(BagResolver):
 
     Parameters (class_kwargs):
         cache_time: Cache duration in seconds. Default 500.
-        read_only: If True, value is not stored in node._value. Default True,
-            but effectively False because cache_time=500 forces read_only=False.
-            Set cache_time=0 if you need true read_only behavior.
+        read_only: If True, value is not stored in node._value. Default True.
+            Independent from cache_time (internal cache).
         format: Force format ('xml', 'json', 'msgpack'). If None, detect from extension.
 
     Example:
@@ -163,10 +161,9 @@ class DirectoryResolver(BagResolver):
             directory is actually mounted on the filesystem.
 
     Parameters (class_kwargs):
-        cache_time: Cache duration in seconds. Default 500.
-        read_only: If True, value is not stored in node._value. Default True,
-            but effectively False because cache_time=500 forces read_only=False.
-            Set cache_time=0 if you need true read_only behavior.
+        cache_time: Cache duration in seconds. Default 0 (no cache, rescan on each access).
+        read_only: If True, value is not stored in node._value. Default True.
+            Independent from cache_time (internal cache).
         invisible: If True, includes hidden files (starting with '.'). Default False.
         ext: Comma-separated list of extensions to process, with optional
             processor mapping. Format: 'ext1,ext2:processor,ext3'.
@@ -257,7 +254,7 @@ class DirectoryResolver(BagResolver):
     """
 
     class_kwargs = {
-        "cache_time": 500,
+        "cache_time": 0,
         "read_only": True,
         "invisible": False,
         "relocate": "",

@@ -635,15 +635,13 @@ class Bag(BagParser, BagSerializer, BagQuery):
             return self
         if label == "#parent":
             return self.parent
-        attrname = None
+        query_string = None
         if "?" in label:
-            label, attrname = label.split("?")
+            label, query_string = label.split("?", 1)
         node = self._nodes.get(label)
         if not node:
             return default
-        return (
-            node.get_attr(attrname) if attrname else node.get_value(static=static, **kwargs)
-        )
+        return node.get_value(static=static, _query_string=query_string, **kwargs)
 
     # -------------------- get_item --------------------------------
 

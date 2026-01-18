@@ -25,9 +25,8 @@ class UrlResolver(BagResolver):
 
     Parameters (class_kwargs):
         cache_time: Cache duration in seconds. Default 300.
-        read_only: If True, value is not stored in node._value. Default True,
-            but effectively False because cache_time=300 forces read_only=False.
-            Set cache_time=0 if you need true read_only behavior.
+        read_only: If True, value is not stored in node._value. Default True.
+            Independent from cache_time (internal cache).
         url: The URL to fetch (can also be passed as kwarg).
         method: HTTP method (get, post, put, delete, patch). Default 'get'.
         qs: Query string parameters as Bag or dict. None values are filtered out.
@@ -99,7 +98,6 @@ class UrlResolver(BagResolver):
         qs = self._kw["qs"]
         body: Bag | dict | None = self._kw["body"]
         timeout = self._kw["timeout"]
-        as_bag = self._kw["as_bag"]
 
         # Extract dynamic parameters from _kw (passed via get_item kwargs)
         # _body overrides constructor body
@@ -154,15 +152,7 @@ class UrlResolver(BagResolver):
             response = await request_method(url, **kwargs)
             response.raise_for_status()
 
-            read_only = self._kw["read_only"]
-
-            if not read_only:
-                # Must store as Bag - convert or raise
-                return self._convert_to_bag(response, must_convert=True)
-
-            if as_bag:
-                return self._convert_to_bag(response, must_convert=False)
-
+            # Return raw content - base class _finalize_result handles as_bag conversion
             return response.content
 
     def _qs_to_dict(self, qs) -> dict:
@@ -177,31 +167,3 @@ class UrlResolver(BagResolver):
         if isinstance(qs, Bag):
             return {k: qs[k] for k in qs.keys() if qs[k] is not None}
         return {k: v for k, v in qs.items() if v is not None}
-
-    def _convert_to_bag(self, response, must_convert: bool = False) -> Any:
-        """Convert HTTP response to Bag based on content-type.
-
-        Args:
-            response: httpx.Response object.
-            must_convert: If True, raise ValueError for unsupported content-types.
-                If False, default to JSON parsing.
-
-        Returns:
-            Bag: Parsed response content.
-
-        Raises:
-            ValueError: If must_convert=True and content-type is unsupported.
-        """
-        content_type = response.headers.get("content-type", "")
-        text = response.text
-
-        if "application/json" in content_type:
-            return Bag.from_json(text)
-        elif "application/xml" in content_type or "text/xml" in content_type:
-            return Bag.from_xml(text)
-        elif must_convert:
-            raise ValueError(
-                f"Cannot convert response to Bag: unsupported content-type '{content_type}'"
-            )
-        else:
-            return Bag.from_json(text)  # default to JSON

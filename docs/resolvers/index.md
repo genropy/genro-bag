@@ -124,6 +124,7 @@ class DatabaseResolver(BagResolver):
 :maxdepth: 1
 
 builtin
+parameters
 sync-async
 custom
 examples

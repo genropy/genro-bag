@@ -358,9 +358,9 @@ class TestDirectoryResolverCaching:
     """Resolver caching behavior."""
 
     def test_default_cache_time(self):
-        """Default cache_time is 500 seconds."""
+        """Default cache_time is 0 (no cache, rescan on each access)."""
         resolver = DirectoryResolver("/tmp")
-        assert resolver.cache_time == 500
+        assert resolver.cache_time == 0
 
     def test_custom_cache_time(self):
         """Cache time can be customized."""

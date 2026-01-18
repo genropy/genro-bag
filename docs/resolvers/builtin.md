@@ -202,14 +202,48 @@ config['database.host']
 
 ## Common Parameters
 
-All resolvers support:
+All resolvers support three independent parameters:
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `cache_time` | varies | Cache duration: 0=none, >0=seconds, <0=infinite |
-| `read_only` | False | If True, value not stored in node |
+| `cache_time` | varies | Cache duration: 0=none, >0=TTL seconds, <0=infinite |
+| `read_only` | False | If True, value is NOT stored in `node._value` |
+| `as_bag` | None | If True, convert result to Bag; if None, follows `read_only` |
 
-**Note:** When `cache_time != 0`, `read_only` is forced to False.
+### Parameter Behavior
+
+The three parameters are **independent**:
+
+- **`cache_time`**: Controls the resolver's internal cache (TTL-based)
+- **`read_only`**: Controls whether the value is stored in the Bag node
+- **`as_bag`**: Controls automatic conversion to Bag
+
+### Truth Table
+
+| cache_time | read_only | as_bag | Where stored | Converts to Bag |
+|------------|-----------|--------|--------------|-----------------|
+| 0 | True | [False] | nowhere | No |
+| 0 | True | True | nowhere | Yes |
+| 0 | True | False | nowhere | No |
+| 0 | [False] | [True] | node | Yes |
+| 0 | [False] | True | node | Yes |
+| 0 | [False] | False | node | No |
+| !=0 | True | [False] | cache | No |
+| !=0 | True | True | cache | Yes |
+| !=0 | True | False | cache | No |
+| !=0 | [False] | [True] | node | Yes |
+| !=0 | [False] | True | node | Yes |
+| !=0 | [False] | False | node | No |
+
+Where `[value]` indicates the computed default: `as_bag` defaults to `not read_only`.
+
+### Practical Implications
+
+- **`read_only=False`** (default): The resolved value becomes part of the Bag and can be navigated with dot notation. Default `as_bag=True` converts the result to Bag automatically.
+
+- **`read_only=True`**: The resolver acts like a "virtual" node - each access triggers resolution, the value is not stored in the Bag tree. Default `as_bag=False` returns raw values.
+
+- **`cache_time != 0`**: The resolver maintains its own internal cache (in `_cached_value`), independent from where the value is stored.
 
 ## Resolver Defaults
 
@@ -217,7 +251,7 @@ All resolvers support:
 |----------|--------------|
 | `BagCbResolver` | 0 |
 | `UrlResolver` | 300 |
-| `DirectoryResolver` | 500 |
+| `DirectoryResolver` | 0 |
 | `OpenApiResolver` | -1 |
 | `TxtDocResolver` | 0 |
 | `SerializedBagResolver` | 0 |

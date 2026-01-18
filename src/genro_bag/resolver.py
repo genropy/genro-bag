@@ -225,9 +225,9 @@ class BagResolver:
         # -> 70 (call_kwargs has highest priority)
     """
 
-    class_kwargs: dict[str, Any] = {"cache_time": 0, "read_only": False, "retry_policy": None}
+    class_kwargs: dict[str, Any] = {"cache_time": 0, "read_only": False, "retry_policy": None, "as_bag": None}
     class_args: list[str] = []
-    internal_params: set[str] = {"cache_time", "read_only", "retry_policy"}
+    internal_params: set[str] = {"cache_time", "read_only", "retry_policy", "as_bag"}
 
     __slots__ = (
         "_kw",  # dict: all parameters from class_kwargs/class_args
@@ -342,10 +342,9 @@ class BagResolver:
     def read_only(self) -> bool:
         """Whether resolver is in read-only mode.
 
-        Returns False if cache_time != 0 (caching requires storing value).
+        If True, the resolved value is NOT stored in node._value.
+        Independent from cache_time (internal cache).
         """
-        if self.cache_time != 0:
-            return False
         return self._kw.get("read_only", False)  # type: ignore[no-any-return]
 
     # =========================================================================
@@ -487,10 +486,72 @@ class BagResolver:
     # =========================================================================
 
     def _finalize_result(self, result: Any) -> Any:
-        """Store result in cache and node (if not read_only)."""
+        """Store result in cache and node (if not read_only).
+
+        Conversion to Bag (controlled by as_bag parameter):
+        - as_bag=True: always convert to Bag if possible
+        - as_bag=False: never convert, keep original value
+        - as_bag not set (None): convert only if read_only=False (implicit as_bag=True)
+
+        Convertible types:
+        - dict/list: Bag(dict) or indexed Bag
+        - str starting with '<': Bag.from_xml()
+        - str starting with '{' or '[': Bag.from_json()
+        - bytes: decoded and parsed as XML/JSON
+        - Bag: returned as-is
+        """
+        as_bag = self._kw.get("as_bag")
+        # Determine if we should convert:
+        # - as_bag=True: always convert
+        # - as_bag=False: never convert
+        # - as_bag=None (not set): convert if not read_only
+        if as_bag is True:
+            should_convert = True
+        elif as_bag is False:
+            should_convert = False
+        else:
+            # as_bag not explicitly set: convert if will be cached (not read_only)
+            should_convert = not self.read_only
+
+        if should_convert and result is not None:
+            result = self._convert_to_bag(result)
         self._cache_last_update = datetime.now()
         if not self.read_only:
             self.cached_value = result
+        return result
+
+    def _convert_to_bag(self, result: Any) -> Any:
+        """Convert result to Bag if possible.
+
+        Args:
+            result: The value to convert.
+
+        Returns:
+            Bag if conversion is possible, original result otherwise.
+        """
+        from .bag import Bag
+
+        if isinstance(result, Bag):
+            return result
+        if isinstance(result, dict):
+            return Bag(result)
+        if isinstance(result, list):
+            bag = Bag()
+            for i, item in enumerate(result):
+                bag[str(i)] = item if not isinstance(item, dict) else Bag(item)
+            return bag
+        if isinstance(result, str):
+            result = result.strip()
+            if result.startswith("<"):
+                return Bag.from_xml(result)
+            if result.startswith("{") or result.startswith("["):
+                return Bag.from_json(result)
+        if isinstance(result, bytes):
+            text = result.decode("utf-8").strip()
+            if text.startswith("<"):
+                return Bag.from_xml(text)
+            if text.startswith("{") or text.startswith("["):
+                return Bag.from_json(text)
         return result
 
     @with_retry
@@ -662,9 +723,9 @@ class BagCbResolver(BagResolver):
         >>> await resolver()  # works in async context
     """
 
-    class_kwargs = {"cache_time": 0, "read_only": False}
+    class_kwargs = {"cache_time": 0, "read_only": False, "as_bag": False}
     class_args = ["callback"]
-    internal_params = {"cache_time", "read_only", "retry_policy", "callback"}
+    internal_params = {"cache_time", "read_only", "retry_policy", "as_bag", "callback"}
 
     @property
     def is_async(self) -> bool:

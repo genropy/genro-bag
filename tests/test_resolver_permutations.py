@@ -340,7 +340,8 @@ class TestResolverPermutationsSync:
             # Result should be None (path unreachable statically)
             assert result is None, f"Expected None for static access through resolver, got {result}"
         else:
-            assert isinstance(result, dict), f"Expected dict, got {type(result).__name__}: {result}"
+            # Result can be dict or Bag (as_bag=True converts dict to Bag)
+            assert isinstance(result, (dict, Bag)), f"Expected dict or Bag, got {type(result).__name__}: {result}"
             if operation == "get_item" and not static:
                 assert result.get("pattern") == pattern
 
@@ -382,10 +383,12 @@ class TestResolverPermutationsAsync:
             if static:
                 # static=True never triggers resolver, may return None
                 if result is not None:
-                    assert isinstance(result, dict)
+                    # Result can be dict or Bag (as_bag=True converts dict to Bag)
+                    assert isinstance(result, (dict, Bag))
             else:
                 # static=False should trigger resolver and return data
-                assert isinstance(result, dict)
+                # Result can be dict or Bag (as_bag=True converts dict to Bag)
+                assert isinstance(result, (dict, Bag))
                 if operation == "get_item":
                     assert result.get("pattern") == pattern
 
@@ -492,7 +495,8 @@ def run_sync_tests():
             if operation == "set_item":
                 ok = result == {"set": True, "path": path}
             else:
-                ok = isinstance(result, dict)
+                # Result can be dict or Bag (as_bag=True converts dict to Bag)
+                ok = isinstance(result, (dict, Bag))
             results[key] = "✓" if ok else f"✗ {type(result).__name__}"
         except Exception as e:
             results[key] = f"✗ {e}"
@@ -510,7 +514,8 @@ async def run_async_tests():
             if operation == "set_item":
                 ok = result == {"set": True, "path": path}
             else:
-                ok = isinstance(result, dict)
+                # Result can be dict or Bag (as_bag=True converts dict to Bag)
+                ok = isinstance(result, (dict, Bag))
             results[key] = "✓" if ok else f"✗ {type(result).__name__}"
         except Exception as e:
             results[key] = f"✗ {e}"
