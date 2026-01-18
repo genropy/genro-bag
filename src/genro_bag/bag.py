@@ -43,7 +43,7 @@ import asyncio
 import os
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, TypeVar, cast
+from typing import Any, cast
 
 from genro_toolbox import smartawait, smartcontinuation, smartsplit
 from genro_toolbox.decorators import extract_kwargs
@@ -54,25 +54,6 @@ from .bag_query import BagQuery
 from .bag_serialize import BagSerializer
 from .bagnode import BagNode, BagNodeContainer
 from .resolver import BagCbResolver
-
-_T = TypeVar("_T", str, list)
-
-
-def _normalize_path(path: _T) -> _T:
-    """Normalize a path for Bag access.
-
-    Args:
-        path: Path as dot-separated string or list of segments.
-
-    Returns:
-        The path unchanged (validation only).
-
-    Note:
-        Legacy genropy supported non-string paths (int, etc.) with automatic
-        conversion. This is now handled by the compatibility layer.
-        See: genro-bag-compat.normalizeItemPath()
-    """
-    return path
 
 
 class Bag(BagParser, BagSerializer, BagQuery):
@@ -683,8 +664,6 @@ class Bag(BagParser, BagSerializer, BagQuery):
         if not path:
             return self
 
-        path = _normalize_path(path)
-
         result = self._htraverse(path, static=static)
 
         def finalize(obj_label):
@@ -801,7 +780,6 @@ class Bag(BagParser, BagSerializer, BagQuery):
             _attributes = dict(_attributes or ())
             _attributes.update(resolver.attributes)
 
-        path = _normalize_path(path)
         result, label = self._htraverse(path, write_mode=True)
         obj = cast("Bag", result)
 
