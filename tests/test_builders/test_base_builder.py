@@ -1354,3 +1354,453 @@ class TestSchemaToMd:
         assert "| --- |" in md
         assert "| `container` |" in md
         assert "| `item` |" in md
+
+
+# =============================================================================
+# Tests for Range and Regex validators (coverage for lines 373, 389, 395, 397)
+# =============================================================================
+
+
+class TestValidatorClasses:
+    """Tests for Range and Regex validator classes."""
+
+    def test_regex_non_string_raises_type_error(self):
+        """Regex validator raises TypeError for non-string value."""
+        validator = Regex(pattern=r"\d+")
+
+        with pytest.raises(TypeError, match="requires a str"):
+            validator(123)  # Not a string
+
+    def test_range_non_numeric_raises_type_error(self):
+        """Range validator raises TypeError for non-numeric value."""
+        validator = Range(ge=0, le=10)
+
+        with pytest.raises(TypeError, match="requires int, float or Decimal"):
+            validator("not a number")
+
+    def test_range_gt_constraint(self):
+        """Range validator with gt (greater than) constraint."""
+        validator = Range(gt=5)
+
+        validator(6)  # OK
+        validator(100)  # OK
+
+        with pytest.raises(ValueError, match="must be > 5"):
+            validator(5)  # Equal to gt, should fail
+
+    def test_range_lt_constraint(self):
+        """Range validator with lt (less than) constraint."""
+        validator = Range(lt=10)
+
+        validator(9)  # OK
+        validator(0)  # OK
+
+        with pytest.raises(ValueError, match="must be < 10"):
+            validator(10)  # Equal to lt, should fail
+
+
+# =============================================================================
+# Tests for _check_type function (coverage for lines 1190, 1202-1250)
+# =============================================================================
+
+
+class TestCheckTypeFunction:
+    """Tests for _check_type internal function."""
+
+    def test_literal_type_checking(self):
+        """_check_type works with Literal type."""
+        from genro_bag.builder import _check_type
+
+        assert _check_type("a", Literal["a", "b", "c"]) is True
+        assert _check_type("d", Literal["a", "b", "c"]) is False
+
+    def test_list_type_checking(self):
+        """_check_type works with list[T] type."""
+        from genro_bag.builder import _check_type
+
+        assert _check_type([1, 2, 3], list[int]) is True
+        assert _check_type(["a", "b"], list[str]) is True
+        assert _check_type([1, "mixed"], list[int]) is False
+        assert _check_type("not a list", list[int]) is False
+        # Empty list is valid
+        assert _check_type([], list[int]) is True
+
+    def test_dict_type_checking(self):
+        """_check_type works with dict[K, V] type."""
+        from genro_bag.builder import _check_type
+
+        assert _check_type({"a": 1, "b": 2}, dict[str, int]) is True
+        assert _check_type({1: "a", 2: "b"}, dict[int, str]) is True
+        assert _check_type({"a": "b"}, dict[str, int]) is False
+        assert _check_type("not a dict", dict[str, int]) is False
+        # Empty dict is valid
+        assert _check_type({}, dict[str, int]) is True
+
+    def test_tuple_type_checking(self):
+        """_check_type works with tuple[T, ...] type."""
+        from genro_bag.builder import _check_type
+
+        # Fixed-length tuple
+        assert _check_type((1, "a"), tuple[int, str]) is True
+        assert _check_type((1, 2), tuple[int, str]) is False
+        assert _check_type("not a tuple", tuple[int, str]) is False
+
+        # Variable-length tuple with ellipsis
+        assert _check_type((1, 2, 3), tuple[int, ...]) is True
+        assert _check_type((1, "mixed"), tuple[int, ...]) is False
+
+    def test_set_type_checking(self):
+        """_check_type works with set[T] type."""
+        from genro_bag.builder import _check_type
+
+        assert _check_type({1, 2, 3}, set[int]) is True
+        assert _check_type({"a", "b"}, set[str]) is True
+        assert _check_type({1, "mixed"}, set[int]) is False
+        assert _check_type("not a set", set[int]) is False
+        # Empty set is valid
+        assert _check_type(set(), set[int]) is True
+
+    def test_union_type_checking(self):
+        """_check_type works with Union and | types."""
+        from genro_bag.builder import _check_type
+
+        # Using | syntax (Python 3.10+)
+        assert _check_type(1, int | str) is True
+        assert _check_type("hello", int | str) is True
+        assert _check_type(1.5, int | str) is False
+
+    def test_any_type_accepts_everything(self):
+        """_check_type with Any accepts everything."""
+        from typing import Any
+
+        from genro_bag.builder import _check_type
+
+        assert _check_type(1, Any) is True
+        assert _check_type("string", Any) is True
+        assert _check_type(None, Any) is True
+        assert _check_type([1, 2, 3], Any) is True
+
+    def test_none_type_checking(self):
+        """_check_type with NoneType."""
+        from genro_bag.builder import _check_type
+
+        assert _check_type(None, type(None)) is True
+        assert _check_type("not none", type(None)) is False
+
+
+# =============================================================================
+# Tests for _split_annotated with Optional (coverage for lines 1166-1174)
+# =============================================================================
+
+
+class TestSplitAnnotated:
+    """Tests for _split_annotated internal function."""
+
+    def test_optional_annotated_type(self):
+        """_split_annotated handles Optional[Annotated[T, ...]]."""
+        from typing import Optional
+
+        from genro_bag.builder import _split_annotated
+
+        # Optional[Annotated[int, Range(ge=0)]] is Union[Annotated[int, Range(ge=0)], None]
+        tp = Optional[Annotated[int, Range(ge=0)]]
+        base, validators = _split_annotated(tp)
+
+        assert base == int
+        assert len(validators) == 1
+        assert isinstance(validators[0], Range)
+
+
+# =============================================================================
+# Tests for _parse_sub_tags_spec (coverage for lines 1327-1331, 1342)
+# =============================================================================
+
+
+class TestParseSubTagsSpec:
+    """Tests for _parse_sub_tags_spec internal function."""
+
+    def test_range_syntax(self):
+        """_parse_sub_tags_spec handles [min:max] syntax."""
+        from genro_bag.builder import _parse_sub_tags_spec
+
+        result = _parse_sub_tags_spec("item[1:3]")
+        assert result == {"item": (1, 3)}
+
+        result = _parse_sub_tags_spec("item[0:]")
+        import sys
+
+        assert result == {"item": (0, sys.maxsize)}
+
+        result = _parse_sub_tags_spec("item[:5]")
+        assert result == {"item": (0, 5)}
+
+    def test_invalid_empty_brackets_raises(self):
+        """_parse_sub_tags_spec raises for invalid [] syntax."""
+        from genro_bag.builder import _parse_sub_tags_spec
+
+        with pytest.raises(ValueError, match="Invalid sub_tags syntax"):
+            _parse_sub_tags_spec("item[]")
+
+
+# =============================================================================
+# Tests for _pop_decorated_methods tags tuple (coverage for lines 1367-1370)
+# =============================================================================
+
+
+class TestPopDecoratedMethodsTags:
+    """Tests for _pop_decorated_methods with tuple tags."""
+
+    def test_element_with_tags_tuple(self):
+        """@element with tags as tuple."""
+
+        class Builder(BagBuilderBase):
+            @element(tags=("alias1", "alias2"))
+            def _internal(self): ...
+
+        # Both aliases should be in schema
+        assert Builder._class_schema.get_node("alias1") is not None
+        assert Builder._class_schema.get_node("alias2") is not None
+
+
+# =============================================================================
+# Tests for _rename_colliding_schema_tags (coverage for lines 1404-1419)
+# =============================================================================
+
+
+class TestRenameCollidingTags:
+    """Tests for _rename_colliding_schema_tags."""
+
+    def test_colliding_tag_renamed(self):
+        """Schema tags colliding with Bag methods are renamed."""
+        import warnings
+
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+
+            class Builder(BagBuilderBase):
+                @element()
+                def keys(self):  # 'keys' is a Bag method
+                    ...
+
+            # Should have warning
+            assert len(w) == 1
+            assert "renamed" in str(w[0].message).lower()
+            assert "keys" in str(w[0].message)
+
+            # Tag should be renamed to 'el_keys'
+            assert Builder._class_schema.get_node("el_keys") is not None
+            assert Builder._class_schema.get_node("keys") is None
+
+
+# =============================================================================
+# Tests for SchemaBuilder.compile (coverage for lines 1508-1509)
+# =============================================================================
+
+
+class TestSchemaBuilderCompile:
+    """Tests for SchemaBuilder.compile method."""
+
+    def test_compile_saves_msgpack(self, tmp_path):
+        """SchemaBuilder.compile saves schema to msgpack file."""
+        schema = Bag(builder=SchemaBuilder)
+        schema.item("div", sub_tags="span")
+        schema.item("span")
+
+        # Use correct extension for msgpack files
+        output_file = tmp_path / "test_schema.bag.mp"
+        schema.builder.compile(output_file)
+
+        # File should exist and contain msgpack data
+        assert output_file.exists()
+        assert output_file.stat().st_size > 0
+
+        # Should be loadable
+        loaded = Bag().fill_from(output_file)
+        assert loaded.get_node("div") is not None
+        assert loaded.get_node("span") is not None
+
+
+# =============================================================================
+# Tests for _render_value (coverage for lines 1097-1126)
+# =============================================================================
+
+
+class TestRenderValue:
+    """Tests for _render_value method."""
+
+    def test_value_format_attribute(self):
+        """_render_value applies value_format from node attribute.
+
+        value_format is a Python format string applied to the node value.
+        The format uses .format() method, so for numeric formatting we need {}.
+        """
+
+        class Builder(BagBuilderBase):
+            @element()
+            def price(self): ...
+
+        bag = Bag(builder=Builder)
+        # Use format that adds prefix/suffix
+        bag.price(node_value="42.50", value_format="Price: {}")
+
+        node = bag.get_node("price_0")
+        result = bag.builder._render_value(node)
+
+        assert result == "Price: 42.50"
+
+    def test_value_template_attribute(self):
+        """_render_value applies value_template from node attribute."""
+
+        class Builder(BagBuilderBase):
+            @element()
+            def greeting(self): ...
+
+        bag = Bag(builder=Builder)
+        bag.greeting(node_value="World", value_template="Hello, {node_value}!")
+
+        node = bag.get_node("greeting_0")
+        result = bag.builder._render_value(node)
+
+        assert result == "Hello, World!"
+
+    def test_compile_callback(self):
+        """_render_value calls compile_callback to modify context."""
+
+        class Builder(BagBuilderBase):
+            @element(compile_callback="uppercase_value")
+            def loud(self): ...
+
+            def uppercase_value(self, ctx):
+                ctx["node_value"] = ctx["node_value"].upper()
+
+        bag = Bag(builder=Builder)
+        bag.loud(node_value="hello")
+
+        node = bag.get_node("loud_0")
+        result = bag.builder._render_value(node)
+
+        assert result == "HELLO"
+
+    def test_compile_format_schema(self):
+        """_render_value applies compile_format from schema."""
+
+        class Builder(BagBuilderBase):
+            @element(compile_format="[{}]")
+            def bracketed(self): ...
+
+        bag = Bag(builder=Builder)
+        bag.bracketed(node_value="content")
+
+        node = bag.get_node("bracketed_0")
+        result = bag.builder._render_value(node)
+
+        assert result == "[content]"
+
+
+# =============================================================================
+# Tests for builder __str__ and __iter__ (coverage for lines 869, 901)
+# =============================================================================
+
+
+class TestBuilderStringRepresentation:
+    """Tests for builder __str__ and __iter__."""
+
+    def test_builder_str(self):
+        """Builder __str__ returns schema structure."""
+
+        class Builder(BagBuilderBase):
+            @element()
+            def item(self): ...
+
+        bag = Bag(builder=Builder)
+        result = str(bag.builder)
+
+        # Should include schema node
+        assert "item" in result
+
+    def test_builder_iter(self):
+        """Builder __iter__ iterates over schema nodes."""
+
+        class Builder(BagBuilderBase):
+            @element()
+            def alpha(self): ...
+
+            @element()
+            def beta(self): ...
+
+        bag = Bag(builder=Builder)
+        tags = [node.label for node in bag.builder]
+
+        assert "alpha" in tags
+        assert "beta" in tags
+
+
+# =============================================================================
+# Tests for _get_call_args_validations (coverage for lines 1141-1144)
+# =============================================================================
+
+
+class TestGetCallArgsValidations:
+    """Tests for _get_call_args_validations."""
+
+    def test_returns_none_for_unknown_tag(self):
+        """_get_call_args_validations returns None for unknown tag."""
+
+        class Builder(BagBuilderBase):
+            @element()
+            def item(self): ...
+
+        bag = Bag(builder=Builder)
+        result = bag.builder._get_call_args_validations("nonexistent")
+
+        assert result is None
+
+    def test_returns_validations_for_known_tag(self):
+        """_get_call_args_validations returns validations for known tag."""
+
+        class Builder(BagBuilderBase):
+            @element()
+            def item(self, name: str = None): ...
+
+        bag = Bag(builder=Builder)
+        result = bag.builder._get_call_args_validations("item")
+
+        assert result is not None
+        assert "name" in result
+
+
+# =============================================================================
+# Tests for compile method formats (coverage for compile method)
+# =============================================================================
+
+
+class TestBuilderCompile:
+    """Tests for builder compile method."""
+
+    def test_compile_json_format(self):
+        """Builder compile with format='json'."""
+
+        class Builder(BagBuilderBase):
+            @element()
+            def item(self): ...
+
+        bag = Bag(builder=Builder)
+        bag.item(node_value="test")
+
+        result = bag.builder.compile(format="json")
+
+        # JSON output includes label and value
+        assert "item_0" in result
+        assert "test" in result
+
+    def test_compile_unknown_format_raises(self):
+        """Builder compile with unknown format raises ValueError."""
+
+        class Builder(BagBuilderBase):
+            @element()
+            def item(self): ...
+
+        bag = Bag(builder=Builder)
+
+        with pytest.raises(ValueError, match="Unknown format"):
+            bag.builder.compile(format="unknown")

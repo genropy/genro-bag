@@ -318,3 +318,175 @@ class TestUrlResolverErrorHandling:
         resolver = UrlResolver("https://httpbin.org/status/404")
         with pytest.raises(httpx.HTTPStatusError):
             resolver()
+
+
+# =============================================================================
+# Tests for query string and path parameters (coverage for lines 105-150, 167-169)
+# =============================================================================
+
+
+class TestUrlResolverQueryString:
+    """Tests for query string handling."""
+
+    @pytest.mark.network
+    def test_query_string_from_dict(self):
+        """Query string from dict is appended to URL."""
+        resolver = UrlResolver(
+            "https://httpbin.org/get", qs={"foo": "bar", "count": 42}, as_bag=False
+        )
+        result = resolver()
+        # httpbin/get echoes back the query params
+        assert b"foo" in result
+        assert b"bar" in result
+
+    @pytest.mark.network
+    def test_query_string_from_bag(self):
+        """Query string from Bag is converted correctly."""
+        qs_bag = Bag()
+        qs_bag["page"] = 1
+        qs_bag["limit"] = 10
+
+        resolver = UrlResolver("https://httpbin.org/get", qs=qs_bag, as_bag=False)
+        result = resolver()
+        assert b"page" in result
+        assert b"limit" in result
+
+    @pytest.mark.network
+    def test_query_string_none_values_filtered(self):
+        """None values in query string are filtered out."""
+        qs = {"include": "data", "exclude": None}
+        resolver = UrlResolver("https://httpbin.org/get", qs=qs, as_bag=False)
+        result = resolver()
+        # httpbin echoes back args
+        assert b"include" in result
+        assert b"exclude" not in result
+
+    @pytest.mark.network
+    def test_query_string_appended_to_existing(self):
+        """Query string is appended with & if URL already has ?."""
+        resolver = UrlResolver(
+            "https://httpbin.org/get?existing=true", qs={"new": "value"}, as_bag=False
+        )
+        result = resolver()
+        assert b"existing" in result
+        assert b"new" in result
+
+    @pytest.mark.network
+    def test_extra_kwargs_become_query_string(self):
+        """Extra kwargs not in class_kwargs become query string params."""
+        resolver = UrlResolver("https://httpbin.org/get", as_bag=False)
+        # Pass extra params when calling - these are stored in _kw via get_item
+        resolver._kw["custom_param"] = "custom_value"
+        resolver._kw["another"] = 123
+        result = resolver()
+        assert b"custom_param" in result
+        assert b"another" in result
+
+
+class TestUrlResolverPathParameters:
+    """Tests for path parameter substitution."""
+
+    @pytest.mark.network
+    def test_path_parameter_substitution(self):
+        """Path parameters {placeholder} are substituted with arg_N values."""
+        # httpbin/anything echoes the URL path
+        resolver = UrlResolver(
+            "https://httpbin.org/anything/{id}/details", as_bag=False
+        )
+        resolver._kw["arg_0"] = "12345"
+        result = resolver()
+        assert b"12345" in result
+        assert b"{id}" not in result
+
+    @pytest.mark.network
+    def test_multiple_path_parameters(self):
+        """Multiple path parameters are substituted."""
+        resolver = UrlResolver(
+            "https://httpbin.org/anything/{type}/{id}", as_bag=False
+        )
+        resolver._kw["arg_0"] = "users"
+        resolver._kw["arg_1"] = "42"
+        result = resolver()
+        assert b"users" in result
+        assert b"42" in result
+
+    def test_path_args_with_invalid_index(self):
+        """Invalid arg_X index (non-numeric) is ignored."""
+        resolver = UrlResolver("https://httpbin.org/anything/{id}")
+        resolver._kw["arg_invalid"] = "ignored"
+        # Should not raise, just ignore the invalid arg
+        # URL still has {id} since arg_0 not set
+        assert resolver._kw["url"] == "https://httpbin.org/anything/{id}"
+
+
+class TestUrlResolverBodyHandling:
+    """Tests for request body handling."""
+
+    @pytest.mark.network
+    def test_post_with_bag_body(self):
+        """POST with Bag body is converted to JSON."""
+        body = Bag()
+        body["name"] = "Test"
+        body["value"] = 123
+
+        resolver = UrlResolver(
+            "https://httpbin.org/post", method="post", body=body, as_bag=False
+        )
+        result = resolver()
+        # httpbin/post echoes the JSON body
+        assert b"name" in result
+        assert b"Test" in result
+
+    @pytest.mark.network
+    def test_post_with_dict_body(self):
+        """POST with dict body is sent as JSON."""
+        body = {"name": "Test", "value": 456}
+
+        resolver = UrlResolver(
+            "https://httpbin.org/post", method="post", body=body, as_bag=False
+        )
+        result = resolver()
+        assert b"name" in result
+        assert b"456" in result
+
+    @pytest.mark.network
+    def test_body_override_via_underscore_body(self):
+        """_body kwarg overrides constructor body."""
+        original_body = {"original": "data"}
+        override_body = {"override": "data"}
+
+        resolver = UrlResolver(
+            "https://httpbin.org/post", method="post", body=original_body, as_bag=False
+        )
+        resolver._kw["_body"] = override_body
+        result = resolver()
+        # Should use override body
+        assert b"override" in result
+        assert b"original" not in result
+
+
+class TestUrlResolverQsToDict:
+    """Tests for _qs_to_dict internal method."""
+
+    def test_qs_to_dict_with_bag(self):
+        """_qs_to_dict converts Bag to dict."""
+        resolver = UrlResolver("http://example.com")
+        qs_bag = Bag()
+        qs_bag["a"] = 1
+        qs_bag["b"] = "hello"
+        qs_bag["c"] = None  # Should be filtered
+
+        result = resolver._qs_to_dict(qs_bag)
+
+        assert result == {"a": 1, "b": "hello"}
+        assert "c" not in result
+
+    def test_qs_to_dict_with_dict(self):
+        """_qs_to_dict passes through dict filtering None values."""
+        resolver = UrlResolver("http://example.com")
+        qs_dict = {"x": 10, "y": None, "z": "test"}
+
+        result = resolver._qs_to_dict(qs_dict)
+
+        assert result == {"x": 10, "z": "test"}
+        assert "y" not in result

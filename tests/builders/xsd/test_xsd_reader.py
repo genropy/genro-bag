@@ -330,3 +330,127 @@ class TestXsdReaderSepa:
 
         # SEPA schema should have many elements
         assert len(elements) > 100
+
+
+# =============================================================================
+# Tests for internal methods (coverage)
+# =============================================================================
+
+
+class TestXsdReaderInternalMethods:
+    """Tests for internal XsdReader methods."""
+
+    def test_strip_ns_empty_name(self):
+        """_strip_ns handles empty/None name."""
+        reader = XsdReader(SIMPLE_XSD)
+        assert reader._strip_ns(None) == ""
+        assert reader._strip_ns("") == ""
+
+    def test_strip_ns_with_namespace(self):
+        """_strip_ns strips namespace prefix."""
+        reader = XsdReader(SIMPLE_XSD)
+        assert reader._strip_ns("{http://example.com}element") == "element"
+        assert reader._strip_ns("xs:element") == "element"
+        assert reader._strip_ns("element") == "element"
+
+    def test_mul_max_unbounded(self):
+        """_mul_max handles unbounded (None) values."""
+        reader = XsdReader(SIMPLE_XSD)
+        assert reader._mul_max(None, 5) is None
+        assert reader._mul_max(5, None) is None
+        assert reader._mul_max(None, None) is None
+        assert reader._mul_max(3, 4) == 12
+
+    def test_merge_occ_none_prev(self):
+        """_merge_occ with None previous value."""
+        reader = XsdReader(SIMPLE_XSD)
+        assert reader._merge_occ(None, (1, 2)) == (1, 2)
+
+    def test_merge_occ_both_bounded(self):
+        """_merge_occ merges bounded occurrences."""
+        reader = XsdReader(SIMPLE_XSD)
+        # Conservative merge: min of mins, max of maxes
+        assert reader._merge_occ((1, 5), (0, 3)) == (0, 5)
+
+    def test_merge_occ_with_unbounded(self):
+        """_merge_occ handles unbounded max."""
+        reader = XsdReader(SIMPLE_XSD)
+        assert reader._merge_occ((1, None), (2, 5)) == (1, None)
+        assert reader._merge_occ((1, 5), (2, None)) == (1, None)
+
+
+# =============================================================================
+# Tests for XsdReader.from_url (mocked)
+# =============================================================================
+
+
+class TestXsdReaderFromUrl:
+    """Tests for XsdReader.from_url."""
+
+    def test_from_url_with_mock(self, monkeypatch):
+        """Test from_url with mocked urllib."""
+        from io import BytesIO
+
+        class MockResponse:
+            def __init__(self, data):
+                self._data = data
+
+            def read(self):
+                return self._data
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                pass
+
+        def mock_urlopen(request):
+            xsd_bytes = SIMPLE_XSD.encode("utf-8")
+            return MockResponse(xsd_bytes)
+
+        import urllib.request
+
+        monkeypatch.setattr(urllib.request, "urlopen", mock_urlopen)
+
+        reader = XsdReader.from_url("http://example.com/schema.xsd")
+        elements = {name: (sub_tags, cav) for name, sub_tags, cav in reader.iter_elements()}
+
+        assert "root" in elements
+        assert "child1" in elements
+
+
+# =============================================================================
+# Tests for edge cases in XSD parsing
+# =============================================================================
+
+
+ALL_GROUP_XSD = """\
+<?xml version="1.0" encoding="UTF-8"?>
+<xs:schema xmlns:xs="http://www.w3.org/2001/XMLSchema">
+    <xs:element name="data" type="DataType"/>
+    <xs:complexType name="DataType">
+        <xs:all>
+            <xs:element name="field1" type="xs:string"/>
+            <xs:element name="field2" type="xs:int"/>
+        </xs:all>
+    </xs:complexType>
+</xs:schema>
+"""
+
+
+class TestXsdReaderAllGroup:
+    """Tests for xs:all group handling."""
+
+    def test_all_group_elements(self):
+        """Test all group elements are included."""
+        reader = XsdReader(ALL_GROUP_XSD)
+        elements = {name: (sub_tags, cav) for name, sub_tags, cav in reader.iter_elements()}
+
+        data_sub_tags = elements["data"][0]
+        assert "field1" in data_sub_tags
+        assert "field2" in data_sub_tags
+
+
+# NOTE: complexContent/extension is NOT supported by XsdReader.
+# Only simpleContent/extension is implemented. If complexContent support
+# is added in the future, tests should be added here.

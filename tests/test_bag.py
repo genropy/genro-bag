@@ -3616,3 +3616,114 @@ class TestBagCoverageEdgeCases:
 
         # Same dict instance returned
         assert node.compiled is compiled
+
+
+class TestBagToString:
+    """Tests for Bag.to_string() method."""
+
+    def test_simple_values(self):
+        """Test to_string with simple scalar values."""
+        bag = Bag()
+        bag["name"] = "test"
+        bag["count"] = 42
+
+        result = bag.to_string()
+
+        assert "name: 'test'" in result
+        assert "count: 42" in result
+
+    def test_nested_bag(self):
+        """Test to_string with nested Bag structures."""
+        bag = Bag()
+        inner = Bag()
+        inner["city"] = "Rome"
+        inner["zip"] = "00100"
+        bag.set_item("address", inner)
+
+        result = bag.to_string()
+
+        assert "address" in result
+        assert "city: 'Rome'" in result
+        assert "zip: '00100'" in result
+
+    def test_with_attributes(self):
+        """Test to_string shows node attributes."""
+        bag = Bag()
+        bag.set_item("item", "value", _attributes={"id": 123, "active": True})
+
+        result = bag.to_string()
+
+        assert "item: 'value'" in result
+        assert "id=123" in result
+        assert "active=True" in result
+
+    def test_none_value(self):
+        """Test to_string with None value."""
+        bag = Bag()
+        bag["empty"] = None
+
+        result = bag.to_string()
+
+        assert "empty: None" in result
+
+    def test_bytes_value(self):
+        """Test to_string with bytes value."""
+        bag = Bag()
+        bag["data"] = b"hello"
+
+        result = bag.to_string()
+
+        assert "data: hello" in result
+
+    def test_long_string_truncated(self):
+        """Test to_string truncates long strings."""
+        bag = Bag()
+        bag["text"] = "x" * 100
+
+        result = bag.to_string()
+
+        assert "..." in result
+        assert len("x" * 100) > 50  # Original is longer
+
+    def test_tree_structure(self):
+        """Test to_string produces tree structure with proper characters."""
+        bag = Bag()
+        bag["a"] = 1
+        bag["b"] = 2
+        bag["c"] = 3
+
+        result = bag.to_string()
+
+        # Should have tree characters
+        assert "├── " in result or "└── " in result
+
+    def test_circular_reference(self):
+        """Test to_string handles circular references."""
+        bag = Bag()
+        inner = Bag()
+        bag.set_item("child", inner)
+        # Create circular reference by adding bag to inner
+        inner.set_item("parent_ref", bag)
+
+        result = bag.to_string()
+
+        assert "circular ref" in result
+
+    def test_empty_bag(self):
+        """Test to_string with empty bag."""
+        bag = Bag()
+
+        result = bag.to_string()
+
+        assert result == ""
+
+    def test_backref_marker(self):
+        """Test to_string shows backref marker."""
+        bag = Bag()
+        inner = Bag()
+        inner.set_backref()
+        bag.set_item("child", inner)
+
+        result = bag.to_string()
+
+        assert "(*)" in result
