@@ -358,11 +358,11 @@ class BagBuilderBase(ABC):
 
             # Rimuovi node_value dai kwargs per evitare duplicati
             kwargs.pop("node_value", None)
-            return self._default_element(destination_bag, node_value, node_tag=node_tag, **kwargs)
+            return self._add_element(destination_bag, node_value, node_tag=node_tag, **kwargs)
 
         return wrapper
 
-    def _default_element(
+    def _add_element(
         self,
         build_where: Bag,
         node_value: Any = None,
@@ -370,13 +370,15 @@ class BagBuilderBase(ABC):
         node_tag: str = "",
         **attr: Any,
     ) -> BagNode:
-        """Default handler for elements without custom handler.
+        """Add an element node to the bag.
+
+        Called by the wrapper after optional adapter transformation.
 
         Args:
             build_where: The destination Bag where the node will be created.
             node_value: Node content (positional). Becomes node.value.
             node_label: Optional explicit label for the node.
-            node_tag: The tag name for the element (passed via kwargs).
+            node_tag: The tag name for the element.
             **attr: Node attributes.
         """
         return self.child(build_where, node_tag, node_value, node_label=node_label, **attr)
