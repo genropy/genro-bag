@@ -12,12 +12,14 @@ class, so cls() creates a new Bag instance.
 from __future__ import annotations
 
 import datetime
+import io
 import os
 import re
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Literal, cast
 from xml import sax
 from xml.sax import saxutils
+from xml.sax.handler import ContentHandler
 
 from genro_tytx import from_tytx as tytx_decode
 
@@ -101,7 +103,14 @@ class BagParser:
             if k.startswith("GNR_"):
                 source = source.replace(f"{{{k}}}", os.environ[k])
 
-        sax.parseString(source, handler)
+        # Create secure parser (disable DTD and external entities to prevent XXE)
+        parser = sax.make_parser()
+        parser.setContentHandler(handler)
+        parser.setFeature(sax.handler.feature_external_ges, False)
+        parser.setFeature(sax.handler.feature_external_pes, False)
+        input_source = sax.xmlreader.InputSource()
+        input_source.setCharacterStream(io.StringIO(source))
+        parser.parse(input_source)
 
         result = handler.bags[0][0]
         if handler.legacy_mode:
@@ -253,7 +262,7 @@ class BagParser:
 # =============================================================================
 
 
-class _BagXmlHandler(sax.handler.ContentHandler):
+class _BagXmlHandler(ContentHandler):
     """SAX handler for parsing XML into Bag.
 
     Uses a stack-based approach where each XML element creates a new Bag

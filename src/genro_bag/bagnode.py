@@ -311,10 +311,10 @@ class BagNode:
             _attributes.update(value._attr)
             value = value._value
 
-        # Handle objects with rootattributes
+        # Handle objects with rootattributes (dict only, not callables from __getattr__)
         if hasattr(value, "rootattributes"):
             rootattributes = value.rootattributes
-            if rootattributes:
+            if isinstance(rootattributes, dict) and rootattributes:
                 _attributes = dict(_attributes or {})
                 _attributes.update(rootattributes)
 

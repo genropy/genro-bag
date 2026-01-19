@@ -78,6 +78,16 @@ html['header']  # Access by label
 
 ## Custom Builders
 
+Three decorators for defining schema:
+
+| Decorator | Purpose | Body |
+|-----------|---------|------|
+| `@element` | Simple elements | Optional (`...`) |
+| `@abstract` | Inheritance groups | Optional (`...`) |
+| `@component` | Composite structures | **Required** |
+
+### @element Example
+
 ```python
 from genro_bag.builders import BagBuilderBase, element
 
@@ -96,6 +106,31 @@ m = menu.menu()
 m.item(label='Open', action='open_file')
 m.separator()
 m.item(label='Exit', action='quit')
+```
+
+### @component Example
+
+Use `@component` for reusable composite structures:
+
+```python
+from genro_bag.builders import BagBuilderBase, element, component
+
+class PageBuilder(BagBuilderBase):
+    @element()
+    def input(self): ...
+
+    @element()
+    def button(self): ...
+
+    @component(sub_tags='')  # Closed component
+    def login_form(self, component: Bag, **kwargs):
+        component.input(name='username')
+        component.input(name='password')
+        component.button('Login')
+        return component
+
+page = Bag(builder=PageBuilder)
+page.login_form()  # Creates complete form structure
 ```
 
 ## Output Generation

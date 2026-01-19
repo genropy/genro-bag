@@ -7,15 +7,34 @@ validation support.
 Exports:
     element: Decorator to mark methods as element handlers
     abstract: Decorator to define abstract elements (for inheritance only)
+    component: Decorator to mark methods as component handlers (composite structures)
     BagBuilderBase: Abstract base class for all builders
     SchemaBuilder: Builder for creating schemas programmatically
     Regex: Regex pattern constraint for string validation
     Range: Range constraint for numeric validation
 
+Decorators:
+    @element: Simple elements with optional adapter logic. Body can be empty (...).
+    @abstract: Define sub_tags for inheritance. Cannot be instantiated directly.
+    @component: Composite structures with required handler body. Receives a Bag
+        to populate and returns it. Components can use a different builder internally.
+
 Schema conventions:
     - Elements stored by name: 'div', 'span'
     - Abstracts prefixed with '@': '@flow', '@phrasing'
-    - Use inherits_from='@abstract' to inherit sub_tags
+    - Use inherits_from='@abstract' to inherit sub_tags (only for @element)
+
+Validation parameters:
+    sub_tags: Controls which children are allowed (with cardinality).
+    parent_tags: Controls where the element can be placed (comma-separated list).
+
+sub_tags cardinality syntax:
+    foo      -> any number (0..N)
+    foo[1]   -> exactly 1
+    foo[3]   -> exactly 3
+    foo[0:]  -> 0 or more
+    foo[:2]  -> 0 to 2
+    foo[1:3] -> 1 to 3
 
 compile_* parameters:
     Both @element and @abstract support compile_* parameters for code generation.
@@ -27,22 +46,6 @@ compile_* parameters:
     When using inherits_from, compile_kwargs are inherited from the abstract
     and merged with the element's own compile_kwargs (element overrides abstract).
 
-    Example:
-        @abstract(sub_tags='child', compile_module='textual.containers')
-        def base_container(self): ...
-
-        @element(inherits_from='@base_container', compile_class='Vertical')
-        def vertical(self): ...
-        # Result: compile_kwargs = {'module': 'textual.containers', 'class': 'Vertical'}
-
-sub_tags cardinality syntax:
-    foo      -> any number (0..N)
-    foo[1]   -> exactly 1
-    foo[3]   -> exactly 3
-    foo[0:]  -> 0 or more
-    foo[:2]  -> 0 to 2
-    foo[1:3] -> 1 to 3
-
 Constraint classes for use with Annotated:
     Regex: regex pattern for strings
     Range: min/max value constraints for numbers (ge, le, gt, lt)
@@ -53,6 +56,31 @@ Type hints supported:
     - list[T], dict[K, V], tuple[...], set[T] for generics
     - X | None for optional
     - Annotated[T, validator...] for validators
+
+Example - @element:
+    >>> from genro_bag import Bag
+    >>> from genro_bag.builders import BagBuilderBase, element
+
+    >>> class MyBuilder(BagBuilderBase):
+    ...     @element(sub_tags='item')
+    ...     def container(self): ...
+    ...
+    ...     @element(parent_tags='container')  # can only be inside container
+    ...     def item(self): ...
+
+Example - @component:
+    >>> from genro_bag import Bag
+    >>> from genro_bag.builders import BagBuilderBase, element, component
+
+    >>> class FormBuilder(BagBuilderBase):
+    ...     @element()
+    ...     def input(self): ...
+    ...
+    ...     @component(sub_tags='')  # closed component, returns parent
+    ...     def login_form(self, component: Bag, **kwargs):
+    ...         component.input(name='username')
+    ...         component.input(name='password')
+    ...         return component
 
 SchemaBuilder Example:
     >>> from genro_bag import Bag
@@ -71,6 +99,7 @@ import inspect
 import re
 import sys
 import types
+import warnings
 from abc import ABC
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -90,6 +119,29 @@ from .bag import Bag
 
 if TYPE_CHECKING:
     from .bagnode import BagNode
+
+
+# =============================================================================
+# Empty body detection (internal, needed by decorators)
+# =============================================================================
+
+
+def _ref_empty_body(self): ...
+
+
+def _ref_empty_body_with_docstring(self):
+    """docstring"""
+    ...
+
+
+_EMPTY_BODY_BYTECODE = _ref_empty_body.__code__.co_code
+_EMPTY_BODY_DOCSTRING_BYTECODE = _ref_empty_body_with_docstring.__code__.co_code
+
+
+def _is_empty_body(func: Callable) -> bool:
+    """Check if function body is empty (just ... or docstring + ...)."""
+    code = func.__code__.co_code
+    return code in (_EMPTY_BODY_BYTECODE, _EMPTY_BODY_DOCSTRING_BYTECODE)
 
 
 # =============================================================================
@@ -206,6 +258,104 @@ def abstract(
     return decorator
 
 
+def component(
+    tags: str | tuple[str, ...] | None = None,
+    sub_tags: str | tuple[str, ...] | None = None,
+    parent_tags: str | None = None,
+    builder: type[BagBuilderBase] | None = None,
+    compile_kwargs: dict[str, Any] | None = None,
+    **kwargs: Any,
+) -> Callable:
+    """Decorator to mark a method as component handler.
+
+    Components are composite structures that receive a new Bag, populate it,
+    and return it. The populated bag becomes the node's value.
+
+    Unlike @element, @component REQUIRES a method body (ellipsis not allowed).
+    The handler receives a fresh Bag as first parameter (after self) and
+    should populate it with child elements.
+
+    Args:
+        tags: Tag names this component handles. If None, uses method name.
+        sub_tags: Valid child tags AFTER the component is created. Controls
+            return behavior of the component call:
+            - '' (empty string): Closed/leaf component, returns parent bag
+              (for chaining at same level)
+            - defined or None: Open container, returns internal bag
+              (for adding children to the component)
+        parent_tags: Valid parent tags (comma-separated). If specified,
+            component can only be placed inside one of these parents.
+        builder: Optional builder class for the component's internal bag.
+            If not specified, uses the same builder class as parent.
+        compile_kwargs: Dict of compilation parameters (module, class, etc.).
+        **kwargs: Additional compile_* parameters are extracted and merged
+            into compile_kwargs.
+
+    Handler signature:
+        def handler(self, component: Bag, **kwargs) -> Bag | dict:
+            # 'component' is the component's internal Bag to populate
+            # Return the component, or a dict with extra attrs for the node
+
+    Example - Closed component (sub_tags=''):
+        @component(sub_tags='')
+        def login_form(self, component: Bag, **kwargs):
+            component.input(name='username')
+            component.input(name='password')
+            component.button('Login')
+            return component
+
+        # Usage: returns parent for chaining
+        page.login_form()
+        page.other_element()  # continues at same level
+
+    Example - Open component (sub_tags defined):
+        @component(sub_tags='item')
+        def mylist(self, component: Bag, title='', **kwargs):
+            component.header(title=title)
+            return component
+
+        # Usage: returns internal bag for adding children
+        lst = page.mylist(title='My List')
+        lst.item('First')
+        lst.item('Second')
+
+    Example - Return dict for node attributes:
+        @component(sub_tags='')
+        def card(self, component: Bag, title='', **kwargs):
+            component.header(title)
+            component.body()
+            return {'css_class': 'card', 'data_id': '123'}
+    """
+    # Extract compile_* from kwargs and merge with compile_kwargs
+    merged_compile = dict(compile_kwargs) if compile_kwargs else {}
+    for key, value in kwargs.items():
+        if key.startswith("compile_"):
+            merged_compile[key[8:]] = value
+
+    def decorator(func: Callable) -> Callable:
+        # Components MUST have a real body (not ellipsis)
+        if _is_empty_body(func):
+            raise ValueError(
+                f"@component '{func.__name__}' must have a body - ellipsis (...) not allowed"
+            )
+
+        func._decorator = {  # type: ignore[attr-defined]
+            k: v
+            for k, v in {
+                "component": True,
+                "tags": tags,
+                "sub_tags": sub_tags,
+                "parent_tags": parent_tags,
+                "builder": builder,
+                "compile_kwargs": merged_compile if merged_compile else None,
+            }.items()
+            if v is not None
+        }
+        return func
+
+    return decorator
+
+
 # =============================================================================
 # Validator classes (Annotated metadata)
 # =============================================================================
@@ -256,21 +406,28 @@ class BagBuilderBase(ABC):
     """Abstract base class for Bag builders.
 
     A builder provides domain-specific methods for creating nodes in a Bag.
-    Each instance has its own _schema Bag (instance-level, not class-level).
+    Define elements using decorators:
+        - @element: Simple elements (body can be empty or with adapter logic)
+        - @abstract: Define sub_tags for inheritance (cannot be instantiated)
+        - @component: Composite structures with required handler body
 
     Schema conventions:
         - Elements: stored directly by name (e.g., 'div', 'span')
         - Abstracts: prefixed with '@' (e.g., '@flow', '@phrasing')
-        - Abstracts define sub_tags for inheritance, cannot be used directly
+        - Components: stored by name, marked with is_component=True
+
+    Validation parameters:
+        - sub_tags: Controls which children are allowed under this element
+        - parent_tags: Controls where this element can be placed
 
     Schema loading priority:
         1. schema_path passed to constructor (builder_schema_path='...')
         2. schema_path class attribute
-        3. @element decorated methods
+        3. @element and @component decorated methods
 
     Usage:
         >>> bag = Bag(builder=MyBuilder)
-        >>> bag.div()  # looks up 'div' in _schema, calls handler
+        >>> bag.div()  # looks up 'div' in schema, calls handler
         >>> # With custom schema:
         >>> bag = Bag(builder=MyBuilder, builder_schema_path='custom.bag.mp')
     """
@@ -283,34 +440,55 @@ class BagBuilderBase(ABC):
     # -------------------------------------------------------------------------
 
     def __init_subclass__(cls, **kwargs: Any) -> None:
-        """Build _class_schema Bag from @element decorated methods."""
+        """Build _class_schema Bag from @element and @component decorated methods."""
         super().__init_subclass__(**kwargs)
 
         cls._class_schema = Bag().fill_from(getattr(cls, "schema_path", None))
 
-        for tag_list, adapter_name, obj, decorator_info in _pop_decorated_methods(cls):
-            if adapter_name:
-                setattr(cls, adapter_name, obj)
+        for tag_list, method_name, obj, decorator_info in _pop_decorated_methods(cls):
+            if method_name:
+                setattr(cls, method_name, obj)
 
-            sub_tags = decorator_info.get("sub_tags", "")
+            is_component = decorator_info.get("component", False)
+            # For components: distinguish between sub_tags="" (closed) and absent (open)
+            # Use sentinel to detect if sub_tags was explicitly set
+            sub_tags = decorator_info.get("sub_tags") if is_component else decorator_info.get("sub_tags", "")
             parent_tags = decorator_info.get("parent_tags")
             inherits_from = decorator_info.get("inherits_from", "")
             compile_kwargs = decorator_info.get("compile_kwargs")
+            component_builder = decorator_info.get("builder")
             documentation = obj.__doc__
             call_args_validations = _extract_validators_from_signature(obj)
 
             for tag in tag_list:
-                cls._class_schema.set_item(
-                    tag,
-                    None,
-                    adapter_name=adapter_name,
-                    sub_tags=sub_tags,
-                    parent_tags=parent_tags,
-                    inherits_from=inherits_from,
-                    compile_kwargs=compile_kwargs,
-                    documentation=documentation,
-                    call_args_validations=call_args_validations,
-                )
+                if is_component:
+                    cls._class_schema.set_item(
+                        tag,
+                        None,
+                        handler_name=method_name,
+                        is_component=True,
+                        component_builder=component_builder,
+                        sub_tags=sub_tags,
+                        parent_tags=parent_tags,
+                        compile_kwargs=compile_kwargs,
+                        documentation=documentation,
+                        call_args_validations=call_args_validations,
+                    )
+                else:
+                    cls._class_schema.set_item(
+                        tag,
+                        None,
+                        adapter_name=method_name,
+                        sub_tags=sub_tags,
+                        parent_tags=parent_tags,
+                        inherits_from=inherits_from,
+                        compile_kwargs=compile_kwargs,
+                        documentation=documentation,
+                        call_args_validations=call_args_validations,
+                    )
+
+        # Check for name collisions with Bag and BagBuilderBase methods
+        _rename_colliding_schema_tags(cls, cls._class_schema)
 
     def __init__(self, bag: Bag, schema_path: str | Path | None = None) -> None:
         """Bind builder to bag. Enables node.parent navigation.
@@ -347,6 +525,10 @@ class BagBuilderBase(ABC):
             node_value = args[0] if args else kwargs.get("node_value")
             self._validate_call_args(info, node_value, kwargs)
 
+            # Check if this is a component
+            if info.get("is_component"):
+                return self._handle_component(destination_bag, info, node_tag, kwargs)
+
             # Se c'è un adapter, chiamalo per trasformare i kwargs
             adapter_name = info.get("adapter_name")
             if adapter_name:
@@ -361,6 +543,62 @@ class BagBuilderBase(ABC):
             return self._add_element(destination_bag, node_value, node_tag=node_tag, **kwargs)
 
         return wrapper
+
+    def _handle_component(
+        self,
+        destination_bag: Bag,
+        info: dict,
+        node_tag: str,
+        kwargs: dict,
+    ) -> Bag | BagNode:
+        """Handle component invocation.
+
+        Creates an empty Bag, inserts it into destination, then calls the handler
+        to populate it. This order ensures validation passes (empty bag has no children).
+
+        Args:
+            destination_bag: The parent Bag where component will be added.
+            info: Schema info for the component.
+            node_tag: The tag name for the component.
+            kwargs: Arguments passed to the component.
+
+        Returns:
+            - If sub_tags='': returns destination_bag (closed/leaf component)
+            - Otherwise: returns the component node (open container)
+        """
+        handler_name = info.get("handler_name")
+        component_builder_class = info.get("component_builder")
+        sub_tags = info.get("sub_tags")
+
+        # 1. Create empty Bag with appropriate builder
+        if component_builder_class is not None:
+            component_bag = Bag(builder=component_builder_class)
+        else:
+            component_bag = Bag(builder=type(self))
+
+        # 2. Insert node with empty Bag FIRST (validation passes)
+        node = self._add_element(
+            destination_bag,
+            node_value=component_bag,
+            node_tag=node_tag,
+        )
+
+        # 3. Call handler to populate the Bag (already inside node.value)
+        handler = getattr(self, handler_name)
+        result = handler(component_bag, **kwargs)
+
+        # 4. Handler can return dict with extra attrs for the node
+        if isinstance(result, dict):
+            for key, value in result.items():
+                if key != "node_value":
+                    node.attr[key] = value
+
+        # 5. Determine return value based on sub_tags
+        # sub_tags='' (empty string) -> void/leaf, return parent bag
+        # sub_tags defined or None -> open container, return internal bag
+        if sub_tags == "":
+            return destination_bag
+        return component_bag
 
     def _add_element(
         self,
@@ -1020,6 +1258,7 @@ def _extract_validators_from_signature(fn: Callable) -> dict[str, tuple[Any, lis
         "node_tag",
         "node_label",
         "node_position",
+        "component",  # first param of @component methods
     }
 
     try:
@@ -1111,29 +1350,6 @@ def _parse_sub_tags_spec(spec: str) -> dict[str, tuple[int, int]]:
     return result
 
 
-# =============================================================================
-# Empty body detection (internal)
-# =============================================================================
-
-
-def _ref_empty_body(self): ...
-
-
-def _ref_empty_body_with_docstring(self):
-    """docstring"""
-    ...
-
-
-_EMPTY_BODY_BYTECODE = _ref_empty_body.__code__.co_code
-_EMPTY_BODY_DOCSTRING_BYTECODE = _ref_empty_body_with_docstring.__code__.co_code
-
-
-def _is_empty_body(func: Callable) -> bool:
-    """Check if function body is empty (just ... or docstring + ...)."""
-    code = func.__code__.co_code
-    return code in (_EMPTY_BODY_BYTECODE, _EMPTY_BODY_DOCSTRING_BYTECODE)
-
-
 def _pop_decorated_methods(cls: type):
     """Remove and yield decorated methods with their info and tags."""
     for name, obj in list(cls.__dict__.items()):
@@ -1143,6 +1359,17 @@ def _pop_decorated_methods(cls: type):
 
             if decorator_info.get("abstract"):
                 yield [f"@{name}"], None, obj, decorator_info
+            elif decorator_info.get("component"):
+                # Components always have handler_name (body required)
+                tag_list = [] if name.startswith("_") else [name]
+                tags_raw = decorator_info.get("tags")
+                if tags_raw:
+                    if isinstance(tags_raw, str):
+                        tag_list.extend(t.strip() for t in tags_raw.split(",") if t.strip())
+                    else:
+                        tag_list.extend(tags_raw)
+                handler_name = f"_comp_{tag_list[0]}"
+                yield tag_list, handler_name, obj, decorator_info
             else:
                 tag_list = [] if name.startswith("_") else [name]
                 tags_raw = decorator_info.get("tags")
@@ -1155,18 +1382,61 @@ def _pop_decorated_methods(cls: type):
                 yield tag_list, adapter_name, obj, decorator_info
 
 
+def _rename_colliding_schema_tags(cls: type, schema: Bag) -> None:
+    """Rename schema tags that collide with Bag or BagBuilderBase methods.
+
+    Tags that collide are renamed to 'el_<tag>' and a warning is emitted.
+    """
+    # Get all method names from Bag and BagBuilderBase
+    bag_methods = set(dir(Bag))
+    builder_methods = set(dir(BagBuilderBase))
+    reserved_names = bag_methods | builder_methods
+
+    # Get all tag names from schema (excluding @abstract tags)
+    schema_tags = {node.label for node in schema.nodes if not node.label.startswith("@")}
+
+    # Find collisions
+    collisions = schema_tags & reserved_names
+    if not collisions:
+        return
+
+    # Rename colliding tags
+    renamed = []
+    for tag in collisions:
+        new_tag = f"el_{tag}"
+        node = schema.get_node(tag)
+        if node is not None:
+            # Get node data and attributes
+            node_value = node.value
+            node_attrs = dict(node.attr)
+            # Remove old entry and add new one
+            schema.pop(tag)
+            schema.set_item(new_tag, node_value, **node_attrs)
+            renamed.append(f"'{tag}' -> '{new_tag}'")
+
+    # Emit warning
+    if renamed:
+        warnings.warn(
+            f"Builder {cls.__name__}: schema tags renamed to avoid collision with "
+            f"Bag/BagBuilderBase methods: {', '.join(sorted(renamed))}",
+            UserWarning,
+            stacklevel=3,
+        )
+
+
 # =============================================================================
 # SchemaBuilder
 # =============================================================================
 
 
 class SchemaBuilder(BagBuilderBase):
-    """Builder for creating builder schemas.
+    """Builder for creating builder schemas programmatically.
 
-    Creates schema nodes with the structure expected by BagBuilderBase:
-    - node.label = element name (e.g., 'div') or abstract (e.g., '@flow')
-    - node.value = None
-    - node.attr = {sub_tags, inherits_from, ...}
+    Use SchemaBuilder to define schemas at runtime instead of using decorators.
+    Creates schema nodes with the structure expected by BagBuilderBase.
+
+    Note: SchemaBuilder cannot define @component - components require code
+    handlers and must be defined using the @component decorator.
 
     Schema conventions:
         - Elements: stored by name (e.g., 'div', 'span')
@@ -1177,6 +1447,7 @@ class SchemaBuilder(BagBuilderBase):
         schema = Bag(builder=SchemaBuilder)
         schema.item('@flow', sub_tags='p,span')
         schema.item('div', inherits_from='@flow')
+        schema.item('li', parent_tags='ul,ol')  # li only inside ul or ol
         schema.item('br', sub_tags='')  # void element
         schema.builder.compile('schema.msgpack')
     """
