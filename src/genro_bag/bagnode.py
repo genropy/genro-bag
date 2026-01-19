@@ -862,59 +862,93 @@ class BagNodeContainer:
         _remove_null_attributes: bool = True,
         _reason: str | None = None,
         do_trigger: bool = True,
+        _fired: bool = False,
     ) -> BagNode:
         """Set or create a BagNode with optional position.
 
         If label exists, updates the existing node's value.
         If label doesn't exist, creates a new BagNode and inserts it.
 
-        Resolver handling (Issue #5):
-            If the existing node has a resolver and the `resolver` parameter is not
-            explicitly provided, a BagException is raised. To modify a node with a
-            resolver, you must explicitly handle the resolver:
-            - resolver=False: Remove resolver and set value
-            - resolver=NewResolver: Replace resolver with a new one
+        The label can contain a query string suffix (?attr or ?attr1&attr2) to set
+        attributes instead of value. When query string is present, value is converted
+        to attributes and the node value is not modified (for existing nodes).
 
         Args:
-            label: The node label.
-            value: The value to set.
+            label: The node label. Can contain ?attr suffix to set attributes.
+            value: The value to set. With ?attr syntax, becomes the attribute value.
             node_position: Position specification (>, <, #n, <label, >label, etc.)
             attr: Optional dict of attributes for new nodes.
-            resolver: Optional resolver for new nodes. Use False to explicitly
-                remove an existing resolver.
+            resolver: Optional resolver. Use False to remove existing resolver.
             parent_bag: Parent Bag reference for new nodes.
             _updattr: If True, update attributes instead of replacing.
             _remove_null_attributes: If True, remove None attributes.
             _reason: Reason for the change (for events).
             do_trigger: If True (default), fire events on change.
+            _fired: If True, reset value to None after setting (fire event pattern).
 
         Returns:
             The created or updated BagNode.
 
         Raises:
-            BagNodeException: If node has a resolver and resolver parameter not provided.
+            BagNodeException: If label uses #n syntax, or if trying to set value
+                on node with resolver without handling it explicitly.
         """
-        if label in self._dict:
-            node = self._dict[label]
-            # Issue #5: handle resolver on existing node
-            if node.resolver is not None and resolver is None:
-                raise BagNodeException(
-                    f"Cannot set value on node '{label}' with resolver. "
-                    "Use resolver=False to remove resolver, or resolver=NewResolver to replace it."
+        # Parse query string from label
+        _query_string = None
+        if "?" in label:
+            label, _query_string = label.split("?", 1)
+
+        # Validate label
+        if label is None or label.startswith("#"):
+            raise BagNodeException("Cannot create new node with #n syntax")
+
+        # Handle query string: convert value to attributes
+        if _query_string:
+            qs = _query_string.split("&")
+            if len(qs) == 1:
+                attr = {qs[0]: value}
+            else:
+                if not isinstance(value, tuple) or len(value) != len(qs):
+                    raise BagNodeException("Wrong attributes assignment")
+                attr = dict(zip(qs, value, strict=True))
+            value = None
+
+        node = self._dict.get(label)
+
+        if node:
+            # Existing node
+            if _query_string:
+                # Only set_attr, don't touch value
+                node.set_attr(
+                    attr,
+                    trigger=do_trigger,
+                    _updattr=_updattr,
+                    _remove_null_attributes=_remove_null_attributes,
                 )
-            # resolver=False means explicitly remove the resolver
-            if resolver is False:
-                node._resolver = None
-                resolver = None
-            node.set_value(
-                resolver if value is None else value,
-                _attributes=attr,
-                _updattr=_updattr,
-                _remove_null_attributes=_remove_null_attributes,
-                _reason=_reason,
-                trigger=do_trigger,
-            )
+            else:
+                # Resolver handling
+                if resolver is False:
+                    node._resolver = None
+                elif resolver is not None:
+                    node._resolver = resolver
+                # Resolver check
+                if (node.resolver is not None
+                    and value is not None
+                    and not safe_is_instance(value, "genro_bag.resolver.BagResolver")):
+                    raise BagNodeException(
+                        f"Cannot set value on node '{node.label}' that has a resolver. "
+                        "Use resolver=False to remove it first."
+                    )
+                node.set_value(
+                    value,
+                    _attributes=attr,
+                    _updattr=_updattr,
+                    _remove_null_attributes=_remove_null_attributes,
+                    _reason=_reason,
+                    trigger=do_trigger,
+                )
         else:
+            # New node
             node = BagNode(
                 parent_bag,
                 label=label,
@@ -928,7 +962,12 @@ class BagNodeContainer:
             self._list.insert(idx, node)
             if do_trigger and parent_bag is not None and parent_bag.backref:
                 parent_bag._on_node_inserted(node, idx, reason=_reason)
-        return node  # type: ignore[no-any-return]
+
+        # Handle _fired
+        if _fired:
+            node.set_value(None, trigger=False)
+
+        return node
 
     def pop(self, key: str | int) -> Any:
         """Remove and return item.

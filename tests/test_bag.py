@@ -2725,11 +2725,11 @@ class TestBagCoverageMissing:
     # Line 694: set_item with #n syntax raises
     def test_set_item_hash_n_syntax(self):
         """set_item with #n for new node raises."""
-        from genro_bag.bag import BagException
+        from genro_bag.bagnode import BagNodeException
 
         bag = Bag()
         bag["a"] = Bag()
-        with pytest.raises(BagException, match="Cannot create new node"):
+        with pytest.raises(BagNodeException, match="Cannot create new node"):
             bag["a.#99"] = "value"
 
     # Lines 768->772: pop when path doesn't exist
