@@ -330,9 +330,15 @@ class BagBuilderBase(ABC):
 
         def wrapper(destination_bag: Bag, *args: Any, node_tag: str = name, **kwargs: Any) -> Any:
             try:
-                method = self._get_method(node_tag)
+                info = self.get_schema_info(node_tag)
             except KeyError as err:
                 raise AttributeError(f"'{type(self).__name__}' has no element '{node_tag}'") from err
+
+            # Validazione sui kwargs originali, PRIMA del method
+            node_value = args[0] if args else kwargs.get("node_value")
+            self._validate_call_args(info, node_value, kwargs)
+
+            method = self._get_method(node_tag)
             kwargs["node_tag"] = node_tag
             return method(destination_bag, *args, **kwargs)
 
@@ -376,7 +382,6 @@ class BagBuilderBase(ABC):
             self._accept_child(parent_node, parent_info, node_tag, node_position)
 
         child_info = self.get_schema_info(node_tag)
-        self._validate_call_args(child_info, node_value, attr)
 
         node_label = node_label or self._auto_label(build_where, node_tag)
         child_node = build_where.set_item(node_label, node_value, node_position=node_position, **attr)
