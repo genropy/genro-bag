@@ -2,9 +2,19 @@
 
 This guide shows how to create your own domain-specific builders.
 
+## Overview
+
+Builders use three decorators to define their schema:
+
+| Decorator | Purpose | Body Required |
+|-----------|---------|---------------|
+| `@element` | Simple elements with optional adapter | No (can use `...`) |
+| `@abstract` | Define sub_tags for inheritance | No (can use `...`) |
+| `@component` | Composite structures with code logic | **Yes** (must have body) |
+
 ## Basic Structure
 
-Every builder extends `BagBuilderBase` and defines elements using the `@element` decorator.
+Every builder extends `BagBuilderBase` and defines elements using decorators.
 
 ```{important}
 **Schemas are never created manually.** If you need to load a schema from a file, use
@@ -121,6 +131,51 @@ BagNode : ... at ...
 BagNode : ... at ...
 ```
 
+### Restricting Parent Elements (parent_tags)
+
+Use `parent_tags` to specify where an element can be placed:
+
+```{doctest}
+>>> from genro_bag import Bag
+>>> from genro_bag.builders import BagBuilderBase, element
+
+>>> class ListBuilder(BagBuilderBase):
+...     @element(sub_tags='li[]')
+...     def ul(self): ...
+...
+...     @element(sub_tags='li[]')
+...     def ol(self): ...
+...
+...     @element(parent_tags='ul,ol')  # li can ONLY be inside ul or ol
+...     def li(self): ...
+...
+...     @element()
+...     def div(self): ...
+
+>>> bag = Bag(builder=ListBuilder)
+>>> ul = bag.ul()
+>>> ul.li('Item 1')  # OK - li inside ul  # doctest: +ELLIPSIS
+BagNode : ... at ...
+
+>>> div = bag.div()
+>>> div.li('Invalid')  # Adds node but marks as invalid  # doctest: +ELLIPSIS
+BagNode : ... at ...
+
+>>> # Check for validation errors
+>>> errors = bag.builder.check()
+>>> len(errors) > 0
+True
+>>> 'parent_tags' in str(errors[0])
+True
+```
+
+**Key points about parent_tags:**
+
+- Comma-separated list of valid parent tags
+- Element is **marked invalid** if placed elsewhere (not rejected)
+- Use `builder.check()` to find validation errors
+- Works with both `@element` and `@component`
+
 ## The @abstract Decorator
 
 Use `@abstract` to define element groups that can be inherited but not instantiated directly. Abstract elements are stored with an `@` prefix in the schema.
@@ -230,6 +285,149 @@ BagNode : ... at ...
 >>> c.block()  # from @structural
 <genro_bag.bag.Bag object at ...>
 ```
+
+## The @component Decorator
+
+Use `@component` for composite structures that need code logic to build their content.
+Unlike `@element`, components **must have a method body** - ellipsis (`...`) is not allowed.
+
+### When to Use @component
+
+- When you need to **programmatically create child elements**
+- When the element's structure is **always the same** (e.g., a form with fixed fields)
+- When you want to **encapsulate complex structures** as reusable units
+
+### Basic Component
+
+```{doctest}
+>>> from genro_bag import Bag
+>>> from genro_bag.builders import BagBuilderBase, element, component
+
+>>> class PageBuilder(BagBuilderBase):
+...     @element()
+...     def input(self): ...
+...
+...     @element()
+...     def button(self): ...
+...
+...     @component(sub_tags='')  # Closed component
+...     def login_form(self, component: Bag, **kwargs):
+...         component.input(name='username', placeholder='Username')
+...         component.input(name='password', type='password')
+...         component.button('Login', type='submit')
+...         return component
+
+>>> page = Bag(builder=PageBuilder)
+>>> page.login_form()  # Creates the form structure  # doctest: +ELLIPSIS
+<genro_bag.bag.Bag object at ...>
+>>> len(page)  # One node: login_form_0
+1
+>>> form_node = page.get_node('login_form_0')
+>>> len(form_node.value)  # Three children: 2 inputs + 1 button
+3
+```
+
+### Component Return Behavior (sub_tags)
+
+The `sub_tags` parameter controls what the component call returns:
+
+| sub_tags | Return Value | Use Case |
+|----------|--------------|----------|
+| `''` (empty) | Parent bag | Closed/leaf component, for chaining |
+| defined/None | Internal bag | Open container, for adding children |
+
+**Closed component** (`sub_tags=''`): Returns the parent bag for chaining.
+
+```{doctest}
+>>> from genro_bag import Bag
+>>> from genro_bag.builders import BagBuilderBase, element, component
+
+>>> class Builder(BagBuilderBase):
+...     @element()
+...     def text(self): ...
+...
+...     @component(sub_tags='')
+...     def separator(self, component: Bag, **kwargs):
+...         component.text('---')
+...         return component
+
+>>> doc = Bag(builder=Builder)
+>>> doc.text('Above')  # doctest: +ELLIPSIS
+BagNode : ... at ...
+>>> doc.separator()  # Returns doc, not the separator's bag  # doctest: +ELLIPSIS
+<genro_bag.bag.Bag object at ...>
+>>> doc.text('Below')  # Continues at doc level  # doctest: +ELLIPSIS
+BagNode : ... at ...
+>>> len(doc)  # text, separator, text
+3
+```
+
+**Open component** (`sub_tags` defined): Returns the internal bag for adding children.
+
+```{doctest}
+>>> from genro_bag import Bag
+>>> from genro_bag.builders import BagBuilderBase, element, component
+
+>>> class Builder(BagBuilderBase):
+...     @element()
+...     def header(self): ...
+...
+...     @element()
+...     def item(self): ...
+...
+...     @component(sub_tags='item')  # Allows 'item' children after creation
+...     def mylist(self, component: Bag, title='', **kwargs):
+...         component.header(title)
+...         return component
+
+>>> doc = Bag(builder=Builder)
+>>> lst = doc.mylist(title='Shopping')  # Returns internal bag
+>>> lst.item('Milk')  # doctest: +ELLIPSIS
+BagNode : ... at ...
+>>> lst.item('Bread')  # doctest: +ELLIPSIS
+BagNode : ... at ...
+>>> len(lst)  # header + 2 items
+3
+```
+
+### Component with Different Builder
+
+Use `builder` parameter to use a different builder inside the component:
+
+```{doctest}
+>>> from genro_bag import Bag
+>>> from genro_bag.builders import BagBuilderBase, element, component
+
+>>> class InnerBuilder(BagBuilderBase):
+...     @element()
+...     def field(self): ...
+
+>>> class OuterBuilder(BagBuilderBase):
+...     @element()
+...     def section(self): ...
+...
+...     @component(sub_tags='', builder=InnerBuilder)
+...     def form(self, component: Bag, **kwargs):
+...         # component uses InnerBuilder, not OuterBuilder
+...         component.field(name='email')
+...         component.field(name='name')
+...         return component
+
+>>> page = Bag(builder=OuterBuilder)
+>>> page.section()  # doctest: +ELLIPSIS
+<genro_bag.bag.Bag object at ...>
+>>> page.form()  # Uses InnerBuilder internally  # doctest: +ELLIPSIS
+<genro_bag.bag.Bag object at ...>
+```
+
+### Key Differences: @element vs @component
+
+| Feature | @element | @component |
+|---------|----------|------------|
+| Body | Optional (`...` allowed) | **Required** |
+| Receives | kwargs only | `Bag` + kwargs |
+| Creates | Single node | Node with pre-populated children |
+| Use case | Simple elements | Composite structures |
 
 ## Defining Multiple Elements Simply
 
@@ -388,7 +586,20 @@ def item(self): ...
 def divider(self): ...
 ```
 
-### 2. Consistent Naming
+### 2. Use @component for Reusable Structures
+
+When you have a fixed structure that repeats, use `@component`:
+
+```python
+@component(sub_tags='')
+def card(self, component: Bag, title='', **kwargs):
+    component.header(title)
+    component.body()
+    component.footer()
+    return component
+```
+
+### 3. Consistent Naming
 
 Follow conventions from your domain:
 
@@ -396,11 +607,16 @@ Follow conventions from your domain:
 - Config: use config terminology (`section`, `option`, `value`)
 - Data: use data terminology (`record`, `field`, `value`)
 
-### 3. Validate at Build Time
+### 4. Validate Structure Early
 
-Use `sub_tags` to catch structural errors early (see [Validation](validation.md)):
+Use `sub_tags` and `parent_tags` to catch structural errors early:
 
 ```python
 @element(sub_tags='head[:1],body[:1]')  # Exactly one of each
 def html(self): ...
+
+@element(parent_tags='ul,ol')  # Only inside lists
+def li(self): ...
 ```
+
+See [Validation](validation.md) for more details.

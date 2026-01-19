@@ -280,6 +280,39 @@ xml = invoice.to_xml(pretty=True)
 True
 ```
 
+### Using @component for Reusable Cards
+
+The previous example uses a function. With `@component`, you can make it part of the builder:
+
+```{doctest}
+>>> from genro_bag import Bag
+>>> from genro_bag.builders import BagBuilderBase, element, component
+
+>>> class CardBuilder(BagBuilderBase):
+...     @element(sub_tags='header,body')
+...     def card_container(self): ...
+...
+...     @element()
+...     def header(self): ...
+...
+...     @element()
+...     def body(self): ...
+...
+...     @component(sub_tags='')
+...     def card(self, component: Bag, title='', content='', **kwargs):
+...         component.header(title)
+...         component.body(content)
+...         return component
+
+>>> page = Bag(builder=CardBuilder)
+>>> page.card(title='Card 1', content='First card')  # doctest: +ELLIPSIS
+<genro_bag.bag.Bag ...>
+>>> page.card(title='Card 2', content='Second card')  # doctest: +ELLIPSIS
+<genro_bag.bag.Bag ...>
+>>> len(page)
+2
+```
+
 ### Dynamic Structure from Data
 
 ```{doctest}

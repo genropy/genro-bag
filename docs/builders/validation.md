@@ -198,6 +198,76 @@ True
 True
 ```
 
+### Restricting Valid Parents (parent_tags)
+
+Use `parent_tags` to specify where an element can be placed. This is the inverse of `sub_tags`:
+
+- `sub_tags`: "What children can I have?"
+- `parent_tags`: "What parents can I be inside?"
+
+```{doctest}
+>>> from genro_bag import Bag
+>>> from genro_bag.builders import BagBuilderBase, element
+
+>>> class HtmlBuilder(BagBuilderBase):
+...     @element(sub_tags='li[]')
+...     def ul(self): ...
+...
+...     @element(sub_tags='li[]')
+...     def ol(self): ...
+...
+...     @element(parent_tags='ul,ol')  # li MUST be inside ul or ol
+...     def li(self): ...
+...
+...     @element(sub_tags='li[]')  # Allows li as child (sub_tags)
+...     def div(self): ...
+
+>>> bag = Bag(builder=HtmlBuilder)
+
+>>> # Valid: li inside ul
+>>> ul = bag.ul()
+>>> ul.li('Item 1')  # doctest: +ELLIPSIS
+BagNode : ... at ...
+>>> bag.builder.check()
+[]
+
+>>> # Invalid: li inside div (div allows li via sub_tags, but li rejects div via parent_tags)
+>>> div = bag.div()
+>>> div.li('Invalid item')  # doctest: +ELLIPSIS
+BagNode : ... at ...
+>>> errors = bag.builder.check()
+>>> len(errors) > 0
+True
+```
+
+**Key points:**
+
+- `parent_tags` is a comma-separated list of allowed parent tags
+- Element is added but **marked invalid** if parent doesn't match
+- Validation happens at build time, errors collected via `check()`
+- Works with both `@element` and `@component`
+
+### Combining sub_tags and parent_tags
+
+Use both parameters for complete bidirectional validation:
+
+```python
+class StrictHtmlBuilder(BagBuilderBase):
+    @element(sub_tags='tr[]')
+    def tbody(self): ...
+
+    @element(sub_tags='td[]', parent_tags='tbody,thead,tfoot')
+    def tr(self): ...
+
+    @element(parent_tags='tr')
+    def td(self): ...
+```
+
+This ensures:
+- `tbody` can only contain `tr`
+- `tr` can only be inside `tbody`, `thead`, or `tfoot`
+- `td` can only be inside `tr`
+
 ## Attribute Validation
 
 Attribute validation is handled automatically by the builder. Pass attributes as keyword arguments when calling elements:

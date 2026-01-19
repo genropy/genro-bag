@@ -1338,13 +1338,13 @@ class TestSchemaToMd:
         """schema_to_md() generates valid markdown tables."""
 
         class Builder(BagBuilderBase):
-            @element(sub_tags="child")
-            def parent(self):
-                """Parent element."""
+            @element(sub_tags="item")
+            def container(self):
+                """Container element."""
                 ...
 
             @element()
-            def child(self): ...
+            def item(self): ...
 
         bag = Bag(builder=Builder)
         md = bag.builder.schema_to_md()
@@ -1352,5 +1352,5 @@ class TestSchemaToMd:
         # Check table structure
         assert "| Name |" in md
         assert "| --- |" in md
-        assert "| `parent` |" in md
-        assert "| `child` |" in md
+        assert "| `container` |" in md
+        assert "| `item` |" in md

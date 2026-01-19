@@ -28,6 +28,7 @@ from genro_bag.builder import (
     Regex,
     SchemaBuilder,
     abstract,
+    component,
     element,
 )
 from genro_bag.builders.html import HtmlBuilder
@@ -37,6 +38,7 @@ from genro_bag.builders.xsd import XsdBuilder, XsdReader
 __all__ = [
     "BagBuilderBase",
     "abstract",
+    "component",
     "element",
     "Range",
     "Regex",
