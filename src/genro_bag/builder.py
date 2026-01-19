@@ -281,9 +281,9 @@ class BagBuilderBase(ABC):
 
         cls._class_schema = Bag().fill_from(getattr(cls, "schema_path", None))
 
-        for tag_list, handler_name, obj, decorator_info in _pop_decorated_methods(cls):
-            if handler_name:
-                setattr(cls, handler_name, obj)
+        for tag_list, adapter_name, obj, decorator_info in _pop_decorated_methods(cls):
+            if adapter_name:
+                setattr(cls, adapter_name, obj)
 
             sub_tags = decorator_info.get("sub_tags", "")
             inherits_from = decorator_info.get("inherits_from", "")
@@ -295,7 +295,7 @@ class BagBuilderBase(ABC):
                 cls._class_schema.set_item(
                     tag,
                     None,
-                    handler_name=handler_name,
+                    adapter_name=adapter_name,
                     sub_tags=sub_tags,
                     inherits_from=inherits_from,
                     compile_kwargs=compile_kwargs,
@@ -338,9 +338,18 @@ class BagBuilderBase(ABC):
             node_value = args[0] if args else kwargs.get("node_value")
             self._validate_call_args(info, node_value, kwargs)
 
-            method = self._get_method(node_tag)
-            kwargs["node_tag"] = node_tag
-            return method(destination_bag, *args, **kwargs)
+            # Se c'è un adapter, chiamalo per trasformare i kwargs
+            adapter_name = info.get("adapter_name")
+            if adapter_name:
+                adapter = getattr(self, adapter_name)
+                result = adapter(**kwargs)
+                if isinstance(result, dict):
+                    kwargs = result
+                    node_value = kwargs.pop("node_value", node_value)
+
+            # Rimuovi node_value dai kwargs per evitare duplicati
+            kwargs.pop("node_value", None)
+            return self._default_element(destination_bag, node_value, node_tag=node_tag, **kwargs)
 
         return wrapper
 
@@ -561,7 +570,7 @@ class BagBuilderBase(ABC):
         """Return info dict for an element.
 
         Returns dict with keys:
-            - handler_name: str | None
+            - adapter_name: str | None
             - sub_tags: str | None
             - sub_tags_compiled: dict[str, tuple[int, int]] | None
             - call_args_validations: dict | None
@@ -847,15 +856,6 @@ class BagBuilderBase(ABC):
     # Call args validation (internal)
     # -------------------------------------------------------------------------
 
-    def _get_method(self, tag: str) -> Callable:
-        """Get handler method. Raises KeyError if tag not in schema.
-
-        Validation is now delegated to child().
-        """
-        info = self.get_schema_info(tag)
-        handler_name = info.get("handler_name")
-        return getattr(self, handler_name) if handler_name else self._default_element
-
     def _get_call_args_validations(self, tag: str) -> dict[str, tuple[Any, list, Any]] | None:
         """Return attribute spec for a tag from schema."""
         schema_node = self._schema.node(tag)
@@ -1095,8 +1095,8 @@ def _pop_decorated_methods(cls: type):
                         tag_list.extend(t.strip() for t in tags_raw.split(",") if t.strip())
                     else:
                         tag_list.extend(tags_raw)
-                handler_name = None if _is_empty_body(obj) else f"_el_{tag_list[0]}"
-                yield tag_list, handler_name, obj, decorator_info
+                adapter_name = None if _is_empty_body(obj) else f"_el_{tag_list[0]}"
+                yield tag_list, adapter_name, obj, decorator_info
 
 
 # =============================================================================
@@ -1128,27 +1128,22 @@ class SchemaBuilder(BagBuilderBase):
     @element()
     def item(
         self,
-        build_where: Bag,
-        node_tag: str,
         node_value: str,
         sub_tags: str | None = None,
         inherits_from: str | None = None,
-        handler_name: str | None = None,
+        adapter_name: str | None = None,
         call_args_validations: dict[str, tuple[Any, list, Any]] | None = None,
         compile_kwargs: dict[str, Any] | None = None,
         documentation: str | None = None,
         **kwargs: Any,
-    ) -> BagNode:
+    ) -> dict:
         """Define a schema item (element definition).
 
         Args:
-            build_where: The destination Bag where the node will be created.
-            node_tag: The element tag ('item').
             node_value: Element name to define (e.g., 'div', '@flow').
-            node_label: Ignored, node_value is used as label.
             sub_tags: Valid child tags with cardinality syntax.
             inherits_from: Abstract element name to inherit sub_tags from.
-            handler_name: Method name for custom handler.
+            adapter_name: Method name for adapter that transforms kwargs.
             call_args_validations: Validation spec for element attributes.
             compile_kwargs: Dict of compilation parameters (module, class, etc.).
             documentation: Documentation string for the element.
@@ -1156,7 +1151,7 @@ class SchemaBuilder(BagBuilderBase):
                 into compile_kwargs. E.g., compile_module='x' -> {'module': 'x'}.
 
         Returns:
-            The created schema node.
+            Dict with transformed kwargs for _default_element.
         """
         # Extract compile_* from kwargs and merge with compile_kwargs
         merged_compile = dict(compile_kwargs) if compile_kwargs else {}
@@ -1164,17 +1159,15 @@ class SchemaBuilder(BagBuilderBase):
             if key.startswith("compile_"):
                 merged_compile[key[8:]] = value  # strip "compile_" prefix
 
-        return self.child(
-            build_where,
-            node_tag,
-            node_label=node_value,
-            sub_tags=sub_tags,
-            inherits_from=inherits_from,
-            handler_name=handler_name,
-            call_args_validations=call_args_validations,
-            compile_kwargs=merged_compile if merged_compile else None,
-            documentation=documentation,
-        )
+        return {
+            "node_label": node_value,
+            "sub_tags": sub_tags,
+            "inherits_from": inherits_from,
+            "adapter_name": adapter_name,
+            "call_args_validations": call_args_validations,
+            "compile_kwargs": merged_compile if merged_compile else None,
+            "documentation": documentation,
+        }
 
     def compile(self, destination: str | Path) -> None:  # type: ignore[override]
         """Save schema to MessagePack file for later loading by builders.
