@@ -100,6 +100,7 @@ if TYPE_CHECKING:
 def element(
     tags: str | tuple[str, ...] | None = None,
     sub_tags: str | tuple[str, ...] | None = None,
+    parent_tags: str | None = None,
     inherits_from: str | None = None,
     compile_kwargs: dict[str, Any] | None = None,
     **kwargs: Any,
@@ -113,6 +114,8 @@ def element(
             'a[],b[]'   -> a and b any number of times
             'a[2],b[0:]' -> a exactly twice, b zero or more
             '' (empty)  -> no children allowed (void element)
+        parent_tags: Valid parent tags (comma-separated). If specified,
+            element can only be placed inside one of these parents.
         inherits_from: Abstract element name to inherit sub_tags from.
         compile_kwargs: Dict of compilation parameters (module, class, etc.).
         **kwargs: Additional compile_* parameters are extracted and merged
@@ -128,6 +131,9 @@ def element(
             compile_class='Vertical',  # merged into compile_kwargs
         )
         def container(self): ...
+
+        @element(parent_tags='ul,ol')  # can only be inside ul or ol
+        def li(self): ...
     """
     # Extract compile_* from kwargs and merge with compile_kwargs
     merged_compile = dict(compile_kwargs) if compile_kwargs else {}
@@ -141,6 +147,7 @@ def element(
             for k, v in {
                 "tags": tags,
                 "sub_tags": sub_tags,
+                "parent_tags": parent_tags,
                 "inherits_from": inherits_from,
                 "compile_kwargs": merged_compile if merged_compile else None,
             }.items()
@@ -286,6 +293,7 @@ class BagBuilderBase(ABC):
                 setattr(cls, adapter_name, obj)
 
             sub_tags = decorator_info.get("sub_tags", "")
+            parent_tags = decorator_info.get("parent_tags")
             inherits_from = decorator_info.get("inherits_from", "")
             compile_kwargs = decorator_info.get("compile_kwargs")
             documentation = obj.__doc__
@@ -297,6 +305,7 @@ class BagBuilderBase(ABC):
                     None,
                     adapter_name=adapter_name,
                     sub_tags=sub_tags,
+                    parent_tags=parent_tags,
                     inherits_from=inherits_from,
                     compile_kwargs=compile_kwargs,
                     documentation=documentation,
@@ -391,6 +400,7 @@ class BagBuilderBase(ABC):
             self._accept_child(parent_node, parent_info, node_tag, node_position)
 
         child_info = self.get_schema_info(node_tag)
+        self._validate_parent_tags(child_info, parent_node)
 
         node_label = node_label or self._auto_label(build_where, node_tag)
         child_node = build_where.set_item(node_label, node_value, node_position=node_position, **attr)
@@ -543,6 +553,32 @@ class BagBuilderBase(ABC):
 
         self._validate_children_tags(target_node.tag, sub_tags_compiled, children_tags)  # type: ignore[arg-type]
 
+    def _validate_parent_tags(
+        self,
+        child_info: dict,
+        parent_node: BagNode | None,
+    ) -> None:
+        """Validate that child can be placed in parent based on parent_tags.
+
+        Args:
+            child_info: Schema info for the child element.
+            parent_node: The parent node (None if adding to root).
+
+        Raises:
+            ValueError: If parent_tags is specified and parent is not in the list.
+        """
+        parent_tags_compiled = child_info.get("parent_tags_compiled")
+        if parent_tags_compiled is None:
+            return
+
+        parent_tag = parent_node.tag if parent_node else None
+        if parent_tag not in parent_tags_compiled:
+            valid_parents = ", ".join(sorted(parent_tags_compiled))
+            raise ValueError(
+                f"Element cannot be placed here: parent_tags requires one of [{valid_parents}], "
+                f"but parent is '{parent_tag or 'root'}'"
+            )
+
     def _command_on_node(
         self, node: BagNode, child_tag: str, node_position: str | int | None = None, **attrs: Any
     ) -> BagNode:
@@ -603,6 +639,10 @@ class BagBuilderBase(ABC):
         sub_tags = result.get("sub_tags")
         if sub_tags is not None:
             result["sub_tags_compiled"] = _parse_sub_tags_spec(sub_tags)
+
+        parent_tags = result.get("parent_tags")
+        if parent_tags is not None:
+            result["parent_tags_compiled"] = _parse_parent_tags_spec(parent_tags)
 
         schema_node.attr["_cached_info"] = result  # type: ignore[union-attr]
         return result
@@ -1005,8 +1045,22 @@ def _extract_validators_from_signature(fn: Callable) -> dict[str, tuple[Any, lis
 
 
 # =============================================================================
-# Sub-tags validation utilities (internal)
+# Sub-tags and parent-tags validation utilities (internal)
 # =============================================================================
+
+
+def _parse_parent_tags_spec(spec: str) -> set[str]:
+    """Parse parent_tags spec into set of valid parent tag names.
+
+    Simple comma-separated list of tag names (no cardinality).
+
+    Args:
+        spec: Comma-separated list of tag names, e.g. "div, span, section".
+
+    Returns:
+        Set of valid parent tag names.
+    """
+    return {tag.strip() for tag in spec.split(",") if tag.strip()}
 
 
 def _parse_sub_tags_spec(spec: str) -> dict[str, tuple[int, int]]:
@@ -1130,6 +1184,7 @@ class SchemaBuilder(BagBuilderBase):
         self,
         node_value: str,
         sub_tags: str | None = None,
+        parent_tags: str | None = None,
         inherits_from: str | None = None,
         adapter_name: str | None = None,
         call_args_validations: dict[str, tuple[Any, list, Any]] | None = None,
@@ -1142,6 +1197,7 @@ class SchemaBuilder(BagBuilderBase):
         Args:
             node_value: Element name to define (e.g., 'div', '@flow').
             sub_tags: Valid child tags with cardinality syntax.
+            parent_tags: Comma-separated list of valid parent tags for this element.
             inherits_from: Abstract element name to inherit sub_tags from.
             adapter_name: Method name for adapter that transforms kwargs.
             call_args_validations: Validation spec for element attributes.
@@ -1162,6 +1218,7 @@ class SchemaBuilder(BagBuilderBase):
         return {
             "node_label": node_value,
             "sub_tags": sub_tags,
+            "parent_tags": parent_tags,
             "inherits_from": inherits_from,
             "adapter_name": adapter_name,
             "call_args_validations": call_args_validations,
