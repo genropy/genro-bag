@@ -480,6 +480,108 @@ class TestSubTagsValidation:
 
 
 # =============================================================================
+# Tests for parent_tags validation
+# =============================================================================
+
+
+class TestParentTagsValidation:
+    """Tests for parent_tags validation (child declares valid parents)."""
+
+    def test_valid_parent_allowed(self):
+        """Child with parent_tags can be placed in valid parent."""
+
+        class Builder(BagBuilderBase):
+            @element(sub_tags="li")
+            def ul(self): ...
+
+            @element(parent_tags="ul")
+            def li(self): ...
+
+        bag = Bag(builder=Builder)
+        ul = bag.ul()
+        ul.li()  # Should not raise
+
+        assert len(ul.value) == 1
+
+    def test_invalid_parent_rejected(self):
+        """Child with parent_tags cannot be placed in invalid parent."""
+
+        class Builder(BagBuilderBase):
+            @element(sub_tags="li,span")
+            def div(self): ...
+
+            @element(sub_tags="li")
+            def ul(self): ...
+
+            @element(parent_tags="ul")  # li can only be in ul
+            def li(self): ...
+
+            @element()
+            def span(self): ...
+
+        bag = Bag(builder=Builder)
+        div = bag.div()
+
+        with pytest.raises(ValueError, match="parent_tags requires"):
+            div.li()  # div is not a valid parent for li
+
+    def test_parent_tags_at_root_rejected(self):
+        """Child with parent_tags cannot be placed at root if root not in list."""
+
+        class Builder(BagBuilderBase):
+            @element(sub_tags="li")
+            def ul(self): ...
+
+            @element(parent_tags="ul")  # li can only be in ul
+            def li(self): ...
+
+        bag = Bag(builder=Builder)
+
+        with pytest.raises(ValueError, match="parent_tags requires"):
+            bag.li()  # root is not a valid parent for li
+
+    def test_parent_tags_multiple_valid_parents(self):
+        """Child with multiple parent_tags can be placed in any of them."""
+
+        class Builder(BagBuilderBase):
+            @element(sub_tags="li")
+            def ul(self): ...
+
+            @element(sub_tags="li")
+            def ol(self): ...
+
+            @element(parent_tags="ul, ol")  # li can be in ul or ol
+            def li(self): ...
+
+        bag = Bag(builder=Builder)
+        ul = bag.ul()
+        ul.li()  # ul is valid
+
+        ol = bag.ol()
+        ol.li()  # ol is valid
+
+        assert len(ul.value) == 1
+        assert len(ol.value) == 1
+
+    def test_no_parent_tags_allows_anywhere(self):
+        """Element without parent_tags can be placed anywhere."""
+
+        class Builder(BagBuilderBase):
+            @element(sub_tags="span")
+            def div(self): ...
+
+            @element()  # no parent_tags - can be placed anywhere
+            def span(self): ...
+
+        bag = Bag(builder=Builder)
+        bag.span()  # at root - OK
+        div = bag.div()
+        div.span()  # in div - OK
+
+        assert len(bag) == 2
+
+
+# =============================================================================
 # Tests for attribute validation via Annotated
 # =============================================================================
 
