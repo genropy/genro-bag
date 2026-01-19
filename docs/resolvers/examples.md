@@ -50,6 +50,32 @@ When a resolver is called, parameters come from three sources (highest priority 
 50
 ```
 
+### Query String Syntax in Path
+
+Parameters can also be passed directly in the path using query string syntax:
+
+```python
+>>> from genro_bag import Bag
+>>> from genro_bag.resolver import BagCbResolver
+>>>
+>>> bag = Bag()
+>>> bag['calc'] = BagCbResolver(lambda x: x * 2, x=5)
+>>>
+>>> # These two are equivalent:
+>>> bag.get_item('calc', x=10)
+20
+>>> bag.get_item('calc?x=10')
+20
+>>>
+>>> # Multiple parameters:
+>>> def add(a, b):
+...     return a + b
+>>>
+>>> bag['sum'] = BagCbResolver(add, a=1, b=2)
+>>> bag.get_item('sum?a=10&b=20')
+30
+```
+
 ### Cache Invalidation
 
 Cache is automatically invalidated when effective parameters change:
@@ -226,7 +252,52 @@ Source: [`examples/resolvers/openapi_resolver/`](../../examples/resolvers/openap
 >>> result = op['value']  # triggers the API call
 >>> result['0.name']
 'doggie'
+```
+
+### POST with Body
+
+The resolver also supports POST/PUT/PATCH operations with body parameters:
+
+```python
+>>> # Get the addPet operation
+>>> add_pet = api['api.pet.addPet']
+>>> add_pet['summary']
+'Add a new pet to the store'
 >>>
+>>> add_pet['method']
+'post'
+>>>
+>>> # View expected body structure
+>>> print(add_pet['body'].to_string())
+├── id: None
+├── name: None
+├── category
+│   ├── id: None
+│   └── name: None
+├── photoUrls: []
+├── tags: []
+└── status: None
+>>>
+>>> # Set body values and invoke
+>>> add_pet['body.name'] = 'Fluffy'
+>>> add_pet['body.status'] = 'available'
+>>> add_pet['body.category.name'] = 'Cats'
+>>>
+>>> # Or pass body via _body parameter at call time
+>>> from genro_bag import Bag
+>>> new_pet = Bag()
+>>> new_pet['name'] = 'Buddy'
+>>> new_pet['status'] = 'available'
+>>> new_pet['category.name'] = 'Dogs'
+>>>
+>>> result = api.get_item('api.pet.addPet.value', _body=new_pet)
+>>> result['name']
+'Buddy'
+```
+
+### API Structure
+
+```python
 >>> print(api.to_string())
 ├── info: 'This is a sample Pet Store Server...'
 ├── externalDocs
@@ -369,6 +440,35 @@ Fetches weather data from Open-Meteo API.
 
 Source: [`examples/resolvers/openmeteo_resolver/`](../../examples/resolvers/openmeteo_resolver/)
 
+#### Single resolver with query string syntax
+
+```python
+>>> from genro_bag import Bag
+>>> from open_meteo_resolver import OpenMeteoResolver
+>>>
+>>> bag = Bag()
+>>> bag['meteo'] = OpenMeteoResolver()
+>>>
+>>> # Pass city via query string in path
+>>> bag['meteo?city=London']
+<Bag with weather data>
+>>>
+>>> bag['meteo?city=London'].keys()
+['temperature_2m', 'wind_speed_10m', 'relative_humidity_2m', 'weather']
+>>>
+>>> bag['meteo?city=London.temperature_2m']
+7.4
+>>>
+>>> bag['meteo?city=London.weather']
+'Overcast'
+>>>
+>>> # Different city, same resolver
+>>> bag['meteo?city=Rome.weather']
+'Clear sky'
+```
+
+#### Multiple cities via node attributes
+
 ```python
 >>> from genro_bag import Bag
 >>> from open_meteo_resolver import OpenMeteoResolver
@@ -376,7 +476,12 @@ Source: [`examples/resolvers/openmeteo_resolver/`](../../examples/resolvers/open
 >>> meteo = Bag()
 >>> cities = ["london", "paris", "rome", "berlin", "madrid"]
 >>> for city in cities:
+...     # city=city is passed as node attribute, read by resolver at call time
 ...     meteo.set_item(city, OpenMeteoResolver(), city=city)
+>>>
+>>> # Change city dynamically via node attribute
+>>> meteo.set_attr('london', city='manchester')
+>>> meteo['london']  # Now fetches Manchester weather
 >>>
 >>> print(meteo.to_string(static=False))
 ├── london [city='london']
@@ -479,4 +584,84 @@ class ApiClient:
 api = ApiClient('https://api.example.com')
 api.setup()
 users = api.bag['users']
+```
+
+### Async Usage
+
+Resolvers work seamlessly in async contexts. Use `smartawait` to await results:
+
+```python
+from genro_bag import Bag
+from genro_bag.resolvers import UrlResolver
+from genro_toolbox import smartawait
+
+async def fetch_weather():
+    bag = Bag()
+    bag['weather'] = UrlResolver(
+        'https://api.open-meteo.com/v1/forecast',
+        qs={'latitude': 51.5, 'longitude': -0.1, 'current_weather': True},
+        as_bag=True
+    )
+
+    # Await the resolver result
+    result = await smartawait(bag['weather'])
+    return result['current_weather.temperature']
+
+async def fetch_multiple():
+    bag = Bag()
+    bag['users'] = UrlResolver('https://api.example.com/users', as_bag=True)
+    bag['posts'] = UrlResolver('https://api.example.com/posts', as_bag=True)
+
+    # Fetch both in parallel
+    import asyncio
+    users, posts = await asyncio.gather(
+        smartawait(bag['users']),
+        smartawait(bag['posts'])
+    )
+    return users, posts
+```
+
+With query string parameters:
+
+```python
+from genro_bag import Bag
+from genro_bag.resolver import BagCbResolver
+from genro_toolbox import smartawait
+
+async def calculate():
+    bag = Bag()
+    bag['calc'] = BagCbResolver(lambda x, y: x * y, x=1, y=1)
+
+    # Pass parameters via query string, await result
+    result = await smartawait(bag.get_item('calc?x=10&y=5'))
+    return result  # 50
+```
+
+With OpenMeteoResolver:
+
+```python
+from genro_bag import Bag
+from open_meteo_resolver import OpenMeteoResolver
+from genro_toolbox import smartawait
+
+async def get_weather_async(city: str):
+    bag = Bag()
+    bag['meteo'] = OpenMeteoResolver()
+
+    # Query string syntax with await
+    weather = await smartawait(bag[f'meteo?city={city}'])
+    return weather
+
+async def compare_cities():
+    bag = Bag()
+    bag['meteo'] = OpenMeteoResolver()
+
+    import asyncio
+    london, paris = await asyncio.gather(
+        smartawait(bag['meteo?city=London']),
+        smartawait(bag['meteo?city=Paris'])
+    )
+
+    print(f"London: {london['temperature_2m']}°C")
+    print(f"Paris: {paris['temperature_2m']}°C")
 ```

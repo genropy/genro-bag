@@ -123,6 +123,32 @@ UrlResolver supports dynamic parameters for query strings and path substitution:
 >>> users = bag.get_item('api', page=1, limit=10)  # -> ?page=1&limit=10
 ```
 
+## Query String Syntax in Path
+
+Parameters can also be passed directly in the path using query string syntax:
+
+```python
+>>> from genro_bag import Bag
+>>> from genro_bag.resolver import BagCbResolver
+>>>
+>>> bag = Bag()
+>>> bag['calc'] = BagCbResolver(lambda x: x * 2, x=5)
+>>>
+>>> # These two are equivalent:
+>>> bag.get_item('calc', x=10)
+20
+>>> bag.get_item('calc?x=10')
+20
+>>>
+>>> # Multiple parameters:
+>>> def add(a, b):
+...     return a + b
+>>>
+>>> bag['sum'] = BagCbResolver(add, a=1, b=2)
+>>> bag.get_item('sum?a=10&b=20')
+30
+```
+
 ## Parameter Flow Diagram
 
 ```

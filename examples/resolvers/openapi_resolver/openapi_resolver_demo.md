@@ -37,7 +37,52 @@ Loads an OpenAPI spec and organizes endpoints by tags with ready-to-use UrlResol
 >>> result = op['value']  # triggers the API call
 >>> result['0.name']
 'doggie'
+```
+
+## POST with Body
+
+The resolver also supports POST/PUT/PATCH operations with body parameters:
+
+```python
+>>> # Get the addPet operation
+>>> add_pet = api['api.pet.addPet']
+>>> add_pet['summary']
+'Add a new pet to the store'
 >>>
+>>> add_pet['method']
+'post'
+>>>
+>>> # View expected body structure
+>>> print(add_pet['body'].to_string())
+├── id: None
+├── name: None
+├── category
+│   ├── id: None
+│   └── name: None
+├── photoUrls: []
+├── tags: []
+└── status: None
+>>>
+>>> # Set body values and invoke
+>>> add_pet['body.name'] = 'Fluffy'
+>>> add_pet['body.status'] = 'available'
+>>> add_pet['body.category.name'] = 'Cats'
+>>>
+>>> # Or pass body via _body parameter at call time
+>>> from genro_bag import Bag
+>>> new_pet = Bag()
+>>> new_pet['name'] = 'Buddy'
+>>> new_pet['status'] = 'available'
+>>> new_pet['category.name'] = 'Dogs'
+>>>
+>>> result = api.get_item('api.pet.addPet.value', _body=new_pet)
+>>> result['name']
+'Buddy'
+```
+
+## API Structure
+
+```python
 >>> print(api.to_string())
 ├── info: 'This is a sample Pet Store Server...'
 ├── externalDocs

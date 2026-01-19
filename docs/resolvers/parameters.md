@@ -80,6 +80,36 @@ Can be combined with other parameters:
 bag['api?method=POST&_body={"data":[1,2,3]}::JS&timeout=30::L']
 ```
 
+## POST with Body (`_body` parameter)
+
+The `_body` parameter is used to pass request body to UrlResolver for POST/PUT/PATCH operations:
+
+```python
+from genro_bag import Bag
+from genro_bag.resolvers import UrlResolver
+
+# Create a POST resolver
+bag = Bag()
+bag['api'] = UrlResolver(
+    'https://api.example.com/users',
+    method='post',
+    as_bag=True
+)
+
+# Pass body via get_item kwargs
+new_user = Bag()
+new_user['name'] = 'John'
+new_user['email'] = 'john@example.com'
+
+result = bag.get_item('api', _body=new_user)
+```
+
+The `_body` parameter:
+
+- Overrides any `body` set in the resolver constructor
+- Accepts a `Bag` or `dict` (converted to JSON automatically)
+- Works with POST, PUT, and PATCH methods
+
 ## Parameter Priority
 
 When multiple sources provide the same parameter:

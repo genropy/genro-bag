@@ -95,8 +95,6 @@ class OpenMeteoResolver(UrlResolver):
         "language": "en",
         "country_code": None,
     }
-    # Mark user params as internal so they don't get passed to UrlResolver
-    internal_params: set[str] = UrlResolver.internal_params | {"city", "language", "country_code"}
 
     def _geocode_city(self) -> tuple[float, float]:
         """Get coordinates for a city name using Open-Meteo Geocoding API.
