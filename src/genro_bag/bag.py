@@ -47,12 +47,11 @@ from typing import Any, cast
 
 from genro_toolbox import smartawait, smartcontinuation, smartsplit
 from genro_toolbox.decorators import extract_kwargs
-from genro_toolbox.typeutils import safe_is_instance
 
 from .bag_parse import BagParser
 from .bag_query import BagQuery
 from .bag_serialize import BagSerializer
-from .bagnode import BagNode, BagNodeContainer, BagNodeException
+from .bagnode import BagNode, BagNodeContainer
 from .resolver import BagCbResolver
 
 
@@ -778,70 +777,24 @@ class Bag(BagParser, BagSerializer, BagQuery):
             _attributes = dict(_attributes or {})
             _attributes.update(kwargs)
 
+        # Traverse path
         result, label = self._htraverse(path, write_mode=True)
         obj = cast("Bag", result)
-        _query_string = None
-        if "?" in label:
-            label, _query_string = label.split("?", 1)
 
-        if label is None or label.startswith("#"):
-            raise BagException("Cannot create new node with #n syntax")
-        node = obj._nodes.get(label)
-
-        if _query_string:
-            qs = _query_string.split("&")
-            if len(qs) == 1:
-                _attributes = {qs[0]: value}
-            else:
-                if not isinstance(value, tuple) or len(value) != len(qs):
-                    raise BagNodeException("Wrong attributes assignment")
-                _attributes = dict(zip(qs, value, strict=True))
-            value=None
-        if not node:
-            node = obj._nodes.set(
-                label,
-                value,
-                node_position,
-                attr=_attributes,
-                resolver=resolver,
-                parent_bag=obj,
-                _updattr=_updattr,
-                _remove_null_attributes=_remove_null_attributes,
-                _reason=_reason,
-                do_trigger=do_trigger,
-            )
-        elif _query_string:
-            node.set_attr(
-                    _attributes,
-                    trigger=do_trigger,
-                    _updattr=_updattr,
-                    _remove_null_attributes=_remove_null_attributes,
-            )
-        else:
-            if resolver is False:
-                node.resolver = None
-            elif resolver is not None:
-                node.resolver = resolver
-            if (node.resolver is not None
-                and value is not None
-                and not safe_is_instance(value, "genro_bag.resolver.BagResolver")):
-                    raise BagNodeException(
-                        f"Cannot set value on node '{node.label}' that has a resolver. "
-                        "Use resolver=False to remove it first."
-                    )
-            node.set_value(
-                    value,
-                    trigger=do_trigger,
-                    _attributes=_attributes,
-                    _updattr=_updattr,
-                    _remove_null_attributes=_remove_null_attributes,
-                    _reason=_reason
-            )
-
-        if _fired:
-            node.set_value(None, trigger=False)
-
-        return node
+        # Delegate EVERYTHING to BagNodeContainer.set
+        return obj._nodes.set(
+            label,
+            value,
+            node_position,
+            attr=_attributes,
+            resolver=resolver,
+            parent_bag=obj,
+            _updattr=_updattr,
+            _remove_null_attributes=_remove_null_attributes,
+            _reason=_reason,
+            do_trigger=do_trigger,
+            _fired=_fired,
+        )
 
     def __setitem__(self, path: str, value: Any) -> None:
         """Set value at path using bracket notation."""
