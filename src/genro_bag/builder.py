@@ -212,16 +212,20 @@ def element(
 
 def abstract(
     sub_tags: str | tuple[str, ...] = "",
+    parent_tags: str | tuple[str, ...] | None = None,
+    inherits_from: str | None = None,
     compile_kwargs: dict[str, Any] | None = None,
     **kwargs: Any,
 ) -> Callable:
     """Decorator to define an abstract element (for inheritance only).
 
     Abstract elements are stored with '@' prefix and cannot be instantiated.
-    They define sub_tags that can be inherited by concrete elements.
+    They define sub_tags/parent_tags that can be inherited by concrete elements.
 
     Args:
         sub_tags: Valid child tags with cardinality (see element decorator).
+        parent_tags: Valid parent tags with cardinality.
+        inherits_from: Comma-separated list of abstract names to inherit from.
         compile_kwargs: Dict of compilation parameters (module, class, etc.).
         **kwargs: Additional compile_* parameters are extracted and merged
             into compile_kwargs. E.g., compile_module='x' -> {'module': 'x'}.
@@ -249,7 +253,10 @@ def abstract(
         result: dict[str, Any] = {
             "abstract": True,
             "sub_tags": sub_tags,
+            "inherits_from": inherits_from or "",
         }
+        if parent_tags is not None:
+            result["parent_tags"] = parent_tags
         if merged_compile:
             result["compile_kwargs"] = merged_compile
         func._decorator = result  # type: ignore[attr-defined]
@@ -865,16 +872,23 @@ class BagBuilderBase(ABC):
         inherits_from = result.pop("inherits_from", None)
 
         if inherits_from:
-            abstract_attrs = self.schema.get_attr(inherits_from)
-            if abstract_attrs:
-                for k, v in abstract_attrs.items():
-                    if k == "compile_kwargs":
-                        # Merge compile_kwargs: abstract base + element overrides
-                        inherited = v or {}
-                        current = result.get("compile_kwargs") or {}
-                        result["compile_kwargs"] = {**inherited, **current}
-                    elif k not in result or not result[k]:
-                        result[k] = v
+            # Support multiple inheritance: "alfa,beta" -> ["alfa", "beta"]
+            # Parents are processed left-to-right, later parents override earlier ones
+            parents = [p.strip() for p in inherits_from.split(",")]
+            for parent in parents:
+                abstract_attrs = self.schema.get_attr(parent)
+                if abstract_attrs:
+                    for k, v in abstract_attrs.items():
+                        # Skip inherits_from from abstract - don't propagate it
+                        if k == "inherits_from":
+                            continue
+                        if k == "compile_kwargs":
+                            # Merge compile_kwargs: abstract base + element overrides
+                            inherited = v or {}
+                            current = result.get("compile_kwargs") or {}
+                            result["compile_kwargs"] = {**inherited, **current}
+                        elif k not in result or not result[k]:
+                            result[k] = v
 
         sub_tags = result.get("sub_tags")
         if sub_tags is not None:

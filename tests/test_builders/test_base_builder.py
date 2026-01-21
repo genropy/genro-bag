@@ -222,6 +222,59 @@ class TestInheritsFrom:
         # sub_tags overridden
         assert info.get("sub_tags") == "x,y,z"
 
+    def test_multiple_inheritance_comma_separated(self):
+        """Element can inherit from multiple abstracts via comma-separated list."""
+
+        class Builder(BagBuilderBase):
+            @abstract(sub_tags="a,b")
+            def base_tags(self): ...
+
+            @abstract(parent_tags="container")
+            def base_parent(self): ...
+
+            @element(inherits_from="@base_tags,@base_parent")
+            def multi(self): ...
+
+            @element()
+            def a(self): ...
+
+            @element()
+            def b(self): ...
+
+            @element(sub_tags="multi")
+            def container(self): ...
+
+        bag = Bag(builder=Builder)
+        info = bag.builder.get_schema_info("multi")
+        # Inherits from both abstracts
+        assert info.get("sub_tags") == "a,b"
+        assert info.get("parent_tags") == "container"
+
+    def test_multiple_inheritance_first_wins(self):
+        """In multiple inheritance, first parent wins (closest to element)."""
+
+        class Builder(BagBuilderBase):
+            @abstract(sub_tags="a,b", parent_tags="first")
+            def first(self): ...
+
+            @abstract(sub_tags="x,y", parent_tags="second")
+            def second(self): ...
+
+            @element(inherits_from="@first,@second")
+            def derived(self): ...
+
+            @element()
+            def a(self): ...
+
+            @element()
+            def b(self): ...
+
+        bag = Bag(builder=Builder)
+        info = bag.builder.get_schema_info("derived")
+        # @first wins over @second (first is closest)
+        assert info.get("sub_tags") == "a,b"
+        assert info.get("parent_tags") == "first"
+
 
 # =============================================================================
 # Tests for @element decorator - tags parameter

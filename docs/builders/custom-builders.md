@@ -286,6 +286,45 @@ BagNode : ... at ...
 <genro_bag.bag.Bag object at ...>
 ```
 
+### Multiple Inheritance
+
+Elements can inherit from multiple abstracts using a comma-separated list.
+The **first parent wins** when there are conflicting attributes (closest to the element):
+
+```{doctest}
+>>> from genro_bag import Bag
+>>> from genro_bag.builders import BagBuilderBase, element, abstract
+
+>>> class UIBuilder(BagBuilderBase):
+...     @abstract(sub_tags='span,em', parent_tags='body')
+...     def inline(self): ...
+...
+...     @abstract(sub_tags='div,p', parent_tags='section')
+...     def block(self): ...
+...
+...     @element(inherits_from='@inline,@block')  # @inline wins
+...     def mixed(self): ...
+...
+...     @element()
+...     def span(self): ...
+...
+...     @element()
+...     def em(self): ...
+
+>>> bag = Bag(builder=UIBuilder)
+>>> info = bag.builder.get_schema_info('mixed')
+>>> info['sub_tags']  # From @inline (first parent)
+'span,em'
+>>> info['parent_tags']  # From @inline (first parent)
+'body'
+```
+
+**Inheritance priority:**
+
+1. Element's own attributes (always win)
+2. First parent in `inherits_from` list
+3. Second parent, third, etc. (only for attributes not defined by earlier parents)
+
 ## The @component Decorator
 
 Use `@component` for composite structures that need code logic to build their content.
