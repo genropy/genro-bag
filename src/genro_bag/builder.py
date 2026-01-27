@@ -28,7 +28,13 @@ Validation parameters:
     sub_tags: Controls which children are allowed (with cardinality).
     parent_tags: Controls where the element can be placed (comma-separated list).
 
-sub_tags cardinality syntax:
+sub_tags semantics:
+    None     -> no validation (sub_tags not specified)
+    ""       -> leaf element (no children allowed)
+    "*"      -> accepts any children (container)
+    "foo"    -> accepts only "foo" children
+
+sub_tags cardinality syntax (when not "*"):
     foo      -> any number (0..N)
     foo[1]   -> exactly 1
     foo[3]   -> exactly 3
@@ -650,7 +656,7 @@ class BagBuilderBase(ABC):
         self._validate_parent_tags(child_info, parent_node)
 
         node_label = node_label or self._auto_label(build_where, node_tag)
-        child_node = build_where.set_item(node_label, node_value, node_position=node_position, **attr)
+        child_node = build_where.set_item(node_label, node_value, _attributes=dict(attr), node_position=node_position)
         child_node.tag = node_tag
 
         if parent_node:
@@ -714,14 +720,14 @@ class BagBuilderBase(ABC):
     def _validate_children_tags(
         self,
         node_tag: str,
-        sub_tags_compiled: dict[str, tuple[int, int]],
+        sub_tags_compiled: dict[str, tuple[int, int]] | str,
         children_tags: list[str],
     ) -> list[str]:
         """Validate a list of child tags against sub_tags spec.
 
         Args:
             node_tag: Tag of parent node (for error messages)
-            sub_tags_compiled: Compiled sub_tags dict {tag: (min, max)}
+            sub_tags_compiled: Compiled sub_tags: "*" for any, or dict {tag: (min, max)}
             children_tags: List of child tags to validate
 
         Returns:
@@ -730,6 +736,10 @@ class BagBuilderBase(ABC):
         Raises:
             ValueError: if tag not allowed or max exceeded
         """
+        # Wildcard "*" accepts any children - no validation needed
+        if sub_tags_compiled == "*":
+            return []
+
         bounds = {tag: list(minmax) for tag, minmax in sub_tags_compiled.items()}
         for tag in children_tags:
             minmax = bounds.get(tag)
@@ -763,10 +773,15 @@ class BagBuilderBase(ABC):
             node._invalid_reasons = []
             return
 
+        # Wildcard "*" accepts any children - no validation needed
+        if sub_tags_compiled == "*":
+            node._invalid_reasons = []
+            return
+
         children_tags = [n.tag for n in node.value.nodes] if isinstance(node.value, Bag) else []
 
         node._invalid_reasons = self._validate_children_tags(
-            node_tag, sub_tags_compiled, children_tags  # type: ignore[arg-type]
+            node_tag, sub_tags_compiled, children_tags
         )
 
     def _accept_child(
@@ -785,6 +800,10 @@ class BagBuilderBase(ABC):
         if sub_tags_compiled is None:
             return
 
+        # Wildcard "*" accepts any children - no validation needed
+        if sub_tags_compiled == "*":
+            return
+
         # Build children_tags = current + new
         children_tags = (
             [n.tag for n in target_node.value.nodes] if isinstance(target_node.value, Bag) else []
@@ -798,7 +817,7 @@ class BagBuilderBase(ABC):
         )
         children_tags.insert(idx, child_tag)
 
-        self._validate_children_tags(target_node.tag, sub_tags_compiled, children_tags)  # type: ignore[arg-type]
+        self._validate_children_tags(target_node.tag, sub_tags_compiled, children_tags)
 
     def _validate_parent_tags(
         self,
@@ -1318,8 +1337,13 @@ def _parse_parent_tags_spec(spec: str) -> set[str]:
     return {tag.strip() for tag in spec.split(",") if tag.strip()}
 
 
-def _parse_sub_tags_spec(spec: str) -> dict[str, tuple[int, int]]:
-    """Parse sub_tags spec into dict of {tag: (min, max)}.
+def _parse_sub_tags_spec(spec: str) -> dict[str, tuple[int, int]] | str:
+    """Parse sub_tags spec into dict of {tag: (min, max)} or "*" for any.
+
+    Semantics:
+        ""       -> leaf element (no children allowed) - returns empty dict
+        "*"      -> accepts any children (no validation) - returns "*"
+        "foo"    -> accepts only "foo" children
 
     Cardinality syntax:
         foo      -> any number 0..N (min=0, max=sys.maxsize)
@@ -1329,7 +1353,15 @@ def _parse_sub_tags_spec(spec: str) -> dict[str, tuple[int, int]]:
         foo[:2]  -> 0 to 2 (min=0, max=2)
         foo[1:3] -> 1 to 3 (min=1, max=3)
         foo[]    -> ERROR (invalid syntax)
+
+    Returns:
+        "*" if spec is "*" (accepts any children)
+        dict of {tag: (min, max)} otherwise
     """
+    # Handle wildcard - accepts any children
+    if spec == "*":
+        return "*"
+
     result: dict[str, tuple[int, int]] = {}
     for item in spec.split(","):
         item = item.strip()

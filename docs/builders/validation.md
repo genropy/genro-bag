@@ -38,6 +38,52 @@ BagNode : ... at ...
 BagNode : ... at ...
 ```
 
+### Wildcard: Accept Any Children
+
+Use `sub_tags='*'` to create container elements that accept any child without validation:
+
+```{doctest}
+>>> from genro_bag import Bag
+>>> from genro_bag.builders import BagBuilderBase, element
+
+>>> class FlexibleBuilder(BagBuilderBase):
+...     @element(sub_tags='*')  # Accepts ANY children
+...     def container(self): ...
+...
+...     @element()
+...     def span(self): ...
+...
+...     @element()
+...     def div(self): ...
+...
+...     @element()
+...     def custom(self): ...
+
+>>> bag = Bag(builder=FlexibleBuilder)
+>>> container = bag.container()
+>>> container.span('text')  # doctest: +ELLIPSIS
+BagNode : ... at ...
+>>> container.div()  # doctest: +ELLIPSIS
+<genro_bag.bag.Bag object at ...>
+>>> container.custom('anything')  # doctest: +ELLIPSIS
+BagNode : ... at ...
+>>> len(container.value)
+3
+```
+
+**Key points:**
+
+- `sub_tags='*'` disables child validation entirely
+- Useful for generic container elements
+- `check()` will not report errors for unknown children
+- Different from `sub_tags=''` which means **no children allowed** (leaf element)
+
+| Syntax | Meaning |
+|--------|---------|
+| `sub_tags='*'` | Accept any children (no validation) |
+| `sub_tags=''` | Leaf element (no children allowed) |
+| `sub_tags='a,b'` | Only `a` and `b` allowed |
+
 ### Cardinality Constraints
 
 Specify minimum and maximum occurrences with bracket syntax:

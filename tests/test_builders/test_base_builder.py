@@ -533,6 +533,145 @@ class TestSubTagsValidation:
 
 
 # =============================================================================
+# Tests for sub_tags="*" wildcard semantics
+# =============================================================================
+
+
+class TestSubTagsWildcard:
+    """Tests for sub_tags="*" wildcard that accepts any children."""
+
+    def test_wildcard_accepts_any_child(self):
+        """sub_tags="*" allows any child tag."""
+
+        class Builder(BagBuilderBase):
+            @element(sub_tags="*")  # container accepts any children
+            def container(self): ...
+
+            @element(sub_tags="")  # leaf element
+            def span(self): ...
+
+            @element(sub_tags="")
+            def div(self): ...
+
+            @element(sub_tags="")
+            def custom(self): ...
+
+        bag = Bag(builder=Builder)
+        container = bag.container()
+        container.span()  # OK
+        container.div()  # OK
+        container.custom()  # OK
+
+        assert len(container.value) == 3
+
+    def test_wildcard_allows_multiple_same_children(self):
+        """sub_tags="*" allows unlimited children of same type."""
+
+        class Builder(BagBuilderBase):
+            @element(sub_tags="*")
+            def container(self): ...
+
+            @element(sub_tags="")
+            def item(self): ...
+
+        bag = Bag(builder=Builder)
+        container = bag.container()
+        for _ in range(10):
+            container.item()
+
+        assert len(container.value) == 10
+
+    def test_wildcard_with_nested_containers(self):
+        """sub_tags="*" works with nested wildcard containers."""
+
+        class Builder(BagBuilderBase):
+            @element(sub_tags="*")
+            def outer(self): ...
+
+            @element(sub_tags="*")
+            def inner(self): ...
+
+            @element(sub_tags="")
+            def leaf(self): ...
+
+        bag = Bag(builder=Builder)
+        outer = bag.outer()
+        inner = outer.inner()
+        inner.leaf()
+
+        assert len(outer.value) == 1
+        assert len(inner.value) == 1
+
+    def test_wildcard_parse_returns_star(self):
+        """_parse_sub_tags_spec returns '*' for wildcard."""
+        from genro_bag.builder import _parse_sub_tags_spec
+
+        result = _parse_sub_tags_spec("*")
+        assert result == "*"
+
+    def test_empty_string_is_leaf(self):
+        """sub_tags='' is a leaf element (no children allowed)."""
+
+        class Builder(BagBuilderBase):
+            @element(sub_tags="")  # leaf
+            def leaf(self): ...
+
+            @element(sub_tags="")
+            def child(self): ...
+
+        bag = Bag(builder=Builder)
+        leaf = bag.leaf()
+
+        with pytest.raises(ValueError, match="not allowed"):
+            leaf.child()
+
+    def test_empty_string_parse_returns_empty_dict(self):
+        """_parse_sub_tags_spec returns empty dict for ''."""
+        from genro_bag.builder import _parse_sub_tags_spec
+
+        result = _parse_sub_tags_spec("")
+        assert result == {}
+
+    def test_explicit_tags_still_validate(self):
+        """Explicit sub_tags like 'foo,bar' still validate."""
+
+        class Builder(BagBuilderBase):
+            @element(sub_tags="allowed")
+            def container(self): ...
+
+            @element(sub_tags="")
+            def allowed(self): ...
+
+            @element(sub_tags="")
+            def forbidden(self): ...
+
+        bag = Bag(builder=Builder)
+        container = bag.container()
+        container.allowed()  # OK
+
+        with pytest.raises(ValueError, match="not allowed"):
+            container.forbidden()  # Not allowed
+
+    def test_check_with_wildcard_container_valid(self):
+        """check() returns empty for valid wildcard container."""
+
+        class Builder(BagBuilderBase):
+            @element(sub_tags="*")
+            def container(self): ...
+
+            @element(sub_tags="")
+            def item(self): ...
+
+        bag = Bag(builder=Builder)
+        container = bag.container()
+        container.item()
+        container.item()
+
+        result = bag.builder.check()
+        assert result == []
+
+
+# =============================================================================
 # Tests for parent_tags validation
 # =============================================================================
 
