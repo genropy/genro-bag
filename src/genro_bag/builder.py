@@ -1396,36 +1396,62 @@ def _parse_sub_tags_spec(spec: str) -> dict[str, tuple[int, int]] | str:
     return result
 
 
+def _decorated_method_info(name, obj):
+    """Build (tag_list, method_name, obj, decorator_info) for a decorated method."""
+    decorator_info = obj._decorator
+    if decorator_info.get("abstract"):
+        return [f"@{name}"], None, obj, decorator_info
+    elif decorator_info.get("component"):
+        tag_list = [] if name.startswith("_") else [name]
+        tags_raw = decorator_info.get("tags")
+        if tags_raw:
+            if isinstance(tags_raw, str):
+                tag_list.extend(t.strip() for t in tags_raw.split(",") if t.strip())
+            else:
+                tag_list.extend(tags_raw)
+        handler_name = f"_comp_{tag_list[0]}"
+        return tag_list, handler_name, obj, decorator_info
+    else:
+        tag_list = [] if name.startswith("_") else [name]
+        tags_raw = decorator_info.get("tags")
+        if tags_raw:
+            if isinstance(tags_raw, str):
+                tag_list.extend(t.strip() for t in tags_raw.split(",") if t.strip())
+            else:
+                tag_list.extend(tags_raw)
+        adapter_name = None if _is_empty_body(obj) else f"_el_{tag_list[0]}"
+        return tag_list, adapter_name, obj, decorator_info
+
+
 def _pop_decorated_methods(cls: type):
-    """Remove and yield decorated methods with their info and tags."""
+    """Remove and yield decorated methods from cls and its mixin bases.
+
+    Collects @element, @abstract, and @component methods from:
+    1. The class itself (cls.__dict__) — removed with delattr
+    2. Mixin bases in MRO that are not BagBuilderBase subclasses
+
+    Methods defined directly on cls take priority over mixin methods.
+    Mixin methods are NOT removed from their defining class.
+    """
+    seen: set[str] = set()
+
     for name, obj in list(cls.__dict__.items()):
         if hasattr(obj, "_decorator"):
+            seen.add(name)
             delattr(cls, name)
-            decorator_info = obj._decorator
+            yield _decorated_method_info(name, obj)
 
-            if decorator_info.get("abstract"):
-                yield [f"@{name}"], None, obj, decorator_info
-            elif decorator_info.get("component"):
-                # Components always have handler_name (body required)
-                tag_list = [] if name.startswith("_") else [name]
-                tags_raw = decorator_info.get("tags")
-                if tags_raw:
-                    if isinstance(tags_raw, str):
-                        tag_list.extend(t.strip() for t in tags_raw.split(",") if t.strip())
-                    else:
-                        tag_list.extend(tags_raw)
-                handler_name = f"_comp_{tag_list[0]}"
-                yield tag_list, handler_name, obj, decorator_info
-            else:
-                tag_list = [] if name.startswith("_") else [name]
-                tags_raw = decorator_info.get("tags")
-                if tags_raw:
-                    if isinstance(tags_raw, str):
-                        tag_list.extend(t.strip() for t in tags_raw.split(",") if t.strip())
-                    else:
-                        tag_list.extend(tags_raw)
-                adapter_name = None if _is_empty_body(obj) else f"_el_{tag_list[0]}"
-                yield tag_list, adapter_name, obj, decorator_info
+    for base in cls.__mro__:
+        if base is cls or base is BagBuilderBase or base is object:
+            continue
+        if issubclass(base, BagBuilderBase):
+            continue
+        for name, obj in list(base.__dict__.items()):
+            if name in seen:
+                continue
+            if hasattr(obj, "_decorator"):
+                seen.add(name)
+                yield _decorated_method_info(name, obj)
 
 
 def _rename_colliding_schema_tags(cls: type, schema: Bag) -> None:
