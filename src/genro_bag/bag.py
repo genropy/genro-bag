@@ -46,7 +46,6 @@ from pathlib import Path
 from typing import Any, cast
 
 from genro_toolbox import smartawait, smartcontinuation, smartsplit
-from genro_toolbox.decorators import extract_kwargs
 
 from .bag_parse import BagParser
 from .bag_query import BagQuery
@@ -79,30 +78,23 @@ class Bag(BagParser, BagSerializer, BagQuery):
         _ins_subscribers: Callbacks for insert events.
         _del_subscribers: Callbacks for delete events.
         _root_attributes: Attributes for the root bag.
-        _builder: Optional builder for domain-specific node creation.
+        node_class: Factory class for creating BagNode instances. Subclasses
+            can override this to use custom node types.
     """
 
-    @extract_kwargs(builder=True)
-    def __init__(self, source: dict[str, Any] | None = None, builder=None, builder_kwargs=None):
+    node_class: type[BagNode] = BagNode
+
+    def __init__(self, source: dict[str, Any] | None = None):
         """Create a new Bag.
 
         Args:
             source: Optional dict to initialize from. Keys become labels,
                 values become node values.
-            builder: Optional BagBuilderBase class for domain-specific
-                node creation (e.g., HtmlBuilder for HTML generation).
-            builder_kwargs: Extra kwargs passed to builder constructor.
-                Can also be passed with builder_ prefix.
 
         Example:
             >>> bag = Bag({'a': 1, 'b': 2})
             >>> bag['a']
             1
-            >>> from genro_bag.builders import HtmlBuilder
-            >>> html = Bag(builder=HtmlBuilder)
-            >>> html.div(id='main').p(value='Hello')
-            >>> # With builder kwargs:
-            >>> bag = Bag(builder=XsdBuilder, builder_xsd_source='schema.xsd')
         """
         self._nodes: BagNodeContainer = BagNodeContainer()
         self._backref: bool | str = False
@@ -112,7 +104,6 @@ class Bag(BagParser, BagSerializer, BagQuery):
         self._ins_subscribers: dict = {}
         self._del_subscribers: dict = {}
         self._root_attributes: dict | None = None
-        self.builder = builder(self, **builder_kwargs) if builder else None
 
         if source:
             self.fill_from(source)
@@ -377,61 +368,6 @@ class Bag(BagParser, BagSerializer, BagQuery):
     def root_attributes(self, attrs: dict) -> None:
         self._root_attributes = dict(attrs)
 
-    @property
-    def builder(self):
-        """Get the builder associated with this Bag.
-
-        Returns:
-            The BagBuilderBase instance, or None if no builder is set.
-        """
-        return self._builder
-
-    @builder.setter
-    def builder(self, value):
-        """Set the builder for this Bag.
-
-        Args:
-            value: A BagBuilderBase instance or None.
-        """
-        self._builder = value
-
-    def __getattr__(self, name: str) -> Any:
-        """Delegate attribute access to builder if present.
-
-        When a builder is set, unknown attributes are looked up on the builder.
-        This enables fluent APIs like bag.div(id='main').p(value='Hello').
-
-        Args:
-            name: Attribute name to look up.
-
-        Returns:
-            A callable that creates a child node with that tag.
-
-        Raises:
-            AttributeError: If no builder is set or builder doesn't have the tag.
-        """
-        if name.startswith("_"):
-            raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
-
-        if self._builder is not None:
-            # Delegate to builder - let it raise specific error for unknown elements
-            handler = getattr(self._builder, name)
-
-            # Return callable bound to this Bag
-            # API: bag.foo('John') -> node_value='John', node_label=auto, tag='foo'
-            #      bag.foo('John', node_label='x') -> explicit label
-            #      bag.foo('John', node_position='<first') -> insertion position
-            # NOTE: First positional arg maps to node_value (node content), passed as keyword
-            return lambda node_value=None, node_label=None, node_position=None, **attr: handler(
-                self,
-                _tag=name,
-                node_value=node_value,
-                node_label=node_label,
-                node_position=node_position,
-                **attr,
-            )
-
-        raise AttributeError(f"'{type(self).__name__}' object has no attribute '{name}'")
 
     # -------------------- _htraverse helpers --------------------------------
 
@@ -1328,7 +1264,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
             >>> bag['b.c']  # Original unchanged
             2
         """
-        result = Bag()
+        result = self.__class__()
         for node in self:
             value = node.static_value
             if isinstance(value, Bag):
