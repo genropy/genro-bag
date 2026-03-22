@@ -439,7 +439,8 @@ class BagNode:
         new_attr = (attr or {}) | kwargs
 
         # Save old state BEFORE any modification (only if needed for subscribers)
-        oldattr = dict(self._attr) if (trigger and self._node_subscribers) else None
+        oldattr = dict(self._attr) if (trigger and (self._node_subscribers or
+            (self._parent_bag is not None and self._parent_bag.backref))) else None
 
         if _updattr:
             self._attr.update(new_attr)
@@ -450,15 +451,18 @@ class BagNode:
             self._attr = {k: v for k, v in self._attr.items() if v is not None}
 
         if trigger:
-            if oldattr is not None:
-                upd_attrs = [k for k, _ in self._attr.items() - oldattr.items()]
+            upd_attrs = [k for k, _ in self._attr.items() - oldattr.items()] if oldattr is not None else None
+
+            if upd_attrs is not None and self._node_subscribers:
                 for subscriber in self._node_subscribers.values():
                     subscriber(node=self, info=upd_attrs, evt="upd_attrs")
 
             if self._parent_bag is not None and self._parent_bag.backref:
                 reason = str(trigger) if trigger is True else trigger
                 self._parent_bag._on_node_changed(
-                    self, [self.label], evt="upd_attrs", reason=reason
+                    self, [self.label], evt="upd_attrs",
+                    oldvalue=upd_attrs,
+                    reason=reason
                 )
 
     def del_attr(self, *attrs_to_delete: str) -> None:

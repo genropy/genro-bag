@@ -1269,6 +1269,38 @@ class TestBagSubscriberLog:
         assert log[1]["evt"] == "upd_attrs"
         assert log[1]["node_label"] == "item"
 
+    def test_subscriber_upd_attrs_oldvalue_contains_changed_attrs(self):
+        """Subscriber receives changed attr names as oldvalue for upd_attrs events."""
+        bag = Bag()
+        log = []
+
+        def logger(**kw):
+            log.append(
+                {
+                    "evt": kw.get("evt"),
+                    "oldvalue": kw.get("oldvalue"),
+                }
+            )
+
+        bag.subscribe("logger", any=logger)
+        bag.set_item("item", "value", color="red", size=10)
+        log.clear()
+
+        # Single attr change
+        bag.set_attr("item", color="blue")
+        assert log[-1]["evt"] == "upd_attrs"
+        assert sorted(log[-1]["oldvalue"]) == ["color"]
+
+        # Multiple attr changes
+        bag.set_attr("item", color="green", size=20)
+        assert log[-1]["evt"] == "upd_attrs"
+        assert sorted(log[-1]["oldvalue"]) == ["color", "size"]
+
+        # New attr added
+        bag.set_attr("item", weight=5)
+        assert log[-1]["evt"] == "upd_attrs"
+        assert sorted(log[-1]["oldvalue"]) == ["weight"]
+
     def test_subscriber_multiple_subscribers_independent(self):
         """Multiple subscribers receive events independently."""
         bag = Bag()
