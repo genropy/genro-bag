@@ -67,7 +67,6 @@ Bag provides progressive capability through optional layers:
 1. **Core Bag** — The fundamental container with paths, values, attributes
 2. **Resolvers** — Values that compute themselves (lazy loading, API calls)
 3. **Subscriptions** — React to changes (validation, logging, sync)
-4. **Builders** — Domain-specific languages for structured output (HTML, XML)
 
 Start with core Bag. Add layers only when you need them.
 
@@ -131,24 +130,6 @@ subscriptions/events
 subscriptions/examples
 subscriptions/faq
 subscriptions/architecture
-```
-
-```{toctree}
-:maxdepth: 2
-:caption: Builders
-:hidden:
-
-builders/README
-builders/quickstart
-builders/html-builder
-builders/markdown-builder
-builders/xsd-builder
-builders/custom-builders
-builders/validation
-builders/advanced
-builders/examples
-builders/faq
-builders/architecture
 ```
 
 ```{toctree}

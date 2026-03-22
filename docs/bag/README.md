@@ -97,4 +97,3 @@ bag2 = Bag.from_tytx(tytx)
 
 - **Values that compute themselves?** → [Resolvers](../resolvers/)
 - **React to changes?** → [Subscriptions](../subscriptions/)
-- **Domain-specific structure?** → [Builders](../builders/)

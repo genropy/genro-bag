@@ -281,57 +281,18 @@ bag.subscribe('validator', update=validate_email)
 bag['email'] = 'invalid'  # Raises ValueError
 ```
 
-## Builders
-
-### What is a builder?
-
-A builder provides a fluent API for constructing validated Bag structures:
-
-```python
-bag = Bag(builder=HtmlBuilder)
-div = bag.div(id='main')
-div.h1('Title')
-div.p('Content')
-```
-
-### How do builders validate structure?
-
-The `@element` decorator defines allowed children via `sub_tags`:
-
-```python
-@element(sub_tags='item')
-def menu(self): ...
-
-# menu can only contain 'item' elements
-menu.item('OK')      # Works
-menu.div('Error')    # Raises BuilderChildError
-```
-
-### Can I create custom builders?
-
-Yes, extend `BagBuilderBase`:
-
-```python
-from genro_bag.builders import BagBuilderBase, element
-
-class MyBuilder(BagBuilderBase):
-    @element(sub_tags='child')
-    def parent(self): ...
-
-    @element()
-    def child(self): ...
-```
+## Labels and Naming
 
 ### Why do node labels have `_0` suffix?
 
-Builders auto-number elements to ensure unique labels:
+When adding multiple nodes with the same tag, labels are auto-numbered:
 
 ```python
-bag.div()  # label: div_0
-bag.div()  # label: div_1
+bag['item_0'] = 'first'
+bag['item_1'] = 'second'
 ```
 
-Access by generated label or iterate:
+Access by label or iterate:
 
 ```python
 bag['div_0']
@@ -498,17 +459,6 @@ if 'config.database' in bag:
 value = bag.get('config.database', default=None)
 ```
 
-### BuilderChildError
-
-You're trying to add an element that's not allowed as a child:
-
-```python
-# If menu only allows 'item' children
-menu.div()  # BuilderChildError
-
-# Fix: add allowed element
-menu.item()
-```
 
 ### Resolver not updating
 
@@ -580,6 +530,5 @@ bag['root.child.value']
 ## Next Steps
 
 - Read the [Examples](examples.md) for real-world usage
-- Explore [Builders](builders/index.md) for domain-specific structures
 - Learn about [Resolvers](resolvers.md) for lazy loading
 - Understand [Subscriptions](subscriptions.md) for reactivity

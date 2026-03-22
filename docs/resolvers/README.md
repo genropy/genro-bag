@@ -105,4 +105,3 @@ bag['users'] = DatabaseResolver('SELECT * FROM users', connection=db)
 ## Related
 
 - **Need to react to changes?** → [Subscriptions](../subscriptions/)
-- **Need domain-specific structure?** → [Builders](../builders/)

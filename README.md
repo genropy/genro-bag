@@ -86,7 +86,6 @@ Bag provides four layers—use only what you need:
 | **Core Bag** | Paths, values, attributes, serialization | Always |
 | **Resolvers** | Lazy-loaded, computed values | API calls, DB queries, expensive computations |
 | **Subscriptions** | React to changes | Validation, logging, sync, computed properties |
-| **Builders** | Domain-specific languages | HTML, Markdown, XML with structure validation |
 
 ## Interactive Notebooks
 
@@ -97,7 +96,6 @@ Try genro-bag directly in your browser with Google Colab:
 | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/genropy/genro-bag/blob/main/notebooks/01-core-bag.ipynb) | **Core Bag** — Paths, values, attributes, serialization |
 | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/genropy/genro-bag/blob/main/notebooks/02-resolvers.ipynb) | **Resolvers** — Lazy loading, caching, custom resolvers |
 | [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/genropy/genro-bag/blob/main/notebooks/03-subscriptions.ipynb) | **Subscriptions** — Events, validation, computed properties |
-| [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/genropy/genro-bag/blob/main/notebooks/04-builders.ipynb) | **Builders** — DSL, structure validation, cardinality |
 
 ## Install
 
@@ -119,7 +117,6 @@ pip install genro-bag
 |-----------|-------------|
 | [`src/genro_bag/`](src/genro_bag/) | Core implementation |
 | [`src/genro_bag/resolvers/`](src/genro_bag/resolvers/) | Built-in resolvers (URL, Directory, OpenAPI) |
-| [`src/genro_bag/builders/`](src/genro_bag/builders/) | Built-in builders (HTML, Markdown, XSD) |
 | [`examples/`](examples/) | Usage examples |
 | [`tests/`](tests/) | Test suite (1500+ tests) |
 | [`docs/`](docs/) | Sphinx documentation source |

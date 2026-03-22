@@ -35,8 +35,8 @@ With Bag you get, in the same object:
 |------|---------------------|----------|
 | Hierarchical data | dict + manual nesting | Native path-based access |
 | Dot notation | munch/addict | Built-in |
-| Configuration | omegaconf, hydra | Bag + builders |
-| Structural validation | Custom code | Builders with rules |
+| Configuration | omegaconf, hydra | Bag + paths |
+| Structural validation | Custom code | Bag + genro-builders |
 | Lazy/computed values | @property, custom decorators | Transparent resolvers (sync/async) |
 | Reactivity | rxpy, signals, custom events | Location-based subscriptions |
 | XML/JSON handling | lxml, xmltodict, json | Unified serialization |
@@ -53,7 +53,7 @@ Bag solves a **different problem**:
 | Aspect | Pydantic | Bag |
 |--------|----------|-----|
 | Primary purpose | Schema validation | Hierarchical data manipulation |
-| Schema | Required upfront | Optional (builders) |
+| Schema | Required upfront | Optional (via genro-builders) |
 | Structure | Fixed at definition | Dynamic, can grow |
 | Access pattern | Attribute access on models | Path-based access anywhere |
 | Reactivity | None built-in | Subscriptions on any node |

@@ -132,4 +132,3 @@ source.subscribe('sync', any=sync)
 ## Related
 
 - **Need dynamic values?** → [Resolvers](../resolvers/)
-- **Need structured output?** → [Builders](../builders/)

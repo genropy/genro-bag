@@ -1,6 +1,6 @@
 # Getting Started
 
-Learn Bag in 5 minutes. No resolvers, no subscriptions, no builders — just the core.
+Learn Bag in 5 minutes. No resolvers, no subscriptions — just the core.
 
 ## Install
 
@@ -134,13 +134,6 @@ Lazy loading, API calls, file watches.
 :link-type: doc
 
 Validation, logging, computed properties.
-:::
-
-:::{grid-item-card} When you need domain-specific structure
-:link: builders/index
-:link-type: doc
-
-HTML, Markdown, XML schemas — validated as you build.
 :::
 
 ::::

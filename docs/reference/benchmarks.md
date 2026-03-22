@@ -192,60 +192,6 @@ Subscribe: 13.08µs
 
 Subscriptions add minimal overhead (~0.7 µs per operation). The event dispatch mechanism is efficient.
 
-### Builders
-
-```
-Bag with HtmlBuilder (1k): 1.43ms (1.43µs/op)
-Build HTML structure (100x): 304.78ms (3.05ms/op)
-```
-
-Creating a Bag with an HtmlBuilder adds negligible overhead. Building a moderately complex HTML structure (with nested divs and paragraphs) takes about 3ms.
-
-#### Builder Overhead
-
-Builders provide a fluent API for constructing structured content, but this convenience comes with a cost:
-
-**Memory Overhead**
-
-```
-100 items - Builder overhead:
-  Bag without builder: 42 KB
-  Bag with HtmlBuilder: 72 KB
-  Builder overhead: 30 KB
-  Ratio: 1.72x
-```
-
-The HtmlBuilder adds approximately **72% more memory** per Bag. This overhead includes the builder instance itself and the method dispatch infrastructure.
-
-**Time Overhead**
-
-```
-1000x create Bag with 10 items:
-  Without builder: 52ms (0.05ms/op)
-  With HtmlBuilder: 1251ms (1.25ms/op)
-  Builder slowdown: 24x
-```
-
-Builder operations are about **24x slower** than direct assignment. This is because each builder method call involves:
-- Method lookup via `__getattr__`
-- Tag name validation against allowed children
-- Automatic label generation
-- Node attribute assignment
-
-**When to use Builders**
-
-Despite the overhead, Builders are valuable when:
-- You need structural validation (e.g., ensuring valid HTML nesting)
-- The fluent API improves code readability
-- You're building complex nested structures where correctness matters more than speed
-
-**When to avoid Builders**
-
-Use direct assignment when:
-- Building very large structures (thousands of nodes)
-- Performance is critical
-- You don't need structural validation
-
 ## Large Bag Performance
 
 ### 100,000 Nodes

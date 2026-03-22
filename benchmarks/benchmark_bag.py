@@ -323,34 +323,6 @@ def benchmark_subscriptions():
     print(f"1k inserts without subscription: {elapsed*1000:.2f}ms ({elapsed/1000*1e6:.2f}µs/op)")
 
 
-def benchmark_builders():
-    """Benchmark builder operations."""
-    print("\n=== Builder Benchmarks ===")
-
-    from genro_bag.builders import HtmlBuilder
-
-    # Builder creation
-    start = time.perf_counter()
-    for _ in range(1000):
-        Bag(builder=HtmlBuilder())
-    elapsed = time.perf_counter() - start
-    print(f"Bag with HtmlBuilder (1k): {elapsed*1000:.2f}ms ({elapsed/1000*1000:.2f}ms/op)")
-
-    # Building structure
-    start = time.perf_counter()
-    for _ in range(100):
-        bag = Bag(builder=HtmlBuilder())
-        html = bag.html()
-        head = html.head()
-        head.title(value="Test")
-        body = html.body()
-        for i in range(10):
-            div = body.div(class_=f"item-{i}")
-            div.p(value=f"Paragraph {i}")
-    elapsed = time.perf_counter() - start
-    print(f"Build HTML structure (100x): {elapsed*1000:.2f}ms ({elapsed/100*1000:.2f}ms/op)")
-
-
 def benchmark_large_bag():
     """Benchmark operations on large bags."""
     print("\n=== Large Bag Benchmarks (100k nodes) ===")
@@ -555,53 +527,6 @@ def benchmark_memory():
     print("\n1,000 items nested 3 levels deep:")
     print(f"  Bag: {format_bytes(nested_mem)}")
     print(f"  Per-item: {nested_mem / 1000:.0f} bytes/item")
-
-    # Builder overhead
-    from genro_bag.builders import HtmlBuilder
-
-    # Bag without builder
-    tracemalloc.start()
-    bag_no_builder = Bag()
-    for i in range(100):
-        bag_no_builder[f"div_{i}"] = f"content{i}"
-    no_builder_snapshot = tracemalloc.take_snapshot()
-    no_builder_mem = sum(stat.size for stat in no_builder_snapshot.statistics("lineno"))
-    tracemalloc.stop()
-
-    # Bag with HtmlBuilder
-    tracemalloc.start()
-    bag_with_builder = Bag(builder=HtmlBuilder())
-    for i in range(100):
-        bag_with_builder.div(value=f"content{i}")
-    builder_snapshot = tracemalloc.take_snapshot()
-    builder_mem = sum(stat.size for stat in builder_snapshot.statistics("lineno"))
-    tracemalloc.stop()
-
-    print("\n100 items - Builder overhead:")
-    print(f"  Bag without builder: {format_bytes(no_builder_mem)}")
-    print(f"  Bag with HtmlBuilder: {format_bytes(builder_mem)}")
-    print(f"  Builder overhead: {format_bytes(builder_mem - no_builder_mem)}")
-    print(f"  Ratio: {builder_mem/no_builder_mem:.2f}x")
-
-    # Timing comparison
-    start = time.perf_counter()
-    for _ in range(1000):
-        bag = Bag()
-        for i in range(10):
-            bag[f"item{i}"] = i
-    elapsed_no_builder = time.perf_counter() - start
-
-    start = time.perf_counter()
-    for _ in range(1000):
-        bag = Bag(builder=HtmlBuilder())
-        for i in range(10):
-            bag.div(value=i)
-    elapsed_with_builder = time.perf_counter() - start
-
-    print("\n1000x create Bag with 10 items - Time:")
-    print(f"  Without builder: {elapsed_no_builder*1000:.2f}ms")
-    print(f"  With HtmlBuilder: {elapsed_with_builder*1000:.2f}ms")
-    print(f"  Builder slowdown: {elapsed_with_builder/elapsed_no_builder:.2f}x")
 
 
 def benchmark_comparison_dict():
@@ -853,7 +778,6 @@ def main():
     benchmark_serialization()
     benchmark_resolvers()
     benchmark_subscriptions()
-    benchmark_builders()
     benchmark_large_bag()
     benchmark_very_large_flat_bag()
 

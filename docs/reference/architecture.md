@@ -12,7 +12,6 @@ classDiagram
         -List~BagNode~ _nodes
         -Dict _node_index
         -BagNode _parent_node
-        -Builder _builder
         +__getitem__(path)
         +__setitem__(path, value)
         +set_item(path, value, **attrs)
@@ -213,45 +212,6 @@ flowchart LR
     DEL --> DELETE
 ```
 
-## Builders
-
-Builders provide a fluent API for constructing Bags with structural validation.
-
-```mermaid
-flowchart TB
-    A[bag.div] --> B["__getattr__('div')"]
-    B --> C[Builder.create_child]
-    C --> D{Tag allowed?}
-    D -->|Yes| E[Create BagNode]
-    D -->|No| F[Raise ValidationError]
-    E --> G[Set attributes]
-    G --> H[Return node for chaining]
-```
-
-### Builder Hierarchy
-
-```mermaid
-classDiagram
-    class Builder {
-        <<abstract>>
-        +create_child(tag, value, attrs)
-        +validate_tag(parent, tag)
-    }
-
-    class HtmlBuilder {
-        +ALLOWED_CHILDREN: Dict
-        +validate_tag()
-    }
-
-    class XmlBuilder {
-        +schema: XmlSchema
-        +validate_tag()
-    }
-
-    Builder <|-- HtmlBuilder
-    Builder <|-- XmlBuilder
-```
-
 ## Serialization
 
 Bag supports multiple serialization formats.
@@ -310,7 +270,6 @@ graph TB
         BL[_nodes: List]
         BI[_node_index: Dict]
         BP[_parent_node: ref]
-        BB[_builder: ref]
     end
 
     subgraph "BagNode (~290 bytes each)"
@@ -362,7 +321,6 @@ flowchart TB
         I1[Direct assignment]
         I2[From dict]
         I3[From XML]
-        I4[Builder API]
     end
 
     subgraph "Bag Core"

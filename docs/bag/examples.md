@@ -1,6 +1,6 @@
 # Core Bag Examples
 
-Practical examples using only core Bag features (no resolvers, subscriptions, or builders).
+Practical examples using only core Bag features (no resolvers or subscriptions).
 
 ## Configuration Management
 
