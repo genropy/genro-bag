@@ -200,6 +200,78 @@ config['database.host']
 - `.bag.json` - TYTX JSON
 - `.bag.mp` - TYTX MessagePack
 
+## EnvResolver
+
+Read an environment variable on demand, with optional caching.
+
+```python
+from genro_bag import Bag
+from genro_bag.resolvers import EnvResolver
+
+bag = Bag()
+bag['db_host'] = EnvResolver('DATABASE_HOST', default='localhost')
+bag['db_port'] = EnvResolver('DATABASE_PORT', default='5432')
+
+bag['db_host']  # reads os.environ['DATABASE_HOST'] or 'localhost'
+```
+
+### Live Updates
+
+With `cache_time=0` (default), every access re-reads the variable:
+
+```python
+import os
+
+bag['mode'] = EnvResolver('APP_MODE', default='development')
+bag['mode']  # 'development'
+
+os.environ['APP_MODE'] = 'production'
+bag['mode']  # 'production' — picked up immediately
+```
+
+### Caching
+
+With `cache_time=N`, the value is cached for N seconds:
+
+```python
+bag['secret'] = EnvResolver('API_KEY', cache_time=60)
+bag['secret']  # reads from os.environ
+bag['secret']  # cached for 60 seconds
+```
+
+EnvResolver defaults to `cache_time=0` (re-read every time).
+
+## UuidResolver
+
+Generate a UUID string on first access, cached forever by default.
+
+```python
+from genro_bag import Bag
+from genro_bag.resolvers import UuidResolver
+
+bag = Bag()
+bag['session_id'] = UuidResolver()
+bag['session_id']  # '550e8400-e29b-41d4-a716-446655440000'
+bag['session_id']  # same UUID (cached with cache_time=-1)
+```
+
+### UUID Versions
+
+```python
+bag['random_id'] = UuidResolver()          # uuid4 (default, random)
+bag['ts_id'] = UuidResolver('uuid1')       # uuid1 (timestamp-based)
+```
+
+### Regenerate
+
+```python
+node = bag.get_node('session_id')
+node.value.reset()       # invalidate cache
+bag['session_id']        # new UUID generated
+```
+
+UuidResolver defaults to `cache_time=-1` (infinite cache).
+
 ## Common Parameters
 
 All resolvers support three independent parameters:
@@ -250,6 +322,8 @@ Where `[value]` indicates the computed default: `as_bag` defaults to `not read_o
 | Resolver | `cache_time` |
 |----------|--------------|
 | `BagCbResolver` | 0 |
+| `EnvResolver` | 0 |
+| `UuidResolver` | -1 |
 | `UrlResolver` | 300 |
 | `DirectoryResolver` | 0 |
 | `OpenApiResolver` | -1 |

@@ -4,8 +4,10 @@
 This module provides ready-to-use resolver implementations:
 
 - DirectoryResolver: Lazily loads directory contents as a Bag
+- EnvResolver: Reads an environment variable (with optional caching)
 - TxtDocResolver: Lazily loads text file content
 - BagCbResolver: Calls a callback function (sync or async)
+- UuidResolver: Generates a UUID string (cached by default)
 - UrlResolver: Loads content from HTTP URL (requires httpx)
 - OpenApiResolver: Loads OpenAPI spec and organizes by tags (requires httpx)
 
@@ -34,14 +36,18 @@ Example:
 
 from ..resolver import BagCbResolver
 from .directory_resolver import DirectoryResolver, SerializedBagResolver, TxtDocResolver
+from .env_resolver import EnvResolver
 from .openapi_resolver import OpenApiResolver
 from .url_resolver import UrlResolver
+from .uuid_resolver import UuidResolver
 
 __all__ = [
     "BagCbResolver",
     "DirectoryResolver",
+    "EnvResolver",
     "OpenApiResolver",
     "SerializedBagResolver",
     "TxtDocResolver",
     "UrlResolver",
+    "UuidResolver",
 ]
