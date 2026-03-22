@@ -16,11 +16,11 @@ from genro_bag.resolver import BagResolver
 # =============================================================================
 
 
-class TestBagNodeGetAttrNoBuilder:
-    """Tests for __getattr__ when node has no builder."""
+class TestBagNodeGetAttrUnknown:
+    """Tests for attribute access on BagNode."""
 
-    def test_getattr_raises_attribute_error_without_builder(self):
-        """__getattr__ raises AttributeError when no builder exists."""
+    def test_getattr_raises_attribute_error_for_unknown(self):
+        """Accessing unknown attribute raises AttributeError."""
         node = BagNode(parent_bag=None, label="test")
 
         with pytest.raises(AttributeError, match="object has no attribute 'unknown'"):

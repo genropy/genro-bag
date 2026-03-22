@@ -8,7 +8,7 @@ This module provides:
 
 Key Features:
     - Dual relationship: node.parent_bag → Bag, Bag.parent_node → node
-    - Optional tag for builder-based validation
+    - Optional tag for semantic typing
     - Resolver support for lazy/dynamic value computation
     - Per-node subscriptions for change notifications
     - Validation state tracking via _invalid_reasons
@@ -47,7 +47,7 @@ class BagNode:
 
     Attributes:
         label: The node's unique name/key within its parent.
-        tag: Optional type/tag for the node (used by builders).
+        tag: Optional type/tag for the node (semantic typing).
 
     Internal Attributes (via __slots__):
         _value: The node's actual value storage.
@@ -55,13 +55,11 @@ class BagNode:
         _parent_bag: Reference to the parent Bag containing this node.
         _resolver: Optional BagResolver for lazy/dynamic value computation.
         _node_subscribers: Dict mapping subscriber_id to callback for change notifications.
-        tag: Semantic type for builder validation.
+        tag: Optional semantic type for the node.
         xml_tag: Original XML tag name for serialization.
         _invalid_reasons: List of validation error messages. Empty list means valid.
-            This attribute is reserved for external validation systems (e.g., TreeStore
-            builders) to populate. The BagNode itself does not set validation errors.
-        _compiled: Dict for compilation data. Reserved for builders to store compiled
-            objects, references, or any compilation-related data. Initialized lazily
+            Reserved for external validation systems to populate.
+        _compiled: Dict for external compilation data. Initialized lazily
             on first access via the `compiled` property.
     """
 
@@ -97,7 +95,7 @@ class BagNode:
             value: The node's value (can be scalar or Bag).
             attr: Dict of attributes to set via set_attr() (with processing).
             resolver: A BagResolver for lazy/dynamic value loading.
-            tag: Optional type/tag for the node (used by builders for validation).
+            tag: Optional semantic type for the node.
             xml_tag: Original XML tag name (used for XML serialization).
             _remove_null_attributes: If True, remove None values from attributes.
         """
@@ -387,9 +385,8 @@ class BagNode:
     def compiled(self) -> dict[str, Any]:
         """Get compilation data dict (lazy initialization).
 
-        Returns a dict that builders can use to store compiled objects,
-        references, or any compilation-related data. The dict is created
-        on first access.
+        Returns a dict for external use (compilation data, metadata, etc.).
+        Created on first access.
         """
         if self._compiled is None:
             self._compiled = {}
@@ -601,9 +598,9 @@ class BagNode:
     def is_valid(self) -> bool:
         """Check if this node has no validation errors.
 
-        The _invalid_reasons list is populated by external validation systems
-        (e.g., TreeStore builders). BagNode provides the storage and this
-        property for checking validity, but does not perform validation itself.
+        The _invalid_reasons list is populated by external validation systems.
+        BagNode provides the storage and this property for checking validity,
+        but does not perform validation itself.
 
         Returns:
             True if _invalid_reasons is empty, False otherwise.
