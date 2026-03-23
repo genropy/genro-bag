@@ -179,7 +179,7 @@ class BagParser:
             if tag:
                 node = parent_bag.get_node(label)
                 if node:
-                    node.tag = tag
+                    node.node_tag = tag
 
         return cast("Bag", bag)
 

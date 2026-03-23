@@ -47,7 +47,7 @@ class BagNode:
 
     Attributes:
         label: The node's unique name/key within its parent.
-        tag: Optional type/tag for the node (semantic typing).
+        node_tag: Optional type/tag for the node (semantic typing).
 
     Internal Attributes (via __slots__):
         _value: The node's actual value storage.
@@ -55,7 +55,7 @@ class BagNode:
         _parent_bag: Reference to the parent Bag containing this node.
         _resolver: Optional BagResolver for lazy/dynamic value computation.
         _node_subscribers: Dict mapping subscriber_id to callback for change notifications.
-        tag: Optional semantic type for the node.
+        node_tag: Optional semantic type for the node.
         xml_tag: Original XML tag name for serialization.
         _invalid_reasons: List of validation error messages. Empty list means valid.
             Reserved for external validation systems to populate.
@@ -70,7 +70,7 @@ class BagNode:
         "_parent_bag",
         "_resolver",
         "_node_subscribers",
-        "tag",
+        "node_tag",
         "xml_tag",
         "_invalid_reasons",
         "_compiled",
@@ -83,7 +83,7 @@ class BagNode:
         value: Any = None,
         attr: dict[str, Any] | None = None,
         resolver: BagResolver | None = None,
-        tag: str | None = None,
+        node_tag: str | None = None,
         xml_tag: str | None = None,
         _remove_null_attributes: bool = True,
     ) -> None:
@@ -95,7 +95,7 @@ class BagNode:
             value: The node's value (can be scalar or Bag).
             attr: Dict of attributes to set via set_attr() (with processing).
             resolver: A BagResolver for lazy/dynamic value loading.
-            tag: Optional semantic type for the node.
+            node_tag: Optional semantic type for the node.
             xml_tag: Original XML tag name (used for XML serialization).
             _remove_null_attributes: If True, remove None values from attributes.
         """
@@ -106,7 +106,7 @@ class BagNode:
         self._resolver: BagResolver | None = None
         self._node_subscribers: dict[str, NodeSubscriberCallback] = {}
         self._attr: dict[str, Any] = {}
-        self.tag = tag
+        self.node_tag = node_tag
         self.xml_tag = xml_tag
         self._invalid_reasons: list[str] = []
         self._compiled: dict[str, Any] | None = None
@@ -841,6 +841,7 @@ class BagNodeContainer:
         _reason: str | None = None,
         do_trigger: bool = True,
         _fired: bool = False,
+        node_tag: str | None = None,
     ) -> BagNode:
         """Set or create a BagNode with optional position.
 
@@ -894,7 +895,9 @@ class BagNodeContainer:
         node = self._dict.get(label)
 
         if node:
-            # Existing node
+            # Existing node — update node_tag if provided
+            if node_tag is not None:
+                node.node_tag = node_tag
             if _query_string:
                 # Only set_attr, don't touch value
                 node.set_attr(
@@ -933,6 +936,7 @@ class BagNodeContainer:
                 value=value,
                 attr=attr,
                 resolver=resolver,
+                node_tag=node_tag,
                 _remove_null_attributes=_remove_null_attributes,
             )
             idx = self._parse_position(node_position)

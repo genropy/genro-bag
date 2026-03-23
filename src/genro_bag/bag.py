@@ -636,6 +636,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
         _fired: bool = False,
         do_trigger: bool = True,
         resolver=None,
+        node_tag: str | None = None,
         **kwargs,
     ) -> BagNode:
         """Set value at a hierarchical path.
@@ -681,6 +682,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
                 - None (default): Raise error if node has resolver
                 - False: Remove existing resolver and set value
                 - BagResolver instance: Replace resolver with new one
+            node_tag: Optional semantic type for the node.
             **kwargs: Additional attributes to set on the node.
 
         Returns:
@@ -730,6 +732,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
             _reason=_reason,
             do_trigger=do_trigger,
             _fired=_fired,
+            node_tag=node_tag,
         )
 
     def __setitem__(self, path: str, value: Any) -> None:

@@ -114,8 +114,8 @@ class BagSerializer:
         local_namespaces = self._extract_namespaces(node.attr)
         current_namespaces = namespaces + local_namespaces
 
-        # Use xml_tag (from parsing), or tag (semantic type), or label (unique key)
-        xml_tag = node.xml_tag or node.tag or node.label
+        # Use xml_tag (from parsing), or node_tag (semantic type), or label (unique key)
+        xml_tag = node.xml_tag or node.node_tag or node.label
         tag, original_tag = self._sanitize_tag(xml_tag, current_namespaces)
 
         # Build attributes string
@@ -302,14 +302,14 @@ class BagSerializer:
 
             if compact:
                 parent_ref = path_to_code.get(parent_path) if parent_path else None
-                yield (parent_ref, node.label, node.tag, value, attr)
+                yield (parent_ref, node.label, node.node_tag, value, attr)
 
                 if hasattr(node_value, "walk") and hasattr(node_value, "_nodes"):
                     path_to_code[path] = code_counter
                     path_registry[code_counter] = path  # type: ignore[index]
                     code_counter += 1
             else:
-                yield (parent_path, node.label, node.tag, value, attr)
+                yield (parent_path, node.label, node.node_tag, value, attr)
 
     # ==================== to_json ====================
 

@@ -26,7 +26,7 @@ class TestBagNodeInit:
         assert node.label == "test"
         assert node.value is None
         assert node.attr == {}
-        assert node.tag is None
+        assert node.node_tag is None
         assert node.parent_bag is None
 
     def test_init_with_value(self):
@@ -41,11 +41,11 @@ class TestBagNodeInit:
 
         assert node.attr == {"color": "red", "size": 10}
 
-    def test_init_with_tag(self):
-        """BagNode can be created with a tag."""
-        node = BagNode(parent_bag=None, label="test", tag="div")
+    def test_init_with_node_tag(self):
+        """BagNode can be created with a node_tag."""
+        node = BagNode(parent_bag=None, label="test", node_tag="div")
 
-        assert node.tag == "div"
+        assert node.node_tag == "div"
 
     def test_init_value_types(self):
         """BagNode accepts various value types."""

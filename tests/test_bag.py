@@ -3012,11 +3012,11 @@ class TestBagSerializationRoundtrip:
         """TYTX roundtrip preserves node tags."""
         original = Bag()
         original["item"] = "value"
-        original.get_node("item").tag = "custom_tag"
+        original.get_node("item").node_tag = "custom_tag"
 
         restored = Bag.from_tytx(original.to_tytx())
 
-        assert restored.get_node("item").tag == "custom_tag"
+        assert restored.get_node("item").node_tag == "custom_tag"
 
     def test_tytx_roundtrip_compact_mode(self):
         """TYTX roundtrip works with compact=True."""
@@ -3563,10 +3563,10 @@ class TestSerializationEdgeCases:
         """from_tytx correctly restores node tags."""
         original = Bag()
         original["item"] = "value"
-        original.get_node("item").tag = "custom_tag"
+        original.get_node("item").node_tag = "custom_tag"
 
         restored = Bag.from_tytx(original.to_tytx())
-        assert restored.get_node("item").tag == "custom_tag"
+        assert restored.get_node("item").node_tag == "custom_tag"
 
 
 class TestBagCoverageEdgeCases:
