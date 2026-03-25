@@ -2136,6 +2136,49 @@ class TestBagProperties:
         nested = bag["a.b"]
         assert nested.fullpath == "a.b"
 
+    def test_relative_path_direct_child(self):
+        """Relative path of a direct child node."""
+        bag = Bag()
+        bag.set_backref()
+        bag["item"] = "value"
+        node = bag.get_node("item")
+        assert bag.relative_path(node) == "item"
+
+    def test_relative_path_nested(self):
+        """Relative path of a deeply nested node."""
+        bag = Bag()
+        bag.set_backref()
+        bag["a.b.c"] = "value"
+        node = bag.get_node("a").value.get_node("b").value.get_node("c")
+        assert bag.relative_path(node) == "a.b.c"
+
+    def test_relative_path_from_intermediate_bag(self):
+        """Relative path from an intermediate Bag."""
+        bag = Bag()
+        bag.set_backref()
+        bag["a.b.c"] = "value"
+        intermediate = bag["a"]
+        node = intermediate.get_node("b").value.get_node("c")
+        assert intermediate.relative_path(node) == "b.c"
+
+    def test_relative_path_works_without_backref(self):
+        """Relative path works for direct children even without backref."""
+        bag = Bag()
+        bag["item"] = "value"
+        node = bag.get_node("item")
+        assert bag.relative_path(node) == "item"
+
+    def test_relative_path_unrelated_node(self):
+        """Relative path returns None for a node not in this Bag."""
+        bag1 = Bag()
+        bag1.set_backref()
+        bag1["a"] = "value"
+        bag2 = Bag()
+        bag2.set_backref()
+        bag2["b"] = "value"
+        node_b = bag2.get_node("b")
+        assert bag1.relative_path(node_b) is None
+
     def test_root_attributes_get_set(self):
         """Get and set root_attributes."""
         bag = Bag()

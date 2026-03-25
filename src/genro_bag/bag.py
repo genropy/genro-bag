@@ -327,6 +327,30 @@ class Bag(BagParser, BagSerializer, BagQuery):
                 return self.parent_node.label
         return None
 
+    def relative_path(self, node: BagNode) -> str | None:
+        """Get dot-separated path from this Bag to a descendant node.
+
+        Walks up from the node to this Bag collecting labels.
+        Requires backref mode enabled.
+
+        Args:
+            node: A BagNode that is a descendant of this Bag.
+
+        Returns:
+            The relative path string, or None if the node is not a descendant
+            or backref is not enabled.
+        """
+        parts: list[str] = []
+        current: BagNode | None = node
+        while current is not None:
+            if current.parent_bag is self:
+                parts.append(current.label)
+                parts.reverse()
+                return ".".join(parts)
+            parts.append(current.label)
+            current = current.parent_node
+        return None
+
     @property
     def root(self) -> Bag:
         """Get the root Bag of the hierarchy.
