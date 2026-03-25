@@ -1471,10 +1471,10 @@ class Bag(BagParser, BagSerializer, BagQuery):
             node: The BagNode that contains this Bag.
             parent: The parent Bag.
         """
+        self.parent = parent
+        self.parent_node = node
         if self._backref is not True:
             self._backref = True
-            self.parent = parent
-            self.parent_node = node
             self._nodes._parent_bag = self
             for node in self:
                 node.parent_bag = self
