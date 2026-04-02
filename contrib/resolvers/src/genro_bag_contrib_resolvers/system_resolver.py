@@ -7,7 +7,7 @@ standard library modules. Optionally adds memory/CPU usage if psutil is availabl
 
 Example:
     from genro_bag import Bag
-    from genro_bag.contrib import SystemResolver
+    from genro_bag_contrib_resolvers import SystemResolver
 
     bag = Bag()
     bag['system'] = SystemResolver()
@@ -31,8 +31,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from ..bag import Bag
-from ..resolver import BagResolver
+from genro_bag import Bag
+from genro_bag.resolver import BagResolver
 
 try:
     import psutil
