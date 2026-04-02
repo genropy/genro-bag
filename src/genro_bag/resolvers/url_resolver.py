@@ -20,38 +20,27 @@ class UrlResolver(BagResolver):
     Supports all HTTP methods and can convert responses to Bag automatically.
     Uses httpx.AsyncClient for async HTTP operations.
 
+    Hooks for subclasses:
+        prepare_headers(): Return extra headers for the request.
+        process_response(response): Parse/transform the httpx.Response.
+
     Parameters (class_args):
         url: The URL to fetch (first positional argument).
 
     Parameters (class_kwargs):
         cache_time: Cache duration in seconds. Default 300.
         read_only: If True, value is not stored in node._value. Default True.
-            Independent from cache_time (internal cache).
         url: The URL to fetch (can also be passed as kwarg).
         method: HTTP method (get, post, put, delete, patch). Default 'get'.
         qs: Query string parameters as Bag or dict. None values are filtered out.
         body: Request body as Bag (for POST/PUT/PATCH). Converted via as_dict().
-        timeout: Request timeout in seconds. Default 30.
+        headers: Static headers as dict. Default None.
+        timeout: Request timeout in seconds. Default 5.
         as_bag: If True, parse response as Bag based on content-type. Default False.
 
-    Returns:
-        If as_bag=True or read_only=False: Bag parsed from JSON/XML response.
-        Otherwise: bytes (raw response content).
-
     Example:
-        >>> # Simple GET
-        >>> resolver = UrlResolver('https://api.example.com/data')
-        >>> data = resolver()  # returns bytes
-        >>>
-        >>> # GET with query params, parse as Bag
         >>> resolver = UrlResolver('https://api.example.com/users',
         ...                        qs={'page': 1, 'limit': 10}, as_bag=True)
-        >>> users = resolver()  # returns Bag
-        >>>
-        >>> # POST with body
-        >>> body = Bag({'name': 'John', 'email': 'john@example.com'})
-        >>> resolver = UrlResolver('https://api.example.com/users',
-        ...                        method='post', body=body, as_bag=True)
     """
 
     class_kwargs = {
