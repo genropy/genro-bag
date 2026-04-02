@@ -68,6 +68,7 @@ class UrlResolver(BagResolver):
         "method": "get",
         "qs": None,
         "body": None,
+        "headers": None,
         "timeout": 5,
         "as_bag": False,
     }
@@ -141,7 +142,9 @@ class UrlResolver(BagResolver):
 
         async with httpx.AsyncClient() as client:
             request_method = getattr(client, method)
-            kwargs = {"timeout": timeout}
+            headers = dict(self._kw["headers"] or {})
+            headers.update(self.prepare_headers())
+            kwargs = {"timeout": timeout, "headers": headers}
 
             if body is not None:
                 if isinstance(body, Bag):
@@ -150,10 +153,33 @@ class UrlResolver(BagResolver):
                     kwargs["json"] = body
 
             response = await request_method(url, **kwargs)
-            response.raise_for_status()
+            return self.process_response(response)
 
-            # Return raw content - base class _finalize_result handles as_bag conversion
-            return response.content
+    def prepare_headers(self) -> dict[str, str]:
+        """Return extra headers to include in the request.
+
+        Override this method to add dynamic headers (e.g. If-Modified-Since,
+        Authorization tokens).
+
+        Returns:
+            Dict of header name → value. Empty dict by default.
+        """
+        return {}
+
+    def process_response(self, response: httpx.Response) -> Any:
+        """Process the HTTP response and return the result.
+
+        Override this method to customize response handling (e.g. parse JSON,
+        check status codes like 304, transform data).
+
+        Args:
+            response: The httpx Response object.
+
+        Returns:
+            Raw response content (bytes) by default.
+        """
+        response.raise_for_status()
+        return response.content
 
     def _qs_to_dict(self, qs) -> dict:
         """Convert query string parameter source to dict, filtering None values.

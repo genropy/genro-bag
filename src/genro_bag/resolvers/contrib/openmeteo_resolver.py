@@ -2,7 +2,7 @@
 
 """OpenMeteoResolver - Weather data from Open-Meteo API.
 
-Extends UrlResolver to fetch current weather for a city name.
+Fetches current weather for a city name using Open-Meteo's free API.
 The city is geocoded to coordinates using Open-Meteo's Geocoding API.
 
 Example:
@@ -27,6 +27,9 @@ import httpx
 
 from genro_bag import Bag
 from genro_bag.resolvers import UrlResolver
+
+FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
+GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search"
 
 # WMO Weather interpretation codes (WMO 4677)
 # https://open-meteo.com/en/docs
@@ -74,13 +77,26 @@ class OpenMeteoResolver(UrlResolver):
 
     class_kwargs: dict[str, Any] = {
         **UrlResolver.class_kwargs,
-        "url": "https://api.open-meteo.com/v1/forecast",
-        "as_bag": True,
+        "url": FORECAST_URL,
         "cache_time": 60,
         "city": None,
         "language": "en",
         "country_code": None,
     }
+    internal_params = UrlResolver.internal_params | {"city", "language", "country_code"}
+
+    def init(self) -> None:
+        """Geocode city and set query string parameters."""
+        city = self._kw["city"]
+        if not city:
+            raise ValueError("city parameter is required")
+
+        lat, lon = self._geocode_city()
+        self._kw["qs"] = {
+            "latitude": lat,
+            "longitude": lon,
+            "current": "temperature_2m,weather_code,wind_speed_10m,relative_humidity_2m",
+        }
 
     def _geocode_city(self) -> tuple[float, float]:
         """Get coordinates for a city name using Open-Meteo Geocoding API.
@@ -95,10 +111,11 @@ class OpenMeteoResolver(UrlResolver):
         language = self._kw["language"]
         country_code = self._kw["country_code"]
 
-        url = f"https://geocoding-api.open-meteo.com/v1/search?name={city}&count=1&language={language}&format=json"
+        params = {"name": city, "count": 1, "language": language, "format": "json"}
         if country_code:
-            url += f"&countryCode={country_code}"
-        response = httpx.get(url, timeout=10)
+            params["countryCode"] = country_code
+
+        response = httpx.get(GEOCODING_URL, params=params, timeout=10)
         response.raise_for_status()
         data = response.json()
 
@@ -108,31 +125,17 @@ class OpenMeteoResolver(UrlResolver):
         result = data["results"][0]
         return result["latitude"], result["longitude"]
 
-    async def async_load(self) -> Bag:
-        """Fetch current weather from Open-Meteo API.
+    def process_response(self, response: httpx.Response) -> Bag:
+        """Parse Open-Meteo JSON response into a Bag."""
+        response.raise_for_status()
+        data = response.json()
 
-        Geocodes the city name to coordinates, then fetches weather data.
-        The weather_code is translated to a human-readable description.
+        current = data["current"]
+        result = Bag()
+        for key, value in current.items():
+            if key == "weather_code":
+                result["weather"] = WMO_WEATHER_CODES.get(value, f"Unknown ({value})")
+            else:
+                result[key] = value
 
-        Returns:
-            Bag: Current weather data (temperature, weather, wind_speed, humidity).
-        """
-        city = self._kw["city"]
-        if not city:
-            raise ValueError("city parameter is required")
-
-        lat, lon = self._geocode_city()
-
-        self._kw["qs"] = {
-            "latitude": lat,
-            "longitude": lon,
-            "current": "temperature_2m,weather_code,wind_speed_10m,relative_humidity_2m",
-        }
-        result = await super().async_load()
-        current = result["current"]
-
-        # Translate weather_code to description
-        code = current.pop("weather_code")
-        current.set_item("weather", WMO_WEATHER_CODES.get(code, f"Unknown ({code})"))
-
-        return current
+        return result

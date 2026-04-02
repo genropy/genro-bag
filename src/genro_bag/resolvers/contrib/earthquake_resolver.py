@@ -25,12 +25,12 @@ from typing import Any
 import httpx
 
 from genro_bag import Bag
-from genro_bag.resolver import BagResolver
+from genro_bag.resolvers import UrlResolver
 
 USGS_FEED = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/all_hour.geojson"
 
 
-class EarthquakeResolver(BagResolver):
+class EarthquakeResolver(UrlResolver):
     """Resolver that fetches recent earthquakes from USGS.
 
     Uses If-Modified-Since to avoid redownloading unchanged data.
@@ -38,25 +38,23 @@ class EarthquakeResolver(BagResolver):
     """
 
     class_kwargs: dict[str, Any] = {
-        **BagResolver.class_kwargs,
+        **UrlResolver.class_kwargs,
         "url": USGS_FEED,
     }
     class_args: list[str] = ["url"]
-    internal_params = BagResolver.internal_params | {"url"}
 
     def init(self) -> None:
         """Initialize last-modified tracking."""
         self._last_modified: str | None = None
 
-    def load(self) -> Bag:
-        """Fetch earthquakes, using conditional request."""
-        url = self._kw["url"]
-        headers: dict[str, str] = {}
+    def prepare_headers(self) -> dict[str, str]:
+        """Add If-Modified-Since header when available."""
         if self._last_modified:
-            headers["If-Modified-Since"] = self._last_modified
+            return {"If-Modified-Since": self._last_modified}
+        return {}
 
-        response = httpx.get(url, headers=headers, timeout=15)
-
+    def process_response(self, response: httpx.Response) -> Bag:
+        """Parse USGS GeoJSON response into a Bag."""
         if response.status_code == 304:
             return self.cached_value
 
