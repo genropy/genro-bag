@@ -355,9 +355,12 @@ class BagResolver:
         """Whether resolver is in read-only mode.
 
         If True, the resolved value is NOT stored in node._value.
-        Independent from cache_time (internal cache).
+        If not explicitly passed, derived from cache_time:
+        cache_time == 0 → read_only=True, cache_time != 0 → read_only=False.
         """
-        return self._kw.get("read_only", False)  # type: ignore[no-any-return]
+        if "read_only" in self._init_kwargs:
+            return self._init_kwargs["read_only"]  # type: ignore[no-any-return]
+        return self.cache_time is not False and self.cache_time == 0
 
     # =========================================================================
     # CACHED VALUE PROPERTY
