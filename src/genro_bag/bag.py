@@ -45,7 +45,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any, cast
 
-from genro_toolbox import smartawait, smartcontinuation, smartsplit
+from genro_toolbox import cancel_timer, set_interval, smartawait, smartcontinuation, smartsplit
 
 from .bag_parse import BagParser
 from .bag_query import BagQuery
@@ -77,6 +77,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
         _upd_subscribers: Callbacks for update events.
         _ins_subscribers: Callbacks for insert events.
         _del_subscribers: Callbacks for delete events.
+        _tmr_subscribers: Timer subscriptions (interval-based callbacks).
         _root_attributes: Attributes for the root bag.
         node_class: Factory class for creating BagNode instances. Subclasses
             can override this to use custom node types.
@@ -103,6 +104,7 @@ class Bag(BagParser, BagSerializer, BagQuery):
         self._upd_subscribers: dict = {}
         self._ins_subscribers: dict = {}
         self._del_subscribers: dict = {}
+        self._tmr_subscribers: dict = {}
         self._root_attributes: dict | None = None
 
         if source:
@@ -1507,9 +1509,13 @@ class Bag(BagParser, BagSerializer, BagQuery):
         oldvalue: Any = None,
         reason: str | None = None,
     ) -> None:
-        """Trigger for node change events."""
+        """Trigger for node change events.
+
+        Propagates to parent unless a subscriber returns False.
+        """
         for s in list(self._upd_subscribers.values()):
-            s(node=node, pathlist=pathlist, oldvalue=oldvalue, evt=evt, reason=reason)
+            if s(node=node, pathlist=pathlist, oldvalue=oldvalue, evt=evt, reason=reason) is False:
+                return
         if self.parent and self.parent_node:
             self.parent._on_node_changed(
                 node, [self.parent_node.label] + pathlist, evt, oldvalue, reason=reason
@@ -1518,7 +1524,10 @@ class Bag(BagParser, BagSerializer, BagQuery):
     def _on_node_inserted(
         self, node: BagNode, ind: int, pathlist: list | None = None, reason: str | None = None
     ) -> None:
-        """Trigger for node insert events."""
+        """Trigger for node insert events.
+
+        Propagates to parent unless a subscriber returns False.
+        """
         parent = node.parent_bag
         if parent is not None and parent.backref and hasattr(node.value, "_htraverse"):
             node.value.set_backref(node=node, parent=parent)
@@ -1526,7 +1535,8 @@ class Bag(BagParser, BagSerializer, BagQuery):
         if pathlist is None:
             pathlist = []
         for s in list(self._ins_subscribers.values()):
-            s(node=node, pathlist=pathlist, ind=ind, evt="ins", reason=reason)
+            if s(node=node, pathlist=pathlist, ind=ind, evt="ins", reason=reason) is False:
+                return
         if self.parent and self.parent_node:
             self.parent._on_node_inserted(
                 node, ind, [self.parent_node.label] + pathlist, reason=reason
@@ -1535,15 +1545,41 @@ class Bag(BagParser, BagSerializer, BagQuery):
     def _on_node_deleted(
         self, node: Any, ind: int, pathlist: list | None = None, reason: str | None = None
     ) -> None:
-        """Trigger for node delete events."""
+        """Trigger for node delete events.
+
+        Propagates to parent unless a subscriber returns False.
+        """
         for s in list(self._del_subscribers.values()):
-            s(node=node, pathlist=pathlist, ind=ind, evt="del", reason=reason)
+            if s(node=node, pathlist=pathlist, ind=ind, evt="del", reason=reason) is False:
+                return
         if self.parent and self.parent_node:
             if pathlist is None:
                 pathlist = []
             self.parent._on_node_deleted(
                 node, ind, [self.parent_node.label] + pathlist, reason=reason
             )
+
+    def _on_timer_tick(self, subscriber_id: str) -> None:
+        """Trigger for timer events.
+
+        Propagates to parent unless the subscriber callback returns False.
+        """
+        entry = self._tmr_subscribers.get(subscriber_id)
+        if entry and entry["callback"](bag=self, evt="tmr", subscriber_id=subscriber_id) is False:
+            return
+        if self.parent and self.parent_node:
+            self.parent._on_timer_tick_propagate([self.parent_node.label])
+
+    def _on_timer_tick_propagate(self, pathlist: list) -> None:
+        """Propagate timer tick to parent subscribers.
+
+        Propagates to parent unless a subscriber callback returns False.
+        """
+        for s in list(self._tmr_subscribers.values()):
+            if s["callback"](bag=self, evt="tmr", subscriber_id=None, pathlist=pathlist) is False:
+                return
+        if self.parent and self.parent_node:
+            self.parent._on_timer_tick_propagate([self.parent_node.label] + pathlist)
 
     # -------------------- subscription --------------------------------
 
@@ -1558,16 +1594,23 @@ class Bag(BagParser, BagSerializer, BagQuery):
         update: Any = None,
         insert: Any = None,
         delete: Any = None,
+        timer: Any = None,
+        interval: float | None = None,
         any: Any = None,
     ) -> None:
-        """Provide a subscribing of a function to an event.
+        """Subscribe a callback to bag events.
 
         Args:
             subscriber_id: Unique identifier for this subscription.
             update: Callback for update events.
             insert: Callback for insert events.
             delete: Callback for delete events.
-            any: Callback for all events (update, insert, delete).
+            timer: Callback for timer events (requires interval).
+            interval: Seconds between timer ticks (required if timer is set).
+            any: Callback for update, insert, and delete events (not timer).
+
+        Raises:
+            ValueError: If timer is set without interval.
         """
         if not self.backref:
             self.set_backref()
@@ -1576,22 +1619,34 @@ class Bag(BagParser, BagSerializer, BagQuery):
         self._subscribe(subscriber_id, self._ins_subscribers, insert or any)
         self._subscribe(subscriber_id, self._del_subscribers, delete or any)
 
+        if timer is not None:
+            if interval is None:
+                raise ValueError("interval is required when timer is set")
+            timer_id = set_interval(interval, self._on_timer_tick, subscriber_id)
+            self._tmr_subscribers[subscriber_id] = {
+                "timer_id": timer_id,
+                "callback": timer,
+                "interval": interval,
+            }
+
     def unsubscribe(
         self,
         subscriber_id: str,
         update: bool = False,
         insert: bool = False,
         delete: bool = False,
+        timer: bool = False,
         any: bool = False,
     ) -> None:
-        """Delete a subscription of an event.
+        """Remove a subscription.
 
         Args:
             subscriber_id: The subscription identifier to remove.
             update: Remove update subscription.
             insert: Remove insert subscription.
             delete: Remove delete subscription.
-            any: Remove all subscriptions.
+            timer: Remove timer subscription.
+            any: Remove all subscriptions (including timer).
         """
         if update or any:
             self._upd_subscribers.pop(subscriber_id, None)
@@ -1599,6 +1654,10 @@ class Bag(BagParser, BagSerializer, BagQuery):
             self._ins_subscribers.pop(subscriber_id, None)
         if delete or any:
             self._del_subscribers.pop(subscriber_id, None)
+        if timer or any:
+            entry = self._tmr_subscribers.pop(subscriber_id, None)
+            if entry:
+                cancel_timer(entry["timer_id"])
 
 
 class BagException(Exception):

@@ -59,6 +59,7 @@ bag['count'] = 1  # Prints: "Changed: count"
 | `ins` | New node added |
 | `upd_value` | Node value changed |
 | `del` | Node removed |
+| `tmr` | Timer interval elapsed |
 
 ## Subscribing
 
@@ -68,18 +69,39 @@ bag.subscribe(
     insert=callback,     # Called on new nodes
     update=callback,     # Called on value changes
     delete=callback,     # Called on removal
-    any=callback         # Called on all events
+    any=callback,        # Called on ins/upd/del (not timer)
+    timer=callback,      # Called every `interval` seconds
+    interval=20          # Required when timer is set
 )
 ```
 
 ## Callback Signature
 
 ```python
+# For ins/upd/del events:
 def callback(**kw):
     node = kw['node']       # The affected BagNode
     evt = kw['evt']         # Event type: 'ins', 'upd_value', 'del'
     pathlist = kw['pathlist']  # Path from subscription root
     ind = kw.get('ind')     # Index position
+
+# For timer events:
+def timer_callback(**kw):
+    bag = kw['bag']              # The Bag where the timer is subscribed
+    evt = kw['evt']              # Always 'tmr'
+    subscriber_id = kw['subscriber_id']  # Subscription ID
+```
+
+## Stop Propagation
+
+Any callback can return `False` to stop event propagation to parent bags:
+
+```python
+def handle_locally(**kw):
+    # Process the event...
+    return False  # Don't propagate to parent
+
+bag.subscribe('local', update=handle_locally)
 ```
 
 ## Unsubscribing
@@ -87,6 +109,9 @@ def callback(**kw):
 ```python
 # Remove specific subscription type
 bag.unsubscribe('my_subscriber', update=True)
+
+# Remove timer subscription
+bag.unsubscribe('my_subscriber', timer=True)
 
 # Remove all subscriptions for this ID
 bag.unsubscribe('my_subscriber', any=True)

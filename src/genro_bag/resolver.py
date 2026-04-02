@@ -12,9 +12,10 @@ Key Concepts:
     - Proxy methods (keys, items, etc.) delegate to the resolved Bag
 
 Caching Semantics:
-    - cache_time = 0  -> NO cache, load() called ALWAYS
-    - cache_time > 0  -> cache for N seconds (TTL)
-    - cache_time < 0  -> INFINITE cache (until manual reset())
+    - cache_time = 0      -> NO cache, load() called ALWAYS
+    - cache_time > 0      -> passive cache for N seconds (TTL, reload on next access)
+    - cache_time < 0      -> active cache, background refresh every abs(N) seconds
+    - cache_time = False   -> INFINITE cache (until manual reset())
 
 Retry Policy:
     - retry_policy = None -> NO retry (default)
@@ -34,7 +35,7 @@ from collections.abc import Callable
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
-from genro_toolbox import smartasync
+from genro_toolbox import cancel_timer, set_interval, smartasync
 
 # =============================================================================
 # RETRY POLICIES - predefined configurations
@@ -194,7 +195,7 @@ class BagResolver:
     Class Attributes:
         class_kwargs: dict of {param_name: default_value}
             Parameters with defaults, passable as keyword args.
-            - 'cache_time': 0 = no cache, >0 = TTL seconds, <0 = infinite
+            - 'cache_time': 0 = no cache, >0 = passive TTL, <0 = active cache, False = infinite
             - 'read_only': if True, value is NOT saved in node._value
             - 'retry_policy': retry config or preset name ('network', 'aggressive')
 
@@ -238,6 +239,7 @@ class BagResolver:
         "_cache_last_update",  # datetime | None: last load() timestamp
         "_cached_value",  # Any: cached result when standalone (no parent node)
         "_last_effective_fingerprint",  # int | None: fingerprint of last effective params
+        "_timer_id",  # str | None: smarttimer ID for active cache
     )
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -261,6 +263,7 @@ class BagResolver:
         self._cache_last_update: datetime | None = None
         self._cached_value: Any = None
         self._last_effective_fingerprint: int | None = None
+        self._timer_id: str | None = None
 
         # Build _kw dict from class_args and class_kwargs
         self._kw: dict[str, Any] = {}
@@ -322,16 +325,25 @@ class BagResolver:
 
     @parent_node.setter
     def parent_node(self, parent_node: BagNode | None) -> None:
-        """Set the parent node."""
+        """Set the parent node. Starts/stops active cache as needed."""
+        if self._parent_node is not None and parent_node is None:
+            self._stop_active_cache()
         self._parent_node = parent_node
+        if parent_node is not None:
+            self._start_active_cache()
 
     # =========================================================================
     # CACHE TIME PROPERTY
     # =========================================================================
 
     @property
-    def cache_time(self) -> int:
-        """Get cache time in seconds."""
+    def cache_time(self) -> int | bool:
+        """Get cache time setting.
+
+        Returns:
+            0: no cache, >0: passive TTL seconds, <0: active cache (abs seconds),
+            False: infinite cache.
+        """
         return self._kw.get("cache_time", 0)  # type: ignore[no-any-return]
 
     # =========================================================================
@@ -369,22 +381,70 @@ class BagResolver:
     # =========================================================================
 
     def reset(self) -> None:
-        """Invalidate cache, forcing reload on next call."""
+        """Invalidate cache, forcing reload on next call.
+
+        If active cache is running, restarts the timer.
+        """
         self._cache_last_update = None
         self._last_effective_fingerprint = None
+        if self._timer_id is not None:
+            self._stop_active_cache()
+            self._start_active_cache()
+
+    # =========================================================================
+    # ACTIVE CACHE (background refresh via set_interval)
+    # =========================================================================
+
+    def _start_active_cache(self) -> None:
+        """Start background refresh if cache_time < 0 and not read_only."""
+        cache_time = self.cache_time
+        if cache_time is False or not isinstance(cache_time, int) or cache_time >= 0:
+            return
+        if self.read_only:
+            return
+        if self._timer_id is not None:
+            return
+        self._timer_id = set_interval(abs(cache_time), self._background_load)
+
+    def _stop_active_cache(self) -> None:
+        """Stop background refresh if running."""
+        if self._timer_id is not None:
+            cancel_timer(self._timer_id)
+            self._timer_id = None
+
+    def _background_load(self) -> None:
+        """Execute load in background and update cached value.
+
+        Bypasses cache check (always reloads) but does the full
+        parameter merge (resolver._kw + node.attr) like __call__.
+        """
+        try:
+            effective_kw = dict(self._kw)
+            if self._parent_node:
+                for key in self._kw:
+                    if key not in self.internal_params and key in self._parent_node.attr:
+                        effective_kw[key] = self._parent_node.attr[key]
+            original_kw = self._kw
+            self._kw = effective_kw
+            try:
+                self._dispatch_load()
+            finally:
+                self._kw = original_kw
+        except Exception:
+            pass
 
     @property
     def expired(self) -> bool:
         """Check if cache has expired."""
         cache_time = self.cache_time
-        if cache_time == 0:
-            return True
-        # None means never updated, or datetime.min makes elapsed > any TTL
-        elapsed = datetime.now() - (self._cache_last_update or datetime.min)
-        if cache_time < 0:
+        if cache_time is False:
             # Infinite cache: only expired if never loaded
             return self._cache_last_update is None
-        return elapsed > timedelta(seconds=cache_time)
+        if cache_time == 0:
+            return True
+        # For both positive and negative, use abs value as TTL
+        elapsed = datetime.now() - (self._cache_last_update or datetime.min)
+        return elapsed > timedelta(seconds=abs(cache_time))
 
     # =========================================================================
     # ASYNC PROPERTIES

@@ -2550,8 +2550,8 @@ class TestBagSetCallbackItem:
             counter[0] += 1
             return counter[0]
 
-        # cache_time=-1 means infinite cache, read_only=False required for caching
-        bag.set_callback_item("cached", get_value, cache_time=-1, read_only=False)
+        # cache_time=False means infinite cache, read_only=False required for caching
+        bag.set_callback_item("cached", get_value, cache_time=False, read_only=False)
 
         # Access via resolver directly
         node = bag.get_node("cached")

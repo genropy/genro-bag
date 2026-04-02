@@ -62,7 +62,10 @@ bag['dynamic'] = BagCbResolver(func, cache_time=0)
 bag['cached'] = BagCbResolver(func, cache_time=300)
 
 # Cache forever (until manual reset)
-bag['permanent'] = BagCbResolver(func, cache_time=-1)
+bag['permanent'] = BagCbResolver(func, cache_time=False)
+
+# Active cache — background refresh every 30 seconds
+bag['live'] = BagCbResolver(func, cache_time=-30)
 
 # Reset cache manually
 bag.get_node('cached').resolver.reset()

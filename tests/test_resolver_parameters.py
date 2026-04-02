@@ -159,7 +159,7 @@ class TestResolverCacheInvalidation:
             return x * 2
 
         bag = Bag()
-        bag.set_item("data", BagCbResolver(counter, x=5, cache_time=-1))
+        bag.set_item("data", BagCbResolver(counter, x=5, cache_time=False))
 
         # First access loads
         assert bag["data"] == 10
@@ -188,7 +188,7 @@ class TestResolverCacheInvalidation:
             return x
 
         bag = Bag()
-        bag.set_item("data", BagCbResolver(counter, x=5, cache_time=-1))
+        bag.set_item("data", BagCbResolver(counter, x=5, cache_time=False))
 
         assert bag["data"] == 5
         assert call_count == 1
@@ -207,7 +207,7 @@ class TestResolverCacheInvalidation:
             call_count += 1
             return x
 
-        resolver = BagCbResolver(counter, x=5, cache_time=-1)
+        resolver = BagCbResolver(counter, x=5, cache_time=False)
 
         assert resolver() == 5
         assert call_count == 1
@@ -271,7 +271,7 @@ class TestResolverInternalParams:
             return call_count
 
         bag = Bag()
-        bag.set_item("test", BagCbResolver(counter, cache_time=-1))
+        bag.set_item("test", BagCbResolver(counter, cache_time=False))
 
         # First call
         assert bag["test"] == 1
@@ -279,7 +279,7 @@ class TestResolverInternalParams:
         # Try to set cache_time via node attr (should be ignored)
         bag.set_attr("test", cache_time=0)
 
-        # Should still use cached value (cache_time=-1 from resolver)
+        # Should still use cached value (cache_time=False from resolver)
         assert bag["test"] == 1
         assert call_count == 1
 
@@ -326,7 +326,7 @@ class TestResolverNestedParams:
             return sum(data.values())
 
         bag = Bag()
-        bag.set_item("sum", BagCbResolver(process, data={"a": 1, "b": 2}, cache_time=-1))
+        bag.set_item("sum", BagCbResolver(process, data={"a": 1, "b": 2}, cache_time=False))
 
         assert bag["sum"] == 3
         assert call_count == 1
@@ -350,7 +350,7 @@ class TestResolverReset:
             return x
 
         bag = Bag()
-        bag.set_item("data", BagCbResolver(counter, x=5, cache_time=-1))
+        bag.set_item("data", BagCbResolver(counter, x=5, cache_time=False))
 
         assert bag["data"] == 5
         assert call_count == 1
@@ -366,7 +366,7 @@ class TestResolverReset:
 
     def test_reset_clears_fingerprint(self):
         """reset() clears the fingerprint so next call recomputes."""
-        resolver = BagCbResolver(lambda x: x, x=1, cache_time=-1)
+        resolver = BagCbResolver(lambda x: x, x=1, cache_time=False)
 
         resolver()
         assert resolver._last_effective_fingerprint is not None
@@ -497,7 +497,7 @@ class TestResolverEdgeCases:
             return call_count
 
         bag = Bag()
-        bag.set_item("count", BagCbResolver(counter, cache_time=-1))
+        bag.set_item("count", BagCbResolver(counter, cache_time=False))
 
         assert bag["count"] == 1
         assert bag["count"] == 1  # cached
@@ -527,7 +527,7 @@ class TestResolverEdgeCases:
             return x
 
         bag = Bag()
-        bag.set_item("data", BagCbResolver(counter, x=5, cache_time=-1))
+        bag.set_item("data", BagCbResolver(counter, x=5, cache_time=False))
 
         # First call loads
         assert bag["data"] == 5
@@ -649,7 +649,7 @@ class TestGetItemWithKwargs:
             return x
 
         bag = Bag()
-        bag.set_item("data", BagCbResolver(counter, x=5, cache_time=-1))
+        bag.set_item("data", BagCbResolver(counter, x=5, cache_time=False))
 
         assert bag.get_item("data") == 5
         assert call_count == 1

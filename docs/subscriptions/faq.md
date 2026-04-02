@@ -111,13 +111,44 @@ Each intermediate Bag is created:
 ['a', 'b', 'c']
 ```
 
+### Can I stop event propagation to parent bags?
+
+Yes. Return `False` from your callback:
+
+```python
+def handle_locally(**kw):
+    # Process the event...
+    return False  # Don't propagate to parent
+
+bag['child'].subscribe('local', update=handle_locally)
+```
+
+Callbacks returning `None` (the default) propagate normally.
+
+### How do I use timer subscriptions?
+
+Subscribe with `timer=` and `interval=`:
+
+```python
+def poll(**kw):
+    print(f"Tick! bag={kw['bag']}")
+
+bag.subscribe('poller', timer=poll, interval=10)  # Every 10 seconds
+
+# Stop the timer
+bag.unsubscribe('poller', timer=True)
+```
+
+Note: `any=callback` does **not** include timer events.
+
 ### Can I prevent event firing temporarily?
 
 No built-in mechanism. Workarounds:
 
 1. Unsubscribe/resubscribe
 2. Use a flag in your callback
-3. Batch changes and subscribe after
+3. Return `False` to stop propagation to parent bags
+4. Batch changes and subscribe after
 
 ## Performance
 

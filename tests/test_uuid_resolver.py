@@ -27,7 +27,7 @@ class TestUuidResolverStandalone:
         uuid.UUID(result, version=1)
 
     def test_cached_returns_same_value(self):
-        """With cache_time=-1 (default), returns the same UUID every time."""
+        """With cache_time=False (default), returns the same UUID every time."""
         resolver = UuidResolver()
         first = resolver()
         second = resolver()

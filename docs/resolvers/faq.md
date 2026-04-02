@@ -56,8 +56,9 @@ except Exception as e:
 | `cache_time` | Behavior |
 |--------------|----------|
 | `0` | No caching, compute every time |
-| `> 0` | Cache for N seconds |
-| `< 0` | Cache forever (until reset) |
+| `> 0` | Passive cache for N seconds (reload on next access after expiry) |
+| `< 0` | Active cache — background refresh every abs(N) seconds |
+| `False` | Cache forever (until manual reset) |
 
 ### Why is my value not updating?
 
@@ -65,7 +66,7 @@ Check your cache_time:
 
 ```python
 # This caches forever
-bag['data'] = UrlResolver('...', cache_time=-1)
+bag['data'] = UrlResolver('...', cache_time=False)
 
 # Force refresh
 bag.get_node('data').resolver.reset()
@@ -76,7 +77,8 @@ bag.get_node('data').resolver.reset()
 Yes, each resolver has its own cache:
 
 ```python
-bag['static'] = UrlResolver('...', cache_time=-1)   # Forever
+bag['static'] = UrlResolver('...', cache_time=False)  # Forever
+bag['live'] = UrlResolver('...', cache_time=-20)    # Background refresh every 20s
 bag['dynamic'] = UrlResolver('...', cache_time=30)  # 30 seconds
 bag['realtime'] = UrlResolver('...', cache_time=0)  # Never cache
 ```

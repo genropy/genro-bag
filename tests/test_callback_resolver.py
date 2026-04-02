@@ -193,15 +193,15 @@ class TestBagCbResolverCaching:
         resolver()
         assert len(calls) == 3
 
-    def test_cache_time_negative_infinite_cache(self):
-        """cache_time<0 means infinite cache."""
+    def test_cache_time_false_infinite_cache(self):
+        """cache_time=False means infinite cache."""
         calls = []
 
         def tracked():
             calls.append(1)
             return len(calls)
 
-        resolver = BagCbResolver(tracked, cache_time=-1, read_only=False)
+        resolver = BagCbResolver(tracked, cache_time=False, read_only=False)
         resolver()
         resolver()
         resolver()
@@ -216,7 +216,7 @@ class TestBagCbResolverCaching:
             calls.append(1)
             return len(calls)
 
-        resolver = BagCbResolver(tracked, cache_time=-1, read_only=False)
+        resolver = BagCbResolver(tracked, cache_time=False, read_only=False)
         resolver()
         assert len(calls) == 1
         resolver()

@@ -160,7 +160,7 @@ op['path']                     # '/pet/findByStatus'
 
 ### Default Cache
 
-OpenApiResolver defaults to `cache_time=-1` (infinite).
+OpenApiResolver defaults to `cache_time=False` (infinite).
 
 ## TxtDocResolver
 
@@ -252,7 +252,7 @@ from genro_bag.resolvers import UuidResolver
 bag = Bag()
 bag['session_id'] = UuidResolver()
 bag['session_id']  # '550e8400-e29b-41d4-a716-446655440000'
-bag['session_id']  # same UUID (cached with cache_time=-1)
+bag['session_id']  # same UUID (cached with cache_time=False)
 ```
 
 ### UUID Versions
@@ -270,7 +270,7 @@ node.value.reset()       # invalidate cache
 bag['session_id']        # new UUID generated
 ```
 
-UuidResolver defaults to `cache_time=-1` (infinite cache).
+UuidResolver defaults to `cache_time=False` (infinite cache).
 
 ## Common Parameters
 
@@ -278,7 +278,7 @@ All resolvers support three independent parameters:
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `cache_time` | varies | Cache duration: 0=none, >0=TTL seconds, <0=infinite |
+| `cache_time` | varies | Cache: 0=none, >0=passive TTL, <0=active refresh, False=infinite |
 | `read_only` | False | If True, value is NOT stored in `node._value` |
 | `as_bag` | None | If True, convert result to Bag; if None, follows `read_only` |
 
@@ -323,9 +323,9 @@ Where `[value]` indicates the computed default: `as_bag` defaults to `not read_o
 |----------|--------------|
 | `BagCbResolver` | 0 |
 | `EnvResolver` | 0 |
-| `UuidResolver` | -1 |
+| `UuidResolver` | False |
 | `UrlResolver` | 300 |
 | `DirectoryResolver` | 0 |
-| `OpenApiResolver` | -1 |
+| `OpenApiResolver` | False |
 | `TxtDocResolver` | 0 |
 | `SerializedBagResolver` | 0 |

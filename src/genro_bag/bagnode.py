@@ -367,6 +367,8 @@ class BagNode:
 
         Cache is automatically invalidated when effective parameters change.
         """
+        if self._resolver is not None and self._resolver is not resolver:
+            self._resolver.parent_node = None
         if resolver is not None:
             resolver.parent_node = self
         self._resolver = resolver

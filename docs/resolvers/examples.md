@@ -82,7 +82,7 @@ Cache is automatically invalidated when effective parameters change:
 
 ```python
 >>> bag = Bag()
->>> bag['data'] = BagCbResolver(counter, x=5, cache_time=-1)  # infinite cache
+>>> bag['data'] = BagCbResolver(counter, x=5, cache_time=False)  # infinite cache
 >>>
 >>> bag['data']  # First call -> computed
 10
@@ -527,7 +527,7 @@ def load_config():
     return Bag({'debug': False, 'port': 8080})
 
 app = Bag()
-app['config'] = BagCbResolver(load_config, cache_time=-1)
+app['config'] = BagCbResolver(load_config, cache_time=False)
 ```
 
 ### Computed Properties
@@ -579,7 +579,7 @@ class ApiClient:
     def setup(self):
         self.bag['users'] = self._resolver('/users', cache_time=600)
         self.bag['stats'] = self._resolver('/stats', cache_time=30)
-        self.bag['countries'] = self._resolver('/countries', cache_time=-1)
+        self.bag['countries'] = self._resolver('/countries', cache_time=False)
 
 api = ApiClient('https://api.example.com')
 api.setup()

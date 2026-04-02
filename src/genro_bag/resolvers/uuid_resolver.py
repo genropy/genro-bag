@@ -10,7 +10,7 @@ Assign a UUID to a Bag node on first access::
     bag['id'] = UuidResolver()
     bag['id']  # '550e8400-e29b-41d4-a716-446655440000' (generated once)
 
-With ``cache_time=-1`` (default) the UUID is generated once and never changes.
+With ``cache_time=False`` (default) the UUID is generated once and never changes.
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ class UuidResolver(BagResolver):
     """Resolver that generates a UUID string."""
 
     class_kwargs: dict[str, Any] = {
-        "cache_time": -1,
+        "cache_time": False,
         "read_only": False,
         "version": "uuid4",
     }

@@ -1,6 +1,6 @@
 # Subscription Events
 
-Detailed guide to the three event types and their callback data.
+Detailed guide to event types and their callback data.
 
 ## Insert Events (`ins`)
 
@@ -198,6 +198,70 @@ You can set different callbacks for different events:
 ['ADD: x', 'MOD: x', 'DEL: x']
 ```
 
+## Timer Events (`tmr`)
+
+Triggered periodically on a time interval. Unlike other events, timer events
+are not caused by data changes — they fire on a schedule.
+
+```python
+from genro_bag import Bag
+
+bag = Bag()
+events = []
+
+def on_tick(**kw):
+    events.append(f"tick on {kw['subscriber_id']}")
+
+bag.subscribe('poller', timer=on_tick, interval=5)
+
+# After 5 seconds: events == ['tick on poller']
+# After 10 seconds: events == ['tick on poller', 'tick on poller']
+
+bag.unsubscribe('poller', timer=True)  # Stop the timer
+```
+
+### Callback Data
+
+| Key | Description |
+|-----|-------------|
+| `bag` | The Bag where the timer subscription is registered |
+| `evt` | Always `'tmr'` |
+| `subscriber_id` | The subscription ID |
+
+### Important Notes
+
+- `any=callback` does **not** include timer events — use `timer=callback` explicitly
+- `interval` is required when `timer` is set (raises `ValueError` otherwise)
+- `unsubscribe(..., any=True)` cancels timers too
+- Timer events propagate to parent bags like other events
+
+## Stop Propagation
+
+Any callback (ins, upd, del, tmr) can return `False` to stop event
+propagation to parent bags:
+
+```python
+from genro_bag import Bag
+
+root = Bag()
+root['child'] = Bag()
+
+root_events = []
+
+def stop_here(**kw):
+    # Handle locally, don't propagate
+    return False
+
+root.subscribe('root_sub', update=lambda **kw: root_events.append(1))
+root['child'].subscribe('child_sub', update=stop_here)
+
+root['child']['x'] = 1
+root['child']['x'] = 2  # root_events is still empty
+```
+
+Callbacks that return `None` (the default) do **not** stop propagation —
+this is fully backwards-compatible.
+
 ## Event Order
 
 Events fire in order of operation:
@@ -205,5 +269,6 @@ Events fire in order of operation:
 1. Insert fires immediately when node is created
 2. Update fires immediately when value changes
 3. Delete fires immediately when node is removed
+4. Timer fires periodically on the configured interval
 
 Nested operations fire in depth order (parent first, then children).

@@ -156,9 +156,9 @@ class TestOpenApiResolverCaching:
     """Cache behavior tests."""
 
     def test_cache_time_default(self):
-        """Default cache_time is -1 (infinite cache)."""
+        """Default cache_time is False (infinite cache)."""
         resolver = OpenApiResolver(PETSTORE_URL)
-        assert resolver.cache_time == -1
+        assert resolver.cache_time is False
 
     def test_custom_cache_time(self):
         """Custom cache_time is respected."""

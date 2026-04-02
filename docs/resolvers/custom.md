@@ -204,7 +204,10 @@ class_kwargs = {'cache_time': 0}  # No cache
 class_kwargs = {'cache_time': 300}  # 5 minutes
 
 # Static reference data
-class_kwargs = {'cache_time': -1}  # Infinite
+class_kwargs = {'cache_time': False}  # Infinite
+
+# Active cache — auto-refresh every 60 seconds
+class_kwargs = {'cache_time': -60}
 ```
 
 ### 2. Handle Errors Gracefully

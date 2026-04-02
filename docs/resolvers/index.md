@@ -56,11 +56,14 @@ Control how often values are recomputed:
 # Compute every time (default)
 bag['dynamic'] = BagCbResolver(func, cache_time=0)
 
-# Cache for 5 minutes
+# Cache for 5 minutes (passive — reload on next access after expiry)
 bag['cached'] = BagCbResolver(func, cache_time=300)
 
 # Cache forever (until manual reset)
-bag['permanent'] = BagCbResolver(func, cache_time=-1)
+bag['permanent'] = BagCbResolver(func, cache_time=False)
+
+# Active cache — background refresh every 30 seconds
+bag['live'] = BagCbResolver(func, cache_time=-30)
 ```
 
 ### Async Support

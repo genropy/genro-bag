@@ -55,7 +55,7 @@ Cache is automatically invalidated when effective parameters change:
 ...     return x * 2
 >>>
 >>> bag = Bag()
->>> bag['data'] = BagCbResolver(counter, x=5, cache_time=-1)  # infinite cache
+>>> bag['data'] = BagCbResolver(counter, x=5, cache_time=False)  # infinite cache
 >>>
 >>> bag['data']  # First call
 10

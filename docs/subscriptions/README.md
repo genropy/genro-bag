@@ -57,6 +57,7 @@ bag['price'] = 150  # total updates automatically!
 | `upd_value` | Value changed |
 | `upd_attr` | Attributes changed |
 | `del` | Node deleted |
+| `tmr` | Timer interval elapsed |
 
 ## Subscription Handlers
 
@@ -66,7 +67,9 @@ bag.subscribe('name',
     insert=on_insert,      # Only ins events
     update=on_update,      # Only upd_value events
     delete=on_delete,      # Only del events
-    any=on_any             # All events
+    any=on_any,            # ins/upd/del events (not timer)
+    timer=on_timer,        # Timer events
+    interval=20            # Required when timer is set
 )
 ```
 
@@ -75,10 +78,27 @@ bag.subscribe('name',
 Every callback receives:
 
 ```python
+# For ins/upd/del events:
 def callback(**kw):
     node = kw['node']       # The affected BagNode
     evt = kw['evt']         # Event type: 'ins', 'upd_value', etc.
     pathlist = kw['pathlist']  # Path components to the node
+
+# For timer events:
+def timer_callback(**kw):
+    bag = kw['bag']              # The Bag where the timer is subscribed
+    evt = kw['evt']              # Always 'tmr'
+    subscriber_id = kw['subscriber_id']
+```
+
+## Stop Propagation
+
+Any callback (ins/upd/del/tmr) can return `False` to stop propagation to parent bags:
+
+```python
+def handle_locally(**kw):
+    # Process the event...
+    return False  # Don't propagate to parent
 ```
 
 ## Common Patterns
