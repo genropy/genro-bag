@@ -1529,8 +1529,9 @@ class Bag(BagParser, BagSerializer, BagQuery):
         Propagates to parent unless a subscriber returns False.
         """
         parent = node.parent_bag
-        if parent is not None and parent.backref and hasattr(node.value, "_htraverse"):
-            node.value.set_backref(node=node, parent=parent)
+        value = node._value
+        if parent is not None and parent.backref and hasattr(value, "_htraverse"):
+            value.set_backref(node=node, parent=parent)
 
         if pathlist is None:
             pathlist = []
