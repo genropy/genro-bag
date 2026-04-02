@@ -7,7 +7,7 @@ The city is geocoded to coordinates using Open-Meteo's Geocoding API.
 
 Example:
     from genro_bag import Bag
-    from genro_bag_contrib_resolvers import OpenMeteoResolver
+    from genro_bag.resolvers.contrib import OpenMeteoResolver
 
     bag = Bag()
     bag.set_item('weather', OpenMeteoResolver(city='Rome'))

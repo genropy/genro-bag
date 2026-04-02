@@ -11,7 +11,7 @@ The resolver is intentionally simple — it only fetches data. Business logic
 
 Example:
     from genro_bag import Bag
-    from genro_bag_contrib_resolvers import EarthquakeResolver
+    from genro_bag.resolvers.contrib import EarthquakeResolver
 
     bag = Bag()
     bag['feed'] = EarthquakeResolver(cache_time=-60)

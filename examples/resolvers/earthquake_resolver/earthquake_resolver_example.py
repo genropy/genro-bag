@@ -26,7 +26,7 @@ Usage:
 import time
 
 from genro_bag import Bag
-from genro_bag_contrib_resolvers import EarthquakeResolver
+from genro_bag.resolvers.contrib import EarthquakeResolver
 
 LOG_TEMPLATE = "  [{tag}] {where}/{event_id}.{version} M{mag} -- {place}"
 

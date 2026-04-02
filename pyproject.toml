@@ -58,11 +58,18 @@ docs = [
     "myst-parser>=4.0.0",
     "sphinxcontrib-mermaid>=1.0.0",
 ]
+contrib-resolvers = [
+    "httpx>=0.27",
+]
+contrib-resolvers-system = [
+    "genro-bag[contrib-resolvers]",
+    "psutil",
+]
 xsd-validate = [
     "xmlschema>=3.0",
 ]
 all = [
-    "genro-bag[dev,docs,xsd-validate]",
+    "genro-bag[dev,docs,xsd-validate,contrib-resolvers]",
 ]
 
 [project.urls]

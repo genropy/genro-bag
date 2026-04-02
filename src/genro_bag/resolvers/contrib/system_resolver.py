@@ -7,7 +7,7 @@ standard library modules. Optionally adds memory/CPU usage if psutil is availabl
 
 Example:
     from genro_bag import Bag
-    from genro_bag_contrib_resolvers import SystemResolver
+    from genro_bag.resolvers.contrib import SystemResolver
 
     bag = Bag()
     bag['system'] = SystemResolver()

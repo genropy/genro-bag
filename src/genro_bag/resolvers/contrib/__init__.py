@@ -9,7 +9,7 @@ Ready-to-use resolvers for specific external services and data sources.
 
 Example:
     from genro_bag import Bag
-    from genro_bag_contrib_resolvers import EarthquakeResolver, OpenMeteoResolver, SystemResolver
+    from genro_bag.resolvers.contrib import EarthquakeResolver, OpenMeteoResolver, SystemResolver
 
     bag = Bag()
     bag['quakes'] = EarthquakeResolver(cache_time=-60)
