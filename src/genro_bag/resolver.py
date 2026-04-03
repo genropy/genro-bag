@@ -407,7 +407,7 @@ class BagResolver:
             return
         if self._timer_id is not None:
             return
-        self._timer_id = set_interval(abs(cache_time), self._background_load)
+        self._timer_id = set_interval(abs(cache_time), self._background_load, initial_delay=1)
 
     def _stop_active_cache(self) -> None:
         """Stop background refresh if running."""
@@ -427,6 +427,7 @@ class BagResolver:
                 for key in self._kw:
                     if key not in self.internal_params and key in self._parent_node.attr:
                         effective_kw[key] = self._parent_node.attr[key]
+            self._last_effective_fingerprint = self._compute_effective_fingerprint(effective_kw)
             original_kw = self._kw
             self._kw = effective_kw
             try:
@@ -500,6 +501,10 @@ class BagResolver:
             by comparing fingerprints of the effective_kw dict.
         """
         if static:
+            return self.cached_value
+
+        # Active cache: timer manages reloads, just return cached value
+        if self.cache_time is not False and isinstance(self.cache_time, int) and self.cache_time < 0 and self.cached_value is not None:
             return self.cached_value
 
         # Build effective parameters: resolver < node < call_kwargs
