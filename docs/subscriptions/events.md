@@ -262,6 +262,38 @@ root['child']['x'] = 2  # root_events is still empty
 Callbacks that return `None` (the default) do **not** stop propagation —
 this is fully backwards-compatible.
 
+## Fired Events (`_fired`)
+
+The `_fired` parameter on `set_item` creates event-like signals: set a value
+to trigger subscribers, then immediately reset it to `None` without firing
+again. Similar to GenroPy's `fireItem`.
+
+```{doctest}
+>>> from genro_bag import Bag
+
+>>> bag = Bag()
+>>> events = []
+
+>>> bag.subscribe('w', insert=lambda **kw: events.append(kw['node'].value))
+
+>>> bag.set_item('click', 'button_ok', _fired=True)
+
+>>> events
+['button_ok']
+
+>>> bag['click'] is None
+True
+```
+
+The sequence is:
+
+1. `set_item('click', 'button_ok')` — creates the node, fires `ins` event
+2. Subscribers see `node.value == 'button_ok'`
+3. Value is immediately reset to `None` with `trigger=False` (no second event)
+
+This is useful for signaling events through the subscription system without
+leaving stale values in the tree.
+
 ## Event Order
 
 Events fire in order of operation:
