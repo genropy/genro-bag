@@ -23,8 +23,8 @@ from collections.abc import Callable, Iterator
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from .bag import Bag
-    from .bagnode import BagNode
+    from genro_bag.bag._core import Bag
+    from genro_bag.bagnode import BagNode
 
 
 class BagQuery:
@@ -104,7 +104,7 @@ class BagQuery:
             BagNode if found, None otherwise.
         """
         # Import here to avoid circular import
-        from .bag import Bag
+        from genro_bag.bag._core import Bag
 
         sub_bags = []
         for node in self._nodes:
@@ -220,7 +220,7 @@ class BagQuery:
             >>> bag.walk(my_cb, _pathlist=[])
         """
         # Import here to avoid circular import
-        from .bag import Bag
+        from genro_bag.bag._core import Bag
 
         if callback is not None:
             # Legacy callback mode
@@ -312,7 +312,7 @@ class BagQuery:
             ...     print(f"{path} = {val}")
         """
         # Import here to avoid circular import
-        from .bag import Bag
+        from genro_bag.bag._core import Bag
 
         if not what:
             what = "#k,#v,#a"

@@ -24,7 +24,7 @@ from xml.sax.handler import ContentHandler
 from genro_tytx import from_tytx as tytx_decode
 
 if TYPE_CHECKING:
-    from .bag import Bag
+    from genro_bag.bag._core import Bag
 
 
 # Regex for empty checks
