@@ -55,6 +55,11 @@ from genro_bag.bagnode import BagNode, BagNodeContainer
 from genro_bag.resolver import BagCbResolver
 
 
+def _is_plain_key(path) -> bool:
+    """True if path is a simple single-level key without special syntax."""
+    return isinstance(path, str) and "." not in path and "?" not in path and "#" not in path
+
+
 class Bag(BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer, BagQuery):
     """Hierarchical data container with path-based access.
 
@@ -312,40 +317,34 @@ class Bag(BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer
         if not path:
             return self
 
-        # Fast path: simple string paths without special syntax or kwargs
-        if isinstance(path, str) and not kwargs and "?" not in path and "#" not in path:
-            if "." not in path:
-                # Single key: direct dict lookup
+        # Fast path: bypass traversal for simple paths without kwargs
+        if isinstance(path, str) and not kwargs:
+            if _is_plain_key(path):
                 node = self._nodes._dict.get(path)
-                if node is not None:
-                    return node.get_value(static=static)
-                return default
-            # Dotted path: traverse via dict lookups
-            segments = path.split(".")
-            curr = self
-            for segment in segments[:-1]:
-                node = curr._nodes._dict.get(segment)
-                if node is None:
+                return node.get_value(static=static) if node else default
+            if "?" not in path and "#" not in path:
+                # Dotted path: traverse via dict lookups
+                segments = path.split(".")
+                curr = self
+                for segment in segments[:-1]:
+                    node = curr._nodes._dict.get(segment)
+                    if node is None:
+                        return default
+                    value = node.get_value(static=static)
+                    if not hasattr(value, "_nodes"):
+                        break
+                    curr = value
+                else:
+                    node = curr._nodes._dict.get(segments[-1])
+                    return node.get_value(static=static) if node else default
+            elif "." not in path and "?" not in path and path.startswith("#"):
+                # #N positional index
+                rest = path[1:]
+                if rest.isdigit():
+                    idx = int(rest)
+                    if idx < len(self._nodes._list):
+                        return self._nodes._list[idx].get_value(static=static)
                     return default
-                value = node.get_value(static=static)
-                if not hasattr(value, "_nodes"):
-                    break
-                curr = value
-            else:
-                # All intermediate segments resolved — get final value
-                node = curr._nodes._dict.get(segments[-1])
-                if node is not None:
-                    return node.get_value(static=static)
-                return default
-
-        # Fast path for single-level #N positional index
-        if isinstance(path, str) and not kwargs and "." not in path and "?" not in path and path.startswith("#"):
-            rest = path[1:]
-            if rest.isdigit():
-                idx = int(rest)
-                if idx < len(self._nodes._list):
-                    return self._nodes._list[idx].get_value(static=static)
-                return default
 
         result = self._htraverse(path, static=static)
 
@@ -481,8 +480,7 @@ class Bag(BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer
 
     def __setitem__(self, path: str, value: Any) -> None:
         """Set value at path using bracket notation."""
-        # Fast path: simple key, no dots or special syntax
-        if "." not in path and "?" not in path and not path.startswith("#"):
+        if _is_plain_key(path):
             self._nodes.set(path, value, parent_bag=self)
             return
         self.set_item(path, value)
@@ -531,6 +529,9 @@ class Bag(BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer
             >>> bag.pop('a.b', 'gone')
             'gone'
         """
+        if _is_plain_key(path):
+            n = self._pop(path, _reason=_reason)
+            return n.value if n else default
         result = default
         obj, label = self._htraverse(path, static=True)
         if obj:
@@ -689,8 +690,7 @@ class Bag(BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer
             _remove_null_attributes: If True, remove attributes with None value.
             **kwargs: Additional attributes to set.
         """
-        # Fast path: simple key, direct dict lookup
-        if path and isinstance(path, str) and "." not in path and "?" not in path and not path.startswith("#"):
+        if path and _is_plain_key(path):
             node = self._nodes._dict.get(path)
             if node is not None:
                 node.set_attr(attr=_attributes, _remove_null_attributes=_remove_null_attributes, **kwargs)
@@ -859,7 +859,7 @@ class Bag(BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer
             False
         """
         if isinstance(what, str):
-            if "." not in what and not what.startswith("#"):
+            if _is_plain_key(what):
                 return what in self._nodes
             return bool(self.get_node(what))
         elif isinstance(what, BagNode):
