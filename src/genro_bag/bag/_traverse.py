@@ -110,9 +110,16 @@ class BagTraverse:
         result = self._traverse_inner(curr, pathlist, write_mode, static)
         return cast(tuple[Any, str | None], smartcontinuation(result, finalize))
 
-    def _is_coroutine(self, value: Any) -> bool:
-        """Check if value is a coroutine (only possible in async context)."""
-        return self.in_async_context and asyncio.iscoroutine(value)
+    def _is_coroutine(self, value: Any, _in_async: bool | None = None) -> bool:
+        """Check if value is a coroutine (only possible in async context).
+
+        Args:
+            value: The value to check.
+            _in_async: Pre-computed async context flag. If None, checks dynamically.
+        """
+        if _in_async is None:
+            _in_async = self.in_async_context
+        return _in_async and asyncio.iscoroutine(value)
 
     def _get_new_curr(self, node: BagNode, value: Any, write_mode: bool) -> Bag | None:
         """Get next curr for traversal, creating Bag if needed in write_mode."""
@@ -138,6 +145,7 @@ class BagTraverse:
         Returns:
             Tuple of (container, remaining_path) OR coroutine.
         """
+        in_async = self.in_async_context
         while len(pathlist) > 1 and hasattr(curr, "_nodes"):
             segment = pathlist[0]  # read without removing
             node = curr._nodes.get(segment)
@@ -146,7 +154,7 @@ class BagTraverse:
 
             value = node.get_value(static=static)
 
-            if not self._is_coroutine(value):
+            if not self._is_coroutine(value, _in_async=in_async):
                 new_curr = self._get_new_curr(node, value, write_mode)
                 if new_curr is None:
                     break

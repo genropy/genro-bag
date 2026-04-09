@@ -106,14 +106,14 @@ class BagQuery:
         sub_bags = []
         for node in self._nodes:
             if node.has_attr(attr, value):
-                return cast(BagNode, node)
+                return cast("BagNode", node)
             if isinstance(node.value, Bag):
                 sub_bags.append(node)
 
         for node in sub_bags:
             found = node.value.get_node_by_attr(attr, value)
             if found:
-                return cast(BagNode, found)
+                return cast("BagNode", found)
 
         return None
 
@@ -133,7 +133,7 @@ class BagQuery:
         for node in self._nodes:
             node_value = node.value
             if node_value and node_value.get(key) == value:
-                return cast(BagNode, node)
+                return cast("BagNode", node)
         return None
 
     def is_empty(self, zero_is_none: bool = False, blank_is_none: bool = False) -> bool:

@@ -813,9 +813,11 @@ class Bag(BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer
             False
         """
         if isinstance(what, str):
+            if "." not in what and not what.startswith("#"):
+                return what in self._nodes
             return bool(self.get_node(what))
         elif isinstance(what, BagNode):
-            return what in list(self._nodes)
+            return what in self._nodes._list
         else:
             return False
 
