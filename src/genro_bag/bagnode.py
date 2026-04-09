@@ -690,6 +690,16 @@ class BagNodeContainer:
         self._list: list[Any] = []
         self._parent_bag: Bag | None = None
 
+    def __getstate__(self) -> dict:
+        """Serialize only _list — _dict is rebuilt from _list on restore."""
+        return {"_list": self._list}
+
+    def __setstate__(self, state: dict) -> None:
+        """Restore from pickled state, rebuilding _dict from _list."""
+        self._list = state["_list"]
+        self._dict = {node.label: node for node in self._list}
+        self._parent_bag = None
+
     def index(self, label: str) -> int:
         """Return the index of a label in this container.
 
