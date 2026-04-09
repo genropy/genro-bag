@@ -9,7 +9,7 @@ contexts transparently.
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from genro_toolbox import smartawait, smartcontinuation, smartsplit
 
@@ -47,7 +47,7 @@ class BagTraverse:
                 - curr: Starting Bag (may have moved up via #parent), or None
                 - pathlist: Remaining path segments to process
         """
-        curr: Bag | None = self
+        curr: Bag | None = cast("Bag", self)
 
         if isinstance(path, str):
             path = path.replace("../", "#parent.")
@@ -108,7 +108,7 @@ class BagTraverse:
             return curr, pathlist[0]
 
         result = self._traverse_inner(curr, pathlist, write_mode, static)
-        return smartcontinuation(result, finalize)
+        return cast(tuple[Any, str | None], smartcontinuation(result, finalize))
 
     def _is_coroutine(self, value: Any) -> bool:
         """Check if value is a coroutine (only possible in async context)."""
@@ -117,9 +117,9 @@ class BagTraverse:
     def _get_new_curr(self, node: BagNode, value: Any, write_mode: bool) -> Bag | None:
         """Get next curr for traversal, creating Bag if needed in write_mode."""
         if hasattr(value, "_htraverse"):
-            return value
+            return cast("Bag", value)
         if write_mode:
-            new_bag = self.__class__()
+            new_bag = cast("Bag", self.__class__())
             node.set_value(new_bag)
             return new_bag
         return None
@@ -173,6 +173,6 @@ class BagTraverse:
                     self._traverse_inner(new_curr, remaining, write_mode, static)
                 )
 
-            return cont()
+            return cast(tuple["Bag", list[Any]], cont())
 
         return (curr, pathlist)

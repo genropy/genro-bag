@@ -779,10 +779,11 @@ class BagNodeContainer:
         return self._dict.get(key)
 
     def get(self, key: str | int) -> Any:
-        """Get node by label, index, or #n syntax.
+        """Get node by label, index, or #n/#attr=value syntax.
 
         Args:
-            key: Label string, integer index, or '#n' syntax.
+            key: Label string, integer index, '#n' syntax,
+                '#attr=value' syntax, or '#=value' syntax.
 
         Returns:
             The BagNode if found, None otherwise.
@@ -790,11 +791,8 @@ class BagNodeContainer:
         if isinstance(key, int):
             return self._list[key] if 0 <= key < len(self._list) else None
         if key.startswith("#"):
-            try:
-                idx = int(key[1:])
-                return self._list[idx] if 0 <= idx < len(self._list) else None
-            except ValueError:
-                return None
+            idx = self.index(key)
+            return self._list[idx] if idx >= 0 else None
         return self._dict.get(key)
 
     def __setitem__(self, key: str, value: Any) -> None:
@@ -932,6 +930,8 @@ class BagNodeContainer:
                 )
         else:
             # New node
+            if parent_bag is None:
+                raise BagNodeException("Cannot create a new node without a parent Bag")
             node = parent_bag.node_class(
                 parent_bag,
                 label=label,
