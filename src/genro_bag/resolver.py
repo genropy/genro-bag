@@ -28,6 +28,7 @@ from __future__ import annotations
 import asyncio
 import functools
 import importlib
+import inspect
 import json
 import random
 import time
@@ -71,6 +72,52 @@ RETRY_POLICIES: dict[str, dict[str, Any]] = {
 # =============================================================================
 
 
+def _retry_loop(func: Callable, self: Any, args: tuple, kwargs: dict, policy: dict) -> Any:
+    """Execute func with sync retry logic."""
+    max_attempts = policy.get("max_attempts", 3)
+    delay = policy.get("delay", 1.0)
+    backoff = policy.get("backoff", 2.0)
+    jitter = policy.get("jitter", True)
+    exceptions = policy.get("on", (Exception,))
+    last_error = None
+    current_delay = delay
+    for attempt in range(max_attempts):
+        try:
+            return func(self, *args, **kwargs)
+        except exceptions as e:
+            last_error = e
+            if attempt < max_attempts - 1:
+                sleep_time = current_delay
+                if jitter:
+                    sleep_time *= (1 + random.random() * 0.1)
+                time.sleep(sleep_time)
+                current_delay *= backoff
+    raise last_error  # type: ignore[misc]
+
+
+async def _async_retry_loop(func: Callable, self: Any, args: tuple, kwargs: dict, policy: dict) -> Any:
+    """Execute func with async retry logic."""
+    max_attempts = policy.get("max_attempts", 3)
+    delay = policy.get("delay", 1.0)
+    backoff = policy.get("backoff", 2.0)
+    jitter = policy.get("jitter", True)
+    exceptions = policy.get("on", (Exception,))
+    last_error = None
+    current_delay = delay
+    for attempt in range(max_attempts):
+        try:
+            return await func(self, *args, **kwargs)
+        except exceptions as e:
+            last_error = e
+            if attempt < max_attempts - 1:
+                sleep_time = current_delay
+                if jitter:
+                    sleep_time *= (1 + random.random() * 0.1)
+                await asyncio.sleep(sleep_time)
+                current_delay *= backoff
+    raise last_error  # type: ignore[misc]
+
+
 def with_retry(func: Callable) -> Callable:
     """Decorator that adds retry logic based on resolver's retry_policy.
 
@@ -91,60 +138,16 @@ def with_retry(func: Callable) -> Callable:
         policy = _get_retry_policy(self)
         if policy is None:
             return func(self, *args, **kwargs)
-
-        max_attempts = policy.get("max_attempts", 3)
-        delay = policy.get("delay", 1.0)
-        backoff = policy.get("backoff", 2.0)
-        jitter = policy.get("jitter", True)
-        exceptions = policy.get("on", (Exception,))
-
-        last_error = None
-        current_delay = delay
-
-        for attempt in range(max_attempts):
-            try:
-                return func(self, *args, **kwargs)
-            except exceptions as e:
-                last_error = e
-                if attempt < max_attempts - 1:
-                    sleep_time = current_delay
-                    if jitter:
-                        sleep_time *= (1 + random.random() * 0.1)
-                    time.sleep(sleep_time)
-                    current_delay *= backoff
-
-        raise last_error  # type: ignore[misc]
+        return _retry_loop(func, self, args, kwargs, policy)
 
     @functools.wraps(func)
     async def async_wrapper(self, *args, **kwargs):
         policy = _get_retry_policy(self)
         if policy is None:
             return await func(self, *args, **kwargs)
+        return await _async_retry_loop(func, self, args, kwargs, policy)
 
-        max_attempts = policy.get("max_attempts", 3)
-        delay = policy.get("delay", 1.0)
-        backoff = policy.get("backoff", 2.0)
-        jitter = policy.get("jitter", True)
-        exceptions = policy.get("on", (Exception,))
-
-        last_error = None
-        current_delay = delay
-
-        for attempt in range(max_attempts):
-            try:
-                return await func(self, *args, **kwargs)
-            except exceptions as e:
-                last_error = e
-                if attempt < max_attempts - 1:
-                    sleep_time = current_delay
-                    if jitter:
-                        sleep_time *= (1 + random.random() * 0.1)
-                    await asyncio.sleep(sleep_time)
-                    current_delay *= backoff
-
-        raise last_error  # type: ignore[misc]
-
-    if asyncio.iscoroutinefunction(func):
+    if inspect.iscoroutinefunction(func):
         return async_wrapper
     return sync_wrapper
 
