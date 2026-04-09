@@ -11,24 +11,25 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Iterator
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
 from xml.dom.minidom import parseString
 from xml.sax import saxutils
 
 from genro_tytx import to_tytx as tytx_encode
+
+if TYPE_CHECKING:
+    from genro_bag.bagnode import BagNode
 
 # Regex for sanitizing XML tag names
 _INVALID_XML_TAG_CHARS = re.compile(r"[^\w.]", re.ASCII)
 
 
 class BagSerializer:
-    """Mixin providing serialization instance methods for Bag.
+    """Mixin providing serialization instance methods for Bag."""
 
-    Contains:
-        - to_xml: Serialize Bag to XML
-        - to_tytx: Serialize Bag to TYTX format (JSON or MessagePack)
-        - to_json: Serialize Bag to JSON format
-    """
+    if TYPE_CHECKING:
+        def __iter__(self) -> Iterator[BagNode]: ...
+        def walk(self, callback: Any = None, static: bool = True, **kw: Any) -> Iterator[tuple[str, BagNode]] | Any: ...
 
     # ==================== to_xml ====================
 
@@ -102,7 +103,7 @@ class BagSerializer:
     def _bag_to_xml(self, namespaces: list[str], self_closed_tags: list[str] | None = None) -> str:
         """Convert Bag to XML string."""
         parts = []
-        for node in self:  # type: ignore[attr-defined]
+        for node in self:
             parts.append(self._node_to_xml(node, namespaces, self_closed_tags))
         return "".join(parts)
 
@@ -125,13 +126,13 @@ class BagSerializer:
 
         if node.attr:
             for k, v in node.attr.items():
-                if v is not None and v is not False:
+                if v is not None:
                     attrs_parts.append(f"{k}={saxutils.quoteattr(str(v))}")
 
         attrs_str = " " + " ".join(attrs_parts) if attrs_parts else ""
 
         # Handle value
-        value = node.value
+        value = node.get_value(static=True)
 
         # Check if value is a Bag (using duck typing to avoid import)
         if hasattr(value, "_bag_to_xml"):
@@ -284,7 +285,7 @@ class BagSerializer:
             path_to_code: dict[str, int] = {}
             code_counter = 0
 
-        for path, node in self.walk():  # type: ignore[attr-defined]
+        for path, node in self.walk():
             parent_path = path.rsplit(".", 1)[0] if "." in path else ""
 
             # Use static=True to avoid triggering resolvers during serialization
@@ -306,7 +307,7 @@ class BagSerializer:
 
                 if hasattr(node_value, "walk") and hasattr(node_value, "_nodes"):
                     path_to_code[path] = code_counter
-                    path_registry[code_counter] = path  # type: ignore[index]
+                    path_registry[code_counter] = path
                     code_counter += 1
             else:
                 yield (parent_path, node.label, node.node_tag, value, attr)
@@ -328,10 +329,10 @@ class BagSerializer:
         Returns:
             JSON string representation.
         """
-        result = [self._node_to_json_dict(node, typed) for node in self]  # type: ignore[attr-defined]
+        result = [self._node_to_json_dict(node, typed) for node in self]
 
         if typed:
-            return tytx_encode(result)  # type: ignore[return-value]
+            return tytx_encode(result)
         return json.dumps(result)
 
     def _node_to_json_dict(self, node: Any, typed: bool) -> dict:
@@ -341,4 +342,14 @@ class BagSerializer:
         # Check if value is a Bag using duck typing
         if hasattr(value, "_nodes") and hasattr(value, "walk"):
             value = [value._node_to_json_dict(n, typed) for n in value]
-        return {"label": node.label, "value": value, "attr": dict(node.attr) if node.attr else {}}
+        result = {"label": node.label, "value": value, "attr": dict(node.attr) if node.attr else {}}
+        if node.resolver is not None:
+            try:
+                resolver_data = node.resolver.serialize()
+                json.dumps(resolver_data)  # verify JSON-serializable
+                result["resolver"] = resolver_data
+            except (TypeError, ValueError):
+                pass  # non-serializable resolver (e.g. callback-based)
+        if node.node_tag is not None:
+            result["tag"] = node.node_tag
+        return result

@@ -17,19 +17,18 @@ if TYPE_CHECKING:
 
 
 class BagEvents:
-    """Mixin providing event subscription and propagation for Bag.
-
-    Assumes the presence of:
-        _upd_subscribers, _ins_subscribers, _del_subscribers, _tmr_subscribers: dict
-        parent, parent_node: properties
-        backref: property
-        set_backref: method
-    """
+    """Mixin providing event subscription and propagation for Bag."""
 
     _upd_subscribers: dict
     _ins_subscribers: dict
     _del_subscribers: dict
     _tmr_subscribers: dict
+    parent: Any
+    parent_node: Any
+    backref: Any
+
+    if TYPE_CHECKING:
+        def set_backref(self, node: Any = ..., parent: Any = ...) -> None: ...
 
     # -------------------- event triggers --------------------------------
 
@@ -48,9 +47,9 @@ class BagEvents:
         for s in list(self._upd_subscribers.values()):
             if s(node=node, pathlist=pathlist, oldvalue=oldvalue, evt=evt, reason=reason) is False:
                 return
-        if self.parent and self.parent_node:  # type: ignore[attr-defined]
-            self.parent._on_node_changed(  # type: ignore[attr-defined]
-                node, [self.parent_node.label] + pathlist, evt, oldvalue, reason=reason  # type: ignore[attr-defined]
+        if self.parent and self.parent_node:
+            self.parent._on_node_changed(
+                node, [self.parent_node.label] + pathlist, evt, oldvalue, reason=reason
             )
 
     def _on_node_inserted(
@@ -70,9 +69,9 @@ class BagEvents:
         for s in list(self._ins_subscribers.values()):
             if s(node=node, pathlist=pathlist, ind=ind, evt="ins", reason=reason) is False:
                 return
-        if self.parent and self.parent_node:  # type: ignore[attr-defined]
-            self.parent._on_node_inserted(  # type: ignore[attr-defined]
-                node, ind, [self.parent_node.label] + pathlist, reason=reason  # type: ignore[attr-defined]
+        if self.parent and self.parent_node:
+            self.parent._on_node_inserted(
+                node, ind, [self.parent_node.label] + pathlist, reason=reason
             )
 
     def _on_node_deleted(
@@ -85,11 +84,11 @@ class BagEvents:
         for s in list(self._del_subscribers.values()):
             if s(node=node, pathlist=pathlist, ind=ind, evt="del", reason=reason) is False:
                 return
-        if self.parent and self.parent_node:  # type: ignore[attr-defined]
+        if self.parent and self.parent_node:
             if pathlist is None:
                 pathlist = []
-            self.parent._on_node_deleted(  # type: ignore[attr-defined]
-                node, ind, [self.parent_node.label] + pathlist, reason=reason  # type: ignore[attr-defined]
+            self.parent._on_node_deleted(
+                node, ind, [self.parent_node.label] + pathlist, reason=reason
             )
 
     def _on_timer_tick(self, subscriber_id: str) -> None:
@@ -100,8 +99,8 @@ class BagEvents:
         entry = self._tmr_subscribers.get(subscriber_id)
         if entry and entry["callback"](bag=self, evt="tmr", subscriber_id=subscriber_id) is False:
             return
-        if self.parent and self.parent_node:  # type: ignore[attr-defined]
-            self.parent._on_timer_tick_propagate([self.parent_node.label])  # type: ignore[attr-defined]
+        if self.parent and self.parent_node:
+            self.parent._on_timer_tick_propagate([self.parent_node.label])
 
     def _on_timer_tick_propagate(self, pathlist: list) -> None:
         """Propagate timer tick to parent subscribers.
@@ -111,8 +110,8 @@ class BagEvents:
         for s in list(self._tmr_subscribers.values()):
             if s["callback"](bag=self, evt="tmr", subscriber_id=None, pathlist=pathlist) is False:
                 return
-        if self.parent and self.parent_node:  # type: ignore[attr-defined]
-            self.parent._on_timer_tick_propagate([self.parent_node.label] + pathlist)  # type: ignore[attr-defined]
+        if self.parent and self.parent_node:
+            self.parent._on_timer_tick_propagate([self.parent_node.label] + pathlist)
 
     # -------------------- subscription --------------------------------
 
@@ -145,9 +144,8 @@ class BagEvents:
         Raises:
             ValueError: If timer is set without interval.
         """
-        if not self.backref:  # type: ignore[attr-defined]
-            self.set_backref()  # type: ignore[attr-defined]
-
+        if not self.backref:
+            self.set_backref()
         self._subscribe(subscriber_id, self._upd_subscribers, update or any)
         self._subscribe(subscriber_id, self._ins_subscribers, insert or any)
         self._subscribe(subscriber_id, self._del_subscribers, delete or any)

@@ -24,18 +24,16 @@ from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from genro_bag.bag._core import Bag
-    from genro_bag.bagnode import BagNode
+    from genro_bag.bagnode import BagNode, BagNodeContainer
 
 
 class BagQuery:
-    """Mixin class providing query and iteration methods for Bag.
+    """Mixin class providing query and iteration methods for Bag."""
 
-    This mixin is inherited by Bag and provides all query-related functionality.
-    It assumes the presence of _nodes (BagNodeContainer) attribute.
-    """
+    _nodes: BagNodeContainer
 
-    # Type hints for attributes provided by Bag
-    _nodes: Any
+    if TYPE_CHECKING:
+        def __getitem__(self, key: str) -> Any: ...
 
     def keys(self, iter: bool = False) -> list[str] | Iterator[str]:
         """Return node labels in order.
@@ -46,7 +44,7 @@ class BagQuery:
         Note:
             Replaces iterkeys() from Python 2 - use keys(iter=True) instead.
         """
-        return self._nodes.keys(iter=iter)  # type: ignore[no-any-return]
+        return self._nodes.keys(iter=iter)
 
     def values(self, iter: bool = False) -> list[Any] | Iterator[Any]:
         """Return node values in order.
@@ -57,7 +55,7 @@ class BagQuery:
         Note:
             Replaces itervalues() from Python 2 - use values(iter=True) instead.
         """
-        return self._nodes.values(iter=iter)  # type: ignore[no-any-return]
+        return self._nodes.values(iter=iter)
 
     def items(self, iter: bool = False) -> list[tuple[str, Any]] | Iterator[tuple[str, Any]]:
         """Return (label, value) tuples in order.
@@ -68,7 +66,7 @@ class BagQuery:
         Note:
             Replaces iteritems() from Python 2 - use items(iter=True) instead.
         """
-        return self._nodes.items(iter=iter)  # type: ignore[no-any-return]
+        return self._nodes.items(iter=iter)
 
     def get_nodes(self, condition: Callable[[BagNode], bool] | None = None) -> list[BagNode]:
         """Get the actual list of nodes contained in the Bag.
@@ -109,14 +107,14 @@ class BagQuery:
         sub_bags = []
         for node in self._nodes:
             if node.has_attr(attr, value):
-                return node  # type: ignore[no-any-return]
+                return node
             if isinstance(node.value, Bag):
                 sub_bags.append(node)
 
         for node in sub_bags:
             found = node.value.get_node_by_attr(attr, value)
             if found:
-                return found  # type: ignore[no-any-return]
+                return found
 
         return None
 
@@ -136,7 +134,7 @@ class BagQuery:
         for node in self._nodes:
             node_value = node.value
             if node_value and node_value.get(key) == value:
-                return node  # type: ignore[no-any-return]
+                return node
         return None
 
     def is_empty(self, zero_is_none: bool = False, blank_is_none: bool = False) -> bool:
@@ -251,7 +249,7 @@ class BagQuery:
                 if isinstance(value, Bag):
                     yield from _walk_gen(value, path)
 
-        return _walk_gen(self, "")  # type: ignore[arg-type]
+        return _walk_gen(self, "")
 
     def query(
         self,
@@ -319,7 +317,7 @@ class BagQuery:
         if isinstance(what, str):
             if ":" in what:
                 where, what = what.split(":")
-                obj = self[where]  # type: ignore[index]
+                obj = self[where]
             else:
                 obj = self
             whatsplit = [x.strip() for x in what.split(",")]
@@ -420,11 +418,11 @@ class BagQuery:
                 what_str = what if isinstance(what, str) else "#k,#v,#a"
                 whatsplit = [x.strip() for x in what_str.split(",")]
                 return [[] for _ in whatsplit]
-            result_list = list(result)  # type: ignore[arg-type]
+            result_list = list(result)
             if result_list and isinstance(result_list[0], tuple):
                 return [list(col) for col in zip(*result_list, strict=False)]
             return [result_list]
-        return list(result)  # type: ignore[arg-type]
+        return list(result)
 
     def columns(self, cols: str | list, attr_mode: bool = False) -> list:
         """Return digest result as columns.

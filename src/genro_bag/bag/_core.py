@@ -85,6 +85,7 @@ class Bag(BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer
     """
 
     node_class: type[BagNode] = BagNode
+    container_class: type[BagNodeContainer] = BagNodeContainer
 
     def __init__(self, source: dict[str, Any] | None = None):
         """Create a new Bag.
@@ -98,7 +99,7 @@ class Bag(BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer
             >>> bag['a']
             1
         """
-        self._nodes: BagNodeContainer = BagNodeContainer()
+        self._nodes: BagNodeContainer = self.container_class()
         self._backref: bool | str = False
         self._parent: Bag | None = None
         self._parent_node: BagNode | None = None
@@ -421,9 +422,10 @@ class Bag(BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer
             _attributes = dict(_attributes or {})
             _attributes.update(kwargs)
 
-        # Traverse path
+        # Traverse path (write_mode=True guarantees label is str)
         result, label = self._htraverse(path, write_mode=True)
         obj = cast("Bag", result)
+        label = cast(str, label)
 
         # Delegate EVERYTHING to BagNodeContainer.set
         return obj._nodes.set(

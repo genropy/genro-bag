@@ -23,6 +23,8 @@ from xml.sax.handler import ContentHandler
 
 from genro_tytx import from_tytx as tytx_decode
 
+from genro_bag.resolver import BagResolver
+
 if TYPE_CHECKING:
     from genro_bag.bag._core import Bag
 
@@ -32,13 +34,10 @@ _EMPTY_CONTENT_RE = re.compile(r"^\s*$")
 
 
 class BagParser:
-    """Mixin providing deserialization classmethods for Bag.
+    """Mixin providing deserialization classmethods for Bag."""
 
-    Contains:
-        - from_xml: Parse XML to Bag (SAX-based, auto-detects legacy format)
-        - from_tytx: Parse TYTX format (JSON or MessagePack transport)
-        - from_json: Parse JSON to Bag (with TYTX type decoding)
-    """
+    if TYPE_CHECKING:
+        def set_item(self, path: str, value: Any, _attributes: dict[Any, Any] | None = ..., node_position: str | int | None = ..., _updattr: bool = ..., _remove_null_attributes: bool = ..., _reason: str | None = ..., _fired: bool = ..., do_trigger: bool = ..., resolver: Any = ..., node_tag: str | None = ..., **kwargs: Any) -> Any: ...
 
     # ==================== from_xml ====================
 
@@ -231,7 +230,13 @@ class BagParser:
                     label = item.get("label")
                     value = cls._from_json_recursive(item.get("value"), list_joiner)
                     attr = item.get("attr", {})
-                    result.set_item(label, value, _attributes=attr)  # type: ignore[attr-defined]
+                    resolver = None
+                    if "resolver" in item:
+                        resolver = BagResolver.deserialize(item["resolver"])
+                    node_tag = item.get("tag")
+                    result.set_item(                        label, value, _attributes=attr,
+                        resolver=resolver, node_tag=node_tag,
+                    )
                 return result
 
             # String list with joiner
@@ -242,7 +247,7 @@ class BagParser:
             result = cls()
             prefix = parent_key if parent_key else "r"
             for n, v in enumerate(data):
-                result.set_item(f"{prefix}_{n}", cls._from_json_recursive(v, list_joiner))  # type: ignore[attr-defined]
+                result.set_item(f"{prefix}_{n}", cls._from_json_recursive(v, list_joiner))
             return result
 
         if isinstance(data, dict):
@@ -250,7 +255,7 @@ class BagParser:
                 return cls()
             result = cls()
             for k, v in data.items():
-                result.set_item(k, cls._from_json_recursive(v, list_joiner, parent_key=k))  # type: ignore[attr-defined]
+                result.set_item(k, cls._from_json_recursive(v, list_joiner, parent_key=k))
             return result
 
         # Scalar value

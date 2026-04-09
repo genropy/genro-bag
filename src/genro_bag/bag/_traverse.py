@@ -19,14 +19,10 @@ if TYPE_CHECKING:
 
 
 class BagTraverse:
-    """Mixin providing hierarchical path traversal for Bag.
-
-    Assumes the presence of:
-        _nodes: BagNodeContainer
-        parent: Bag | None property
-    """
+    """Mixin providing hierarchical path traversal for Bag."""
 
     _nodes: Any
+    parent: Any
 
     @property
     def in_async_context(self) -> bool:
@@ -51,7 +47,7 @@ class BagTraverse:
                 - curr: Starting Bag (may have moved up via #parent), or None
                 - pathlist: Remaining path segments to process
         """
-        curr: Bag | None = self  # type: ignore[assignment]
+        curr: Bag | None = self
 
         if isinstance(path, str):
             path = path.replace("../", "#parent.")
@@ -62,7 +58,7 @@ class BagTraverse:
         # handle parent reference #parent at the beginning
         while pathlist and pathlist[0] == "#parent" and curr is not None:
             pathlist.pop(0)
-            curr = curr.parent  # type: ignore[attr-defined]
+            curr = curr.parent
 
         return curr, pathlist
 
@@ -112,7 +108,7 @@ class BagTraverse:
             return curr, pathlist[0]
 
         result = self._traverse_inner(curr, pathlist, write_mode, static)
-        return smartcontinuation(result, finalize)  # type: ignore[no-any-return]
+        return smartcontinuation(result, finalize)
 
     def _is_coroutine(self, value: Any) -> bool:
         """Check if value is a coroutine (only possible in async context)."""
@@ -121,11 +117,11 @@ class BagTraverse:
     def _get_new_curr(self, node: BagNode, value: Any, write_mode: bool) -> Bag | None:
         """Get next curr for traversal, creating Bag if needed in write_mode."""
         if hasattr(value, "_htraverse"):
-            return value  # type: ignore[return-value]
+            return value
         if write_mode:
-            new_bag = self.__class__()  # type: ignore[misc]
+            new_bag = self.__class__()
             node.set_value(new_bag)
-            return new_bag  # type: ignore[return-value]
+            return new_bag
         return None
 
     def _traverse_inner(
@@ -144,7 +140,7 @@ class BagTraverse:
         """
         while len(pathlist) > 1 and hasattr(curr, "_nodes"):
             segment = pathlist[0]  # read without removing
-            node = curr._nodes[segment]
+            node = curr._nodes.get(segment)
             if not node:
                 break
 
@@ -177,6 +173,6 @@ class BagTraverse:
                     self._traverse_inner(new_curr, remaining, write_mode, static)
                 )
 
-            return cont()  # type: ignore[no-any-return]
+            return cont()
 
         return (curr, pathlist)
