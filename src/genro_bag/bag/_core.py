@@ -689,6 +689,12 @@ class Bag(BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer
             _remove_null_attributes: If True, remove attributes with None value.
             **kwargs: Additional attributes to set.
         """
+        # Fast path: simple key, direct dict lookup
+        if path and isinstance(path, str) and "." not in path and "?" not in path and not path.startswith("#"):
+            node = self._nodes._dict.get(path)
+            if node is not None:
+                node.set_attr(attr=_attributes, _remove_null_attributes=_remove_null_attributes, **kwargs)
+                return
         self.get_node(path, autocreate=True).set_attr(  # type: ignore[union-attr]
             attr=_attributes, _remove_null_attributes=_remove_null_attributes, **kwargs
         )
