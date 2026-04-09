@@ -312,14 +312,34 @@ class Bag(BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer
         if not path:
             return self
 
-        # Fast path: simple string key (no dots, no ?, no kwargs)
-        if isinstance(path, str) and not kwargs and "." not in path and "?" not in path:
-            if not path.startswith("#"):
+        # Fast path: simple string paths without special syntax or kwargs
+        if isinstance(path, str) and not kwargs and "?" not in path and "#" not in path:
+            if "." not in path:
+                # Single key: direct dict lookup
                 node = self._nodes._dict.get(path)
                 if node is not None:
                     return node.get_value(static=static)
                 return default
-            # Fast path for #N positional index
+            # Dotted path: traverse via dict lookups
+            segments = path.split(".")
+            curr = self
+            for segment in segments[:-1]:
+                node = curr._nodes._dict.get(segment)
+                if node is None:
+                    return default
+                value = node.get_value(static=static)
+                if not hasattr(value, "_nodes"):
+                    break
+                curr = value
+            else:
+                # All intermediate segments resolved — get final value
+                node = curr._nodes._dict.get(segments[-1])
+                if node is not None:
+                    return node.get_value(static=static)
+                return default
+
+        # Fast path for single-level #N positional index
+        if isinstance(path, str) and not kwargs and "." not in path and "?" not in path and path.startswith("#"):
             rest = path[1:]
             if rest.isdigit():
                 idx = int(rest)
