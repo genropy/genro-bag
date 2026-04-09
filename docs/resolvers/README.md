@@ -64,7 +64,7 @@ bag['cached'] = BagCbResolver(func, cache_time=300)
 # Cache forever (until manual reset)
 bag['permanent'] = BagCbResolver(func, cache_time=False)
 
-# Active cache — background refresh every 30 seconds
+# Active cache — background refresh every 30 seconds (async only)
 bag['live'] = BagCbResolver(func, cache_time=-30)
 
 # Reset cache manually

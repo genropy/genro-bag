@@ -143,7 +143,7 @@ svg text { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui
 
 <div class="cards">
   <div class="card"><span class="icon">&#x1F310;</span><h4>Live Data Source</h4><p>EarthquakeResolver fetches USGS GeoJSON feed with HTTP conditional requests (If-Modified-Since), minimizing bandwidth.</p></div>
-  <div class="card"><span class="icon">&#x23F0;</span><h4>Active Cache</h4><p>Negative <code>cache_time</code> means the resolver refreshes in the background. You always read fresh data, never wait for HTTP.</p></div>
+  <div class="card"><span class="icon">&#x23F0;</span><h4>Active Cache (async only)</h4><p>Negative <code>cache_time</code> means the resolver refreshes in the background (requires async context). You always read fresh data, never wait for HTTP.</p></div>
   <div class="card"><span class="icon">&#x1F504;</span><h4>Timer Subscription</h4><p>A timer subscription fires <code>process_feed</code> every N seconds, converting raw feed data into versioned earthquake records.</p></div>
   <div class="card"><span class="icon">&#x1F514;</span><h4>Insert Subscription</h4><p>An insert subscription on the quakes Bag reacts to every new node &mdash; logging each earthquake to the console as it arrives.</p></div>
   <div class="card"><span class="icon">&#x1F4CB;</span><h4>Versioned Events</h4><p>Earthquakes get updated by USGS (magnitude revised, etc). Each update becomes a new versioned node: 00, 01, 02...</p></div>
@@ -593,7 +593,7 @@ LOG_TEMPLATE = <span class="str">"  [{tag}] {where}/{event_id}.{version} M{mag} 
 <tr><td><code>process_response</code></td><td>After HTTP response</td><td>If 304: return cached value. Otherwise: parse GeoJSON into Bag</td></tr>
 </table>
 
-<h3>Active cache (<code>cache_time=-60</code>)</h3>
+<h3>Active cache (<code>cache_time=-60</code>, async only)</h3>
 
 <p>The resolver is assigned with a <strong>negative</strong> <code>cache_time</code>:</p>
 
@@ -604,11 +604,11 @@ LOG_TEMPLATE = <span class="str">"  [{tag}] {where}/{event_id}.{version} M{mag} 
 <tr><td><code>0</code></td><td>No caching; resolve on every access</td><td>Always-fresh data</td></tr>
 <tr><td><code>&gt; 0</code> (e.g. 300)</td><td>Cache for N seconds; re-fetch when expired</td><td>Reduce API calls</td></tr>
 <tr><td><code>-1</code></td><td>Cache forever; never re-fetch</td><td>Immutable data (UUIDs, etc.)</td></tr>
-<tr><td><code>&lt; 0</code> (e.g. -60)</td><td><strong>Active cache</strong>: always return cached value, refresh in background every |N| seconds</td><td>Low-latency reads with periodic refresh</td></tr>
+<tr><td><code>&lt; 0</code> (e.g. -60)</td><td><strong>Active cache (async only)</strong>: always return cached value, refresh in background every |N| seconds</td><td>Low-latency reads with periodic refresh</td></tr>
 </table>
 
 <div class="callout">
-  <strong>Why active cache?</strong> With <code>cache_time=-60</code>, reading <code>bag["feed.features"]</code> never blocks on HTTP. The resolver returns the last fetched data instantly and schedules a background refresh. This means <code>process_feed</code> runs in microseconds, not seconds.
+  <strong>Why active cache?</strong> With <code>cache_time=-60</code> (requires async context), reading <code>bag["feed.features"]</code> never blocks on HTTP. The resolver returns the last fetched data instantly and schedules a background refresh on the event loop. This means <code>process_feed</code> runs in microseconds, not seconds.
 </div>
 
 <h3>Conditional requests</h3>
@@ -959,7 +959,7 @@ LOG_TEMPLATE = <span class="str">"  [{tag}] {where}/{event_id}.{version} M{mag} 
   <td><code>bag["data"] = UrlResolver("https://...", cache_time=300)</code></td>
 </tr>
 <tr>
-  <td>Use active cache (background refresh)</td>
+  <td>Use active cache (background refresh, async only)</td>
   <td><code>bag["data"] = MyResolver(cache_time=-60)</code></td>
 </tr>
 <tr>

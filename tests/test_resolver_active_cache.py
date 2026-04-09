@@ -3,20 +3,51 @@
 
 """Tests for active cache (cache_time < 0) in BagResolver."""
 
-import time
+import asyncio
+
+import pytest
 
 from genro_bag import Bag
 from genro_bag.resolver import BagCbResolver
 
 
-class TestActiveCacheBasic:
-    """Active cache starts background refresh when cache_time < 0."""
+class TestActiveCacheSyncRejection:
+    """Active cache must raise RuntimeError in sync context."""
 
-    def test_active_cache_updates_value(self):
-        """cache_time < 0 triggers periodic background refresh."""
+    def test_active_cache_raises_in_sync(self):
+        """cache_time < 0 in sync context raises RuntimeError."""
+        bag = Bag()
+        with pytest.raises(RuntimeError, match="requires an async context"):
+            bag.set_item("data", BagCbResolver(lambda: 1, cache_time=-1))
+
+    def test_passive_cache_works_in_sync(self):
+        """cache_time > 0 in sync context works normally."""
+        bag = Bag()
+        bag.set_item("data", BagCbResolver(lambda: 42, cache_time=5))
+        assert bag["data"] == 42
+
+    def test_no_cache_works_in_sync(self):
+        """cache_time=0 in sync context works normally."""
+        bag = Bag()
+        bag.set_item("data", BagCbResolver(lambda: 42, cache_time=0))
+        assert bag["data"] == 42
+
+    def test_infinite_cache_works_in_sync(self):
+        """cache_time=False in sync context works normally."""
+        bag = Bag()
+        bag.set_item("data", BagCbResolver(lambda: 42, cache_time=False))
+        assert bag["data"] == 42
+
+
+class TestActiveCacheBasic:
+    """Active cache starts background refresh when cache_time < 0 in async."""
+
+    @pytest.mark.asyncio
+    async def test_active_cache_updates_value(self):
+        """cache_time < 0 triggers periodic background refresh in async."""
         counter = [0]
 
-        def incrementing():
+        async def incrementing():
             counter[0] += 1
             return counter[0]
 
@@ -24,11 +55,11 @@ class TestActiveCacheBasic:
         bag.set_item("data", BagCbResolver(incrementing, cache_time=-1))
 
         # First access triggers load
-        first = bag["data"]
+        first = await bag["data"]
         assert first == 1
 
         # Wait for background refresh
-        time.sleep(1.5)
+        await asyncio.sleep(1.5)
 
         # Value should have been updated by background timer
         second = bag.get_item("data", static=True)
@@ -76,8 +107,9 @@ class TestActiveCacheBasic:
 class TestActiveCacheLifecycle:
     """Active cache lifecycle: start on attach, stop on detach."""
 
-    def test_timer_starts_on_attach(self):
-        """Timer starts when resolver is attached to a node."""
+    @pytest.mark.asyncio
+    async def test_timer_starts_on_attach(self):
+        """Timer starts when resolver is attached to a node in async."""
         resolver = BagCbResolver(lambda: 1, cache_time=-1)
         assert resolver._timer_id is None
 
@@ -89,7 +121,8 @@ class TestActiveCacheLifecycle:
         # Cleanup
         resolver.parent_node = None
 
-    def test_timer_stops_on_detach(self):
+    @pytest.mark.asyncio
+    async def test_timer_stops_on_detach(self):
         """Timer stops when resolver is detached from node."""
         resolver = BagCbResolver(lambda: 1, cache_time=-1)
         bag = Bag()
@@ -100,7 +133,8 @@ class TestActiveCacheLifecycle:
         resolver.parent_node = None
         assert resolver._timer_id is None
 
-    def test_replace_resolver_stops_old_timer(self):
+    @pytest.mark.asyncio
+    async def test_replace_resolver_stops_old_timer(self):
         """Replacing resolver on a node stops the old resolver's timer."""
         old_resolver = BagCbResolver(lambda: 1, cache_time=-1)
         new_resolver = BagCbResolver(lambda: 2, cache_time=-1)
@@ -118,11 +152,12 @@ class TestActiveCacheLifecycle:
         # Cleanup
         new_resolver.parent_node = None
 
-    def test_error_in_background_load_keeps_timer(self):
+    @pytest.mark.asyncio
+    async def test_error_in_background_load_keeps_timer(self):
         """Error during background load does not stop the timer."""
         counter = [0]
 
-        def failing_after_first():
+        async def failing_after_first():
             counter[0] += 1
             if counter[0] > 1:
                 raise RuntimeError("simulated error")
@@ -133,10 +168,10 @@ class TestActiveCacheLifecycle:
         bag.set_item("data", resolver)
 
         # First access succeeds
-        assert bag["data"] == 1
+        assert await bag["data"] == 1
 
         # Wait for background refresh (which will fail)
-        time.sleep(1.5)
+        await asyncio.sleep(1.5)
 
         # Timer should still be running
         assert resolver._timer_id is not None
@@ -147,18 +182,19 @@ class TestActiveCacheLifecycle:
         # Cleanup
         resolver.parent_node = None
 
-    def test_first_access_triggers_load(self):
+    @pytest.mark.asyncio
+    async def test_first_access_triggers_load(self):
         """First access with active cache triggers immediate load."""
         calls = []
 
-        def tracked():
+        async def tracked():
             calls.append(1)
             return len(calls)
 
         bag = Bag()
         bag.set_item("data", BagCbResolver(tracked, cache_time=-1))
 
-        result = bag["data"]
+        result = await bag["data"]
         assert result == 1
         assert len(calls) == 1
 

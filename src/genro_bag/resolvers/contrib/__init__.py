@@ -12,7 +12,9 @@ Example:
     from genro_bag.resolvers.contrib import EarthquakeResolver, OpenMeteoResolver, SystemResolver
 
     bag = Bag()
-    bag['quakes'] = EarthquakeResolver(cache_time=-60)
+    # Active cache requires async context
+    async def main():
+        bag['quakes'] = EarthquakeResolver(cache_time=-60)
     bag['weather'] = OpenMeteoResolver(city='Milan')
     bag['system'] = SystemResolver()
 """

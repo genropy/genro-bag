@@ -175,7 +175,7 @@ BagCbResolver(func, cache_time=60)
 # Cache forever (until manual reset)
 BagCbResolver(func, cache_time=False)
 
-# Active cache — background refresh every 30 seconds
+# Active cache — background refresh every 30 seconds (async only)
 BagCbResolver(func, cache_time=-30)
 ```
 

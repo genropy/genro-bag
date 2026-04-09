@@ -14,7 +14,7 @@ Key Concepts:
 Caching Semantics:
     - cache_time = 0      -> NO cache, load() called ALWAYS
     - cache_time > 0      -> passive cache for N seconds (TTL, reload on next access)
-    - cache_time < 0      -> active cache, background refresh every abs(N) seconds
+    - cache_time < 0      -> active cache, background refresh every abs(N) seconds (async only)
     - cache_time = False   -> INFINITE cache (until manual reset())
 
 Retry Policy:
@@ -159,7 +159,8 @@ def _get_retry_policy(resolver) -> dict[str, Any] | None:
         return None
     if isinstance(policy, str):
         return RETRY_POLICIES.get(policy)
-    return policy
+    result: dict[str, Any] = policy
+    return result
 
 if TYPE_CHECKING:
     from .bagnode import BagNode
@@ -198,7 +199,7 @@ class BagResolver:
     Class Attributes:
         class_kwargs: dict of {param_name: default_value}
             Parameters with defaults, passable as keyword args.
-            - 'cache_time': 0 = no cache, >0 = passive TTL, <0 = active cache, False = infinite
+            - 'cache_time': 0 = no cache, >0 = passive TTL, <0 = active cache (async only), False = infinite
             - 'read_only': if True, value is NOT saved in node._value
             - 'retry_policy': retry config or preset name ('network', 'aggressive')
 
@@ -344,7 +345,7 @@ class BagResolver:
         """Get cache time setting.
 
         Returns:
-            0: no cache, >0: passive TTL seconds, <0: active cache (abs seconds),
+            0: no cache, >0: passive TTL seconds, <0: active cache (async only),
             False: infinite cache.
         """
         return self._kw.get("cache_time", 0)  # type: ignore[no-any-return]
@@ -402,7 +403,12 @@ class BagResolver:
     # =========================================================================
 
     def _start_active_cache(self) -> None:
-        """Start background refresh if cache_time < 0 and not read_only."""
+        """Start background refresh if cache_time < 0 and not read_only.
+
+        Raises:
+            RuntimeError: If called in a sync context. Active cache requires
+                an async event loop to avoid thread-safety issues.
+        """
         cache_time = self.cache_time
         if cache_time is False or not isinstance(cache_time, int) or cache_time >= 0:
             return
@@ -410,6 +416,11 @@ class BagResolver:
             return
         if self._timer_id is not None:
             return
+        if not self.in_async_context:
+            raise RuntimeError(
+                "Active cache (cache_time < 0) requires an async context. "
+                "Use cache_time > 0 (passive cache) in sync code."
+            )
         self._timer_id = set_interval(abs(cache_time), self._background_load, initial_delay=1)
 
     def _stop_active_cache(self) -> None:
