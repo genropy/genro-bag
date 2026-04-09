@@ -133,7 +133,7 @@ class SerializedBagResolver(BagResolver):
 
     def load(self):
         """Load and return the Bag from the serialized file."""
-        return Bag().fill_from(self._kw["path"], format=self._kw["format"])
+        return Bag().fill_from(self._kw["path"], transport=self._kw["format"])
 
 
 class DirectoryResolver(BagResolver):
@@ -222,7 +222,7 @@ class DirectoryResolver(BagResolver):
             def rnc_processor(path):
                 import rnc2rng
                 rng_xml = rnc2rng.dumps(rnc2rng.load(path))
-                return Bag().fill_from(rng_xml, format='xml')
+                return Bag().fill_from(rng_xml, transport='xml')
 
             resolver = DirectoryResolver('/schemas', ext='rnc', processors={'rnc': rnc_processor})
 

@@ -3622,7 +3622,7 @@ class TestBagCoverageEdgeCases:
         xml_file.write_text(xml_content)
 
         bag = Bag()
-        bag.fill_from(str(xml_file), format="xml")
+        bag.fill_from(str(xml_file), transport="xml")
 
         assert bag["root.item"] == "value"
         assert bag["root.number"] == "42"
