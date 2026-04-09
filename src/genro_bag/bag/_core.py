@@ -222,6 +222,7 @@ class Bag(BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer
         self._root_attributes = dict(attrs)
 
 
+
     # -------------------- get (single level) --------------------------------
 
     def get(
@@ -310,6 +311,13 @@ class Bag(BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer
         """
         if not path:
             return self
+
+        # Fast path: simple string key (no dots, no #, no ?, no kwargs)
+        if isinstance(path, str) and not kwargs and "." not in path and "?" not in path and not path.startswith("#"):
+            node = self._nodes._dict.get(path)
+            if node is not None:
+                return node.get_value(static=static)
+            return default
 
         result = self._htraverse(path, static=static)
 
@@ -445,6 +453,10 @@ class Bag(BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer
 
     def __setitem__(self, path: str, value: Any) -> None:
         """Set value at path using bracket notation."""
+        # Fast path: simple key, no dots or special syntax
+        if "." not in path and "?" not in path and not path.startswith("#"):
+            self._nodes.set(path, value, parent_bag=self)
+            return
         self.set_item(path, value)
 
     # -------------------- _pop (single level) --------------------------------
