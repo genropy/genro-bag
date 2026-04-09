@@ -312,12 +312,20 @@ class Bag(BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer
         if not path:
             return self
 
-        # Fast path: simple string key (no dots, no #, no ?, no kwargs)
-        if isinstance(path, str) and not kwargs and "." not in path and "?" not in path and not path.startswith("#"):
-            node = self._nodes._dict.get(path)
-            if node is not None:
-                return node.get_value(static=static)
-            return default
+        # Fast path: simple string key (no dots, no ?, no kwargs)
+        if isinstance(path, str) and not kwargs and "." not in path and "?" not in path:
+            if not path.startswith("#"):
+                node = self._nodes._dict.get(path)
+                if node is not None:
+                    return node.get_value(static=static)
+                return default
+            # Fast path for #N positional index
+            rest = path[1:]
+            if rest.isdigit():
+                idx = int(rest)
+                if idx < len(self._nodes._list):
+                    return self._nodes._list[idx].get_value(static=static)
+                return default
 
         result = self._htraverse(path, static=static)
 
