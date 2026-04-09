@@ -126,7 +126,7 @@ class BagTraverse:
 
     def _traverse_inner(
         self, curr: Bag, pathlist: list, write_mode: bool, static: bool
-    ) -> tuple[Bag, list]:
+    ) -> tuple[Bag, list[Any]] | Any:
         """Traverse path segments - unified sync/async version.
 
         Args:
@@ -173,6 +173,6 @@ class BagTraverse:
                     self._traverse_inner(new_curr, remaining, write_mode, static)
                 )
 
-            return cast(tuple["Bag", list[Any]], cont())
+            return cont()
 
         return (curr, pathlist)

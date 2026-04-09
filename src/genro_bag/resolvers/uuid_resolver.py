@@ -16,6 +16,7 @@ With ``cache_time=False`` (default) the UUID is generated once and never changes
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable
 from typing import Any
 
 from ..resolver import BagResolver
@@ -34,7 +35,7 @@ class UuidResolver(BagResolver):
         "cache_time", "read_only", "retry_policy", "as_bag", "version",
     }
 
-    _generators = {
+    _generators: dict[str, Callable[[], uuid.UUID]] = {
         "uuid1": uuid.uuid1,
         "uuid4": uuid.uuid4,
     }

@@ -20,10 +20,9 @@ Methods provided:
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast, overload
 
 if TYPE_CHECKING:
-    from genro_bag.bag._core import Bag
     from genro_bag.bagnode import BagNode, BagNodeContainer
 
 
@@ -107,14 +106,14 @@ class BagQuery:
         sub_bags = []
         for node in self._nodes:
             if node.has_attr(attr, value):
-                return node
+                return cast(BagNode, node)
             if isinstance(node.value, Bag):
                 sub_bags.append(node)
 
         for node in sub_bags:
             found = node.value.get_node_by_attr(attr, value)
             if found:
-                return found
+                return cast(BagNode, found)
 
         return None
 
@@ -134,7 +133,7 @@ class BagQuery:
         for node in self._nodes:
             node_value = node.value
             if node_value and node_value.get(key) == value:
-                return node
+                return cast(BagNode, node)
         return None
 
     def is_empty(self, zero_is_none: bool = False, blank_is_none: bool = False) -> bool:
@@ -173,8 +172,13 @@ class BagQuery:
 
         return True
 
+    @overload
+    def walk(self, callback: None = None, static: bool = True, **kwargs: Any) -> Iterator[tuple[str, BagNode]]: ...
+    @overload
+    def walk(self, callback: Callable[[BagNode], Any], static: bool = True, **kwargs: Any) -> Any: ...
+
     def walk(
-        self, callback: Callable[[BagNode], Any] | None = None, static: bool = True, **kwargs
+        self, callback: Callable[[BagNode], Any] | None = None, static: bool = True, **kwargs: Any
     ) -> Iterator[tuple[str, BagNode]] | Any:
         """Walk the tree depth-first.
 
@@ -241,7 +245,7 @@ class BagQuery:
             return None
 
         # Generator mode - uses static parameter (default True)
-        def _walk_gen(bag: Bag, prefix: str) -> Iterator[tuple[str, BagNode]]:
+        def _walk_gen(bag: Any, prefix: str) -> Iterator[tuple[str, BagNode]]:
             for node in bag._nodes:
                 path = f"{prefix}.{node.label}" if prefix else node.label
                 yield path, node
@@ -511,13 +515,13 @@ class BagQuery:
                 elif what.lower().startswith("#a."):
                     attrname = what[3:]
                     self._nodes._list.sort(
-                        key=lambda n, attr=attrname: sort_key(n.get_attr(attr), case_insensitive),
+                        key=lambda n, attr=attrname: sort_key(n.get_attr(attr), case_insensitive),  # type: ignore[misc]
                         reverse=reverse,
                     )
                 else:
                     # Sort by field in value
                     self._nodes._list.sort(
-                        key=lambda n, field=what: sort_key(
+                        key=lambda n, field=what: sort_key(  # type: ignore[misc]
                             n.value[field] if n.value else None, case_insensitive
                         ),
                         reverse=reverse,

@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Iterator
-from typing import TYPE_CHECKING, Any, Literal
+from typing import TYPE_CHECKING, Any, Literal, cast
 from xml.dom.minidom import parseString
 from xml.sax import saxutils
 
@@ -29,7 +29,7 @@ class BagSerializer:
 
     if TYPE_CHECKING:
         def __iter__(self) -> Iterator[BagNode]: ...
-        def walk(self, callback: Any = None, static: bool = True, **kw: Any) -> Iterator[tuple[str, BagNode]] | Any: ...
+        def walk(self, callback: Any = None, static: bool = True, **kw: Any) -> Iterator[tuple[str, BagNode]]: ...
 
     # ==================== to_xml ====================
 
@@ -307,6 +307,7 @@ class BagSerializer:
 
                 if hasattr(node_value, "walk") and hasattr(node_value, "_nodes"):
                     path_to_code[path] = code_counter
+                    assert path_registry is not None
                     path_registry[code_counter] = path
                     code_counter += 1
             else:
@@ -332,7 +333,7 @@ class BagSerializer:
         result = [self._node_to_json_dict(node, typed) for node in self]
 
         if typed:
-            return tytx_encode(result)
+            return cast(str, tytx_encode(result))
         return json.dumps(result)
 
     def _node_to_json_dict(self, node: Any, typed: bool) -> dict:

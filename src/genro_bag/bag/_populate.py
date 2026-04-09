@@ -9,7 +9,9 @@ from __future__ import annotations
 import os
 from collections.abc import Iterator
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Self, cast
+from typing import TYPE_CHECKING, Any, cast
+
+from typing_extensions import Self
 
 if TYPE_CHECKING:
     from genro_bag.bag._core import Bag
