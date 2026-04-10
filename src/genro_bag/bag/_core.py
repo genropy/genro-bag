@@ -40,7 +40,7 @@ Async Usage with Resolvers:
 from __future__ import annotations
 
 from collections.abc import Callable
-from typing import Any, cast
+from typing import Any
 
 from genro_toolbox import smartcontinuation
 
@@ -209,7 +209,7 @@ class Bag(BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer
         Returns an empty dict if this is a standalone Bag with no parent node.
         """
         if self.parent_node is not None:
-            return cast(dict[str, Any], self.parent_node.get_attr())
+            return self.parent_node.get_attr()  # type: ignore[return-value]
         return {}
 
     @property
@@ -424,8 +424,8 @@ class Bag(BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer
 
         # Traverse path (write_mode=True guarantees label is str)
         result, label = self._htraverse(path, write_mode=True)
-        obj = cast("Bag", result)
-        label = cast(str, label)
+        obj = result
+        label = label  # type: ignore[assignment]
 
         # Delegate EVERYTHING to BagNodeContainer.set
         return obj._nodes.set(
@@ -461,7 +461,7 @@ class Bag(BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer
         """
         p = self._nodes.index(label)
         if p >= 0:
-            node = cast(BagNode, self._nodes.pop(p))
+            node = self._nodes.pop(p)
             if self.backref:
                 self._on_node_deleted(node, p, reason=_reason)
             return node
@@ -528,7 +528,7 @@ class Bag(BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer
         """
         result, label = self._htraverse(path, static=True)
         if result and label:
-            obj = cast("Bag", result)
+            obj = result
             n = obj._pop(label, _reason=_reason)
             if n:
                 return n
@@ -632,7 +632,7 @@ class Bag(BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer
             >>> bag.node(0).label
             'a'
         """
-        return cast("BagNode | None", self._nodes[key])
+        return self._nodes[key]
 
     def set_attr(
         self,
@@ -858,7 +858,7 @@ class Bag(BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer
         p = self._nodes.index(label)
         node: BagNode | None
         if p >= 0:
-            node = cast(BagNode, self._nodes[p])
+            node = self._nodes[p]
         elif autocreate:
             i = len(self._nodes)
             node = self._nodes.set(label, default, parent_bag=self)
@@ -911,7 +911,7 @@ class Bag(BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer
             return self.parent_node
 
         if isinstance(path, int):
-            return cast("BagNode | None", self._nodes[path])
+            return self._nodes[path]
 
         result = self._htraverse(path, write_mode=autocreate, static=static)
 

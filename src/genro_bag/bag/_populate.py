@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 from collections.abc import Iterator
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 from typing_extensions import Self
 
@@ -203,7 +203,7 @@ class BagPopulate:
         from genro_bag.resolvers import UrlResolver
 
         resolver = UrlResolver(url, timeout=timeout, as_bag=True)
-        return cast("Bag", resolver())
+        return resolver()
 
     # -------------------- deepcopy --------------------------------
 

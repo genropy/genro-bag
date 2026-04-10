@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import re
 from collections.abc import Iterator
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal
 from xml.dom.minidom import parseString
 from xml.sax import saxutils
 
@@ -333,7 +333,7 @@ class BagSerializer:
         result = [self._node_to_json_dict(node, typed) for node in self]
 
         if typed:
-            return cast(str, tytx_encode(result))
+            return tytx_encode(result)
         return json.dumps(result)
 
     def _node_to_json_dict(self, node: Any, typed: bool) -> dict:

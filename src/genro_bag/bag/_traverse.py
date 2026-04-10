@@ -9,9 +9,9 @@ contexts transparently.
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
-from genro_toolbox import smartawait, smartcontinuation, smartsplit
+from genro_toolbox import smartawait, smartcontinuation
 
 if TYPE_CHECKING:
     from genro_bag.bag._core import Bag
@@ -47,11 +47,15 @@ class BagTraverse:
                 - curr: Starting Bag (may have moved up via #parent), or None
                 - pathlist: Remaining path segments to process
         """
-        curr: Bag | None = cast("Bag", self)
+        curr: Bag | None = self  # type: ignore[assignment]
 
         if isinstance(path, str):
             path = path.replace("../", "#parent.")
-            pathlist = [x for x in smartsplit(path, ".") if x]
+            if "\\." in path:
+                path = path.replace("\\.", chr(1))
+                pathlist = [x.strip().replace(chr(1), "\\.") for x in path.split(".") if x.strip()]
+            else:
+                pathlist = [x.strip() for x in path.split(".") if x.strip()]
         else:
             pathlist = list(path)
 
@@ -84,6 +88,11 @@ class BagTraverse:
 
         if write_mode:
             static = True
+
+        # Fast path: single segment — no traversal needed
+        if isinstance(path, str) and "." not in path:
+            return self, path
+
         curr, pathlist = self._htraverse_before(path)
         if curr is None:
             return None, None
@@ -108,7 +117,7 @@ class BagTraverse:
             return curr, pathlist[0]
 
         result = self._traverse_inner(curr, pathlist, write_mode, static)
-        return cast(tuple[Any, str | None], smartcontinuation(result, finalize))
+        return smartcontinuation(result, finalize)  # type: ignore[return-value]
 
     def _is_coroutine(self, value: Any) -> bool:
         """Check if value is a coroutine (only possible in async context)."""
@@ -117,9 +126,9 @@ class BagTraverse:
     def _get_new_curr(self, node: BagNode, value: Any, write_mode: bool) -> Bag | None:
         """Get next curr for traversal, creating Bag if needed in write_mode."""
         if hasattr(value, "_htraverse"):
-            return cast("Bag", value)
+            return value  # type: ignore[return-value]
         if write_mode:
-            new_bag = cast("Bag", self.__class__())
+            new_bag = self.__class__()
             node.set_value(new_bag)
             return new_bag
         return None

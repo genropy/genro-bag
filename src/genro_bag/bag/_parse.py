@@ -16,7 +16,7 @@ import io
 import os
 import re
 from collections.abc import Callable
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import TYPE_CHECKING, Any, Literal
 from xml import sax
 from xml.sax import saxutils
 from xml.sax.handler import ContentHandler
@@ -116,7 +116,7 @@ class BagParser:
             result = result["GenRoBag"]
         if result is None:
             result = cls()
-        return cast("Bag", result)
+        return result
 
     # ==================== from_tytx ====================
 
@@ -180,7 +180,7 @@ class BagParser:
                 if node:
                     node.node_tag = tag
 
-        return cast("Bag", bag)
+        return bag
 
     # ==================== from_json ====================
 
@@ -209,7 +209,7 @@ class BagParser:
             # Wrap scalar in a dict
             source = {"value": source}
 
-        return cast("Bag", cls._from_json_recursive(source, list_joiner))
+        return cls._from_json_recursive(source, list_joiner)
 
     @classmethod
     def _from_json_recursive(
