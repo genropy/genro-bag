@@ -29,6 +29,9 @@ import genro_bag
 from genro_bag.bagnode import BagNodeContainer, smartsplit
 from genro_bag.resolver import BagCbResolver as _NewBagCbResolver
 from genro_bag.resolver import BagResolver as _NewBagResolver
+from replacement.gnrbagxml import BagAsXml
+from replacement.gnrbagxml import BagFromXml
+from replacement.gnrbagxml import BagToXml
 
 
 # Type code mapping for _T XML attributes (matches original GnrClassCatalog)
@@ -87,11 +90,7 @@ class BagNodeException(BagException):
     """Exception for BagNode operations."""
 
 
-class BagAsXml:
-    """Wrapper class for storing raw XML values."""
-
-    def __init__(self, value):
-        self.value = value
+# BagAsXml is imported from replacement.gnrbagxml (see top-level imports)
 
 
 class BagValidationError(BagException):
@@ -1302,62 +1301,47 @@ class Bag(genro_bag.Bag):
         forcedTagAttr=None,
         docHeader=None,
         pretty=False,
+        mode4d=False,
     ):
-        """Serialize to XML with original parameter names and _T type annotations.
+        """Serialize to XML with legacy-compatible format via BagToXml.
 
-        Delegates to to_xml() which uses the overridden _node_to_xml for type info.
-        When omitRoot=False (default), wraps content in <GenRoBag>...</GenRoBag>.
+        Delegates to replacement.gnrbagxml.BagToXml for full legacy compatibility
+        including translate_cb, catalog, resolver serialization, __forbidden__,
+        BagAsXml, forcedTagAttr, omitUnknownTypes, typeattrs/typevalue.
         """
-        if docHeader is None:
-            doc_header_val = True if not omitRoot else None
-        elif docHeader is False:
-            doc_header_val = None
-        else:
-            doc_header_val = docHeader
-
-        content = self.to_xml(
-            filename=None,
-            encoding=encoding,
-            doc_header=None,
-            pretty=False,
+        return BagToXml().build(
+            self, filename=filename, encoding=encoding,
+            typeattrs=typeattrs, typevalue=typevalue,
+            addBagTypeAttr=addBagTypeAttr,
+            unresolved=unresolved, autocreate=autocreate,
+            forcedTagAttr=forcedTagAttr,
+            translate_cb=translate_cb,
             self_closed_tags=self_closed_tags,
+            omitUnknownTypes=omitUnknownTypes,
+            catalog=catalog, omitRoot=omitRoot,
+            docHeader=docHeader, pretty=pretty,
+            mode4d=mode4d,
         )
-
-        if not omitRoot:
-            content = f"<GenRoBag>{content}</GenRoBag>"
-
-        if pretty:
-            content = self._prettify_xml(content)
-
-        if doc_header_val is True:
-            content = f"<?xml version='1.0' encoding='{encoding}'?>\n{content}"
-        elif isinstance(doc_header_val, str):
-            content = f"{doc_header_val}\n{content}"
-
-        if filename:
-            if autocreate:
-                dirpath = os.path.dirname(filename)
-                if dirpath:
-                    os.makedirs(dirpath, exist_ok=True)
-            result_bytes = content.encode(encoding)
-            with open(filename, "wb") as f:
-                f.write(result_bytes)
-            return None
-
-        return content
 
     def fromXml(self, source, catalog=None, bagcls=None, empty=None,
                 attrInValue=None, avoidDupLabel=None):
         """Load XML into this Bag (instance method, original API).
 
-        Delegates to from_xml classmethod. Detects duplicate XML tags
-        (where parser renamed label to label_N but xml_tag preserves
-        the original name) and converts them to proper duplicates
-        via addItem.
+        Delegates to replacement.gnrbagxml.BagFromXml for full legacy
+        compatibility including catalog, array handling, and duplicates.
         """
-        result = self.__class__.from_xml(source, empty=empty)
+        bagcls = bagcls or self.__class__
+        fromFile = isinstance(source, str) and not source.lstrip().startswith('<')
+        if fromFile and not os.path.exists(source):
+            fromFile = False
+        result = BagFromXml().build(source, fromFile, catalog=catalog,
+                                    bagcls=bagcls, empty=empty)
         self.clear()
-        self._import_nodes_with_duplicates(result)
+        if isinstance(result, genro_bag.Bag):
+            for node in result:
+                self._nodes._dict[node.label] = node
+                self._nodes._list.append(node)
+                node._parent_bag = self
 
     def _import_nodes_with_duplicates(self, source_bag):
         """Import nodes from a parsed Bag, converting renamed duplicates.
@@ -1366,8 +1350,7 @@ class Bag(genro_bag.Bag):
         it renames them to 'mobile' and 'mobile_1'. We detect this by comparing
         node.xml_tag to node.label and use addItem for duplicates.
 
-        Fast path: nodes without duplicates are inserted directly into the
-        container. Only when a duplicate is found does it fall back to addItem.
+        Used by fill_from, _fill_from_file_with_duplicates, and _copy_nodes_from.
         """
         node_cls = self.node_class
         for node in source_bag:
@@ -1382,7 +1365,6 @@ class Bag(genro_bag.Bag):
             if is_renamed_dup:
                 self.addItem(xml_tag, value, _attributes=node._attr or None)
             else:
-                # Fast: insert directly into container
                 new_node = node_cls(self, label=label, value=value, attr=node._attr or None)
                 if xml_tag:
                     new_node.xml_tag = xml_tag
