@@ -16,7 +16,6 @@ Key Features:
 
 from __future__ import annotations
 
-import re
 from collections.abc import Callable, Iterator
 from typing import TYPE_CHECKING, Any
 
@@ -705,17 +704,18 @@ class BagNodeContainer:
         """
         if label in self._dict:
             return next((i for i, node in enumerate(self._list) if node.label == label), -1)
-        if m := re.match(r"^#(\d+)$", label):
-            idx = int(m.group(1))
-            return idx if idx < len(self._list) else -1
-        if m := re.match(r"^#(\w*)=(.*)$", label):
-            attr, value = m.groups()
-            if attr:
-                return next(
-                    (i for i, node in enumerate(self._list) if node.attr.get(attr) == value), -1
-                )
-            else:
+        if label.startswith("#"):
+            rest = label[1:]
+            if "=" in rest:
+                attr, value = rest.split("=", 1)
+                if attr:
+                    return next(
+                        (i for i, node in enumerate(self._list) if node.attr.get(attr) == value), -1
+                    )
                 return next((i for i, node in enumerate(self._list) if node._value == value), -1)
+            if rest.isdigit():
+                idx = int(rest)
+                return idx if idx < len(self._list) else -1
         return -1
 
     def _parse_position(self, position: str | int | None) -> int:
