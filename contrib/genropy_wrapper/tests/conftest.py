@@ -11,6 +11,7 @@ import genro_bag
 from gnr.core.gnrbag import Bag as OriginalBag
 from genro_toolbox import reset_smartasync_cache
 from replacement.gnrbag import Bag as WrapperBag
+from replacement.gnrbag_wrapper import Bag as NewWrapperBag
 
 
 @pytest.fixture(autouse=True)
@@ -21,8 +22,8 @@ def reset_smartasync_caches():
 
 
 @pytest.fixture(
-    params=["original", "new", "wrapper"],
-    ids=["original", "new", "wrapper"],
+    params=["original", "new", "wrapper", "new_wrapper"],
+    ids=["original", "new", "wrapper", "new_wrapper"],
 )
 def bag_class(request):
     """Return a Bag class for the given implementation."""
@@ -30,8 +31,10 @@ def bag_class(request):
         return OriginalBag
     elif request.param == "new":
         return genro_bag.Bag
-    else:
+    elif request.param == "wrapper":
         return WrapperBag
+    else:
+        return NewWrapperBag
 
 
 @pytest.fixture(

@@ -43,12 +43,14 @@ _N_SLOW = 100     # slow operations (serialization)
 
 
 def _impl_name(bag_class) -> str:
-    """Return 'original', 'new', or 'wrapper' for a Bag class."""
+    """Return 'original', 'new', 'wrapper', or 'new_wrapper' for a Bag class."""
     mod = bag_class.__module__
     if mod.startswith("gnr."):
         return "original"
     elif mod.startswith("genro_bag"):
         return "new"
+    elif "gnrbag_wrapper" in mod:
+        return "new_wrapper"
     else:
         return "wrapper"
 
@@ -333,14 +335,18 @@ class TestBenchmarkResults:
         if not _benchmarks:
             pytest.skip("No benchmark results collected")
 
-        impls = ["original", "new", "wrapper"]
+        impls = ["original", "new", "wrapper", "new_wrapper"]
 
-        header = f"{'Category':<20} {'Operation':<22} {'Original (ms)':>14} {'New (ms)':>14} {'Wrapper (ms)':>14} {'New/Orig':>10} {'Wrap/Orig':>10}"
+        header = (
+            f"{'Category':<18} {'Operation':<22}"
+            f" {'Original':>10} {'New':>10} {'Wrapper':>10} {'NewWrap':>10}"
+            f" {'New/Orig':>10} {'Wrap/Orig':>10} {'NWrap/Orig':>10}"
+        )
         separator = "-" * len(header)
 
         print("\n")
         print("=" * len(header))
-        print("  PERFORMANCE BENCHMARKS")
+        print("  PERFORMANCE BENCHMARKS (ms)")
         print("=" * len(header))
         print(header)
         print(separator)
@@ -354,31 +360,23 @@ class TestBenchmarkResults:
                 orig_ms = results.get("original")
                 new_ms = results.get("new")
                 wrap_ms = results.get("wrapper")
+                nwrap_ms = results.get("new_wrapper")
 
-                # Format values
-                orig_str = f"{orig_ms:.2f}" if orig_ms is not None else "N/A"
-                new_str = f"{new_ms:.2f}" if new_ms is not None else "N/A"
-                wrap_str = f"{wrap_ms:.2f}" if wrap_ms is not None else "N/A"
+                def fmt(v):
+                    return f"{v:.2f}" if v is not None else "N/A"
 
-                # Ratios
-                if orig_ms and new_ms:
-                    new_ratio = f"{new_ms / orig_ms:.2f}x"
-                else:
-                    new_ratio = "N/A"
-                if orig_ms and wrap_ms:
-                    wrap_ratio = f"{wrap_ms / orig_ms:.2f}x"
-                else:
-                    wrap_ratio = "N/A"
+                def ratio(v, base):
+                    return f"{v / base:.2f}x" if v and base else "N/A"
 
                 print(
-                    f"{cat_label:<20} {op_name:<22} {orig_str:>14} {new_str:>14} {wrap_str:>14} {new_ratio:>10} {wrap_ratio:>10}"
+                    f"{cat_label:<18} {op_name:<22}"
+                    f" {fmt(orig_ms):>10} {fmt(new_ms):>10} {fmt(wrap_ms):>10} {fmt(nwrap_ms):>10}"
+                    f" {ratio(new_ms, orig_ms):>10} {ratio(wrap_ms, orig_ms):>10} {ratio(nwrap_ms, orig_ms):>10}"
                 )
-                cat_label = ""  # only show category on first line
+                cat_label = ""
 
             print(separator)
 
-        # Summary
         print("\nLegend: times in milliseconds (lower is better)")
-        print("  New/Orig = new_ms / original_ms (< 1.0 = faster)")
-        print("  Wrap/Orig = wrapper_ms / original_ms")
+        print("  Ratios vs Original (< 1.0 = faster)")
         print("=" * len(header))
