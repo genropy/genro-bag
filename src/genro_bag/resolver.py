@@ -26,6 +26,7 @@ Retry Policy:
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import functools
 import importlib
 import json
@@ -156,7 +157,6 @@ class BagResolver:
         "_fingerprint",  # int: hash for __eq__ comparison
         "_cache_last_update",  # datetime | None: last load() timestamp
         "_cached_value",  # Any: cached result when standalone (no parent node)
-        "_last_effective_fingerprint",  # int | None: fingerprint of last effective params
         "_timer_id",  # str | None: smarttimer ID for active cache
     )
 
@@ -180,7 +180,6 @@ class BagResolver:
         # Cache state
         self._cache_last_update: datetime | None = None
         self._cached_value: Any = None
-        self._last_effective_fingerprint: int | None = None
         self._timer_id: str | None = None
 
         # Build _kw dict from class_args and class_kwargs
@@ -227,10 +226,6 @@ class BagResolver:
             "kwargs": self._kw,
         }
         return hash(json.dumps(data, sort_keys=True, default=str))
-
-    def _compute_effective_fingerprint(self, effective_kw: dict[str, Any]) -> int:
-        """Compute hash based on effective parameters for cache invalidation."""
-        return hash(json.dumps(effective_kw, sort_keys=True, default=str))
 
     # =========================================================================
     # PARENT NODE PROPERTY
@@ -307,7 +302,6 @@ class BagResolver:
         If active cache is running, restarts the timer.
         """
         self._cache_last_update = None
-        self._last_effective_fingerprint = None
         if self._timer_id is not None:
             self._stop_active_cache()
             self._start_active_cache()
@@ -349,21 +343,8 @@ class BagResolver:
         Bypasses cache check (always reloads) but does the full
         parameter merge (resolver._kw + node.attr) like __call__.
         """
-        try:
-            effective_kw = dict(self._kw)
-            if self._parent_node:
-                for key in self._kw:
-                    if key not in self.internal_params and key in self._parent_node.attr:
-                        effective_kw[key] = self._parent_node.attr[key]
-            self._last_effective_fingerprint = self._compute_effective_fingerprint(effective_kw)
-            original_kw = self._kw
-            self._kw = effective_kw
-            try:
-                self._dispatch_load()
-            finally:
-                self._kw = original_kw
-        except Exception:
-            pass
+        with contextlib.suppress(Exception):
+            self._load_with_kw(self._build_effective_kw())
 
     @property
     def expired(self) -> bool:
@@ -424,9 +405,9 @@ class BagResolver:
             3. resolver._kw: Default parameters set at construction
 
         Cache Invalidation:
-            Cache is invalidated when the effective parameters (after merging)
-            differ from the parameters used in the last load. This is detected
-            by comparing fingerprints of the effective_kw dict.
+            Cache is invalidated by set_attr on the parent node when a
+            resolver parameter changes, or by cache expiration (TTL).
+            When call_kwargs are provided, cache is always bypassed.
         """
         if static:
             return self.cached_value
@@ -435,29 +416,36 @@ class BagResolver:
         if self.cache_time is not False and isinstance(self.cache_time, int) and self.cache_time < 0 and self.cached_value is not None:
             return self.cached_value
 
-        # Build effective parameters: resolver < node < call_kwargs
+        # With call_kwargs: always load, bypass cache without altering it
+        if call_kwargs:
+            effective_kw = self._build_effective_kw()
+            effective_kw.update(call_kwargs)
+            saved_cache = self.cached_value
+            saved_time = self._cache_last_update
+            try:
+                return self._load_with_kw(effective_kw)
+            finally:
+                self.cached_value = saved_cache
+                self._cache_last_update = saved_time
+
+        # Without call_kwargs: use cache if valid
+        if not self.read_only and not self.expired:
+            return self.cached_value
+
+        # Cache expired or read_only: reload
+        return self._load_with_kw(self._build_effective_kw())
+
+    def _build_effective_kw(self) -> dict[str, Any]:
+        """Build effective parameters by merging resolver._kw with node.attr."""
         effective_kw = dict(self._kw)
         if self._parent_node:
             for key in self._kw:
                 if key not in self.internal_params and key in self._parent_node.attr:
                     effective_kw[key] = self._parent_node.attr[key]
-        effective_kw.update(call_kwargs)
+        return effective_kw
 
-        # Compute fingerprint of effective parameters
-        current_fingerprint = self._compute_effective_fingerprint(effective_kw)
-
-        # Check if cache is still valid (same params AND not expired)
-        if (
-            not self.read_only
-            and current_fingerprint == self._last_effective_fingerprint
-            and not self.expired
-        ):
-            return self.cached_value
-
-        # Parameters changed or cache expired, need to reload
-        self._last_effective_fingerprint = current_fingerprint
-
-        # Temporarily set _kw to effective_kw for load()
+    def _load_with_kw(self, effective_kw: dict[str, Any]) -> Any:
+        """Execute load with the given effective parameters."""
         original_kw = self._kw
         self._kw = effective_kw
         try:

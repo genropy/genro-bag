@@ -439,6 +439,20 @@ class BagNode:
         """
         new_attr = (attr or {}) | kwargs
 
+        # Invalidate resolver cache if a resolver parameter's effective value changes
+        # cache_time: 0=no cache, >0=passive, <0=active, False=infinite
+        # Must check BEFORE updating self._attr so we compare old vs new
+        # Effective value = node.attr if set, else resolver._kw
+        if self._resolver is not None and (self._resolver.cache_time is False or self._resolver.cache_time != 0):
+            resolver_kw = self._resolver._kw
+            internal = self._resolver.internal_params
+            for key, value in new_attr.items():
+                if key in resolver_kw and key not in internal:
+                    effective_old = self._attr.get(key, resolver_kw[key])
+                    if effective_old != value:
+                        self._resolver.reset()
+                        break
+
         # Save old state BEFORE any modification (only if needed for subscribers)
         oldattr = dict(self._attr) if (trigger and (self._node_subscribers or
             (self._parent_bag is not None and self._parent_bag.backref))) else None

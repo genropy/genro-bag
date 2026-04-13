@@ -198,8 +198,8 @@ class TestResolverCacheInvalidation:
         assert bag["data"] == 5
         assert call_count == 1  # no reload
 
-    def test_call_kwargs_invalidate_cache(self):
-        """Different call_kwargs invalidate cache."""
+    def test_call_kwargs_bypass_cache_without_altering_it(self):
+        """call_kwargs bypass cache but don't alter the cached value."""
         call_count = 0
 
         def counter(x):
@@ -215,13 +215,13 @@ class TestResolverCacheInvalidation:
         assert resolver() == 5
         assert call_count == 1  # cached
 
-        # Different call_kwargs - reload
+        # Different call_kwargs - always loads, bypasses cache
         assert resolver(x=10) == 10
         assert call_count == 2
 
-        # Back to original - reload (different params)
+        # Back to original - cache is still valid (not altered by call_kwargs)
         assert resolver() == 5
-        assert call_count == 3
+        assert call_count == 2  # no reload needed
 
 
 class TestResolverParameterPriority:
@@ -364,15 +364,26 @@ class TestResolverReset:
         assert bag["data"] == 5
         assert call_count == 2
 
-    def test_reset_clears_fingerprint(self):
-        """reset() clears the fingerprint so next call recomputes."""
-        resolver = BagCbResolver(lambda x: x, x=1, cache_time=False)
+    def test_reset_forces_reload(self):
+        """reset() forces reload on next call."""
+        call_count = 0
+
+        def counter(x):
+            nonlocal call_count
+            call_count += 1
+            return x
+
+        resolver = BagCbResolver(counter, x=1, cache_time=False)
 
         resolver()
-        assert resolver._last_effective_fingerprint is not None
+        assert call_count == 1
+
+        resolver()
+        assert call_count == 1  # cached
 
         resolver.reset()
-        assert resolver._last_effective_fingerprint is None
+        resolver()
+        assert call_count == 2  # reloaded after reset
 
 
 class TestResolverStandaloneVsAttached:
@@ -640,7 +651,7 @@ class TestGetItemWithKwargs:
         assert node.get_value(a=10, b=20) == 30
 
     def test_get_item_kwargs_with_cache(self):
-        """get_item kwargs properly invalidate cache."""
+        """get_item kwargs bypass cache without altering it."""
         call_count = 0
 
         def counter(x):
@@ -658,10 +669,10 @@ class TestGetItemWithKwargs:
         assert bag.get_item("data") == 5
         assert call_count == 1
 
-        # Different params via get_item - reload
+        # Different params via get_item - always loads
         assert bag.get_item("data", x=10) == 10
         assert call_count == 2
 
-        # Back to original - reload (different from last)
+        # Back to original - cache still valid (not altered by call_kwargs)
         assert bag.get_item("data") == 5
-        assert call_count == 3
+        assert call_count == 2  # no reload needed
