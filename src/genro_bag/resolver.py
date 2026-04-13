@@ -682,6 +682,28 @@ class BagResolver:
         return list(self().values())
 
 
+class BagSyncResolver(BagResolver):
+    """Resolver whose load() is always executed synchronously, even in async context.
+
+    Use this base class for resolvers whose load() is fast and CPU-only
+    (no I/O, no blocking). The load() method is never wrapped in to_thread,
+    so it always returns a plain value, never a coroutine.
+
+    For resolvers that perform I/O or heavy computation, use BagResolver instead.
+
+    Example:
+        class ComponentResolver(BagSyncResolver):
+            def load(self):
+                bag = Bag()
+                bag['title'] = self._kw['title']
+                return bag
+    """
+
+    def _dispatch_load(self) -> Any:
+        """Always use sync load, even in async context."""
+        return self._sync_sync_load()
+
+
 class BagCbResolver(BagResolver):
     """Resolver that calls a callback function to get the value.
 

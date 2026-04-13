@@ -19,7 +19,7 @@ genro-bag: Modernized bag system for the Genropy framework.
 
 from genro_bag.bag import Bag, BagException
 from genro_bag.bagnode import BagNode, BagNodeContainer, BagNodeException
-from genro_bag.resolver import BagResolver
+from genro_bag.resolver import BagResolver, BagSyncResolver
 
 __version__ = "0.15.0"
 
@@ -30,4 +30,5 @@ __all__ = [
     "BagNodeContainer",
     "BagNodeException",
     "BagResolver",
+    "BagSyncResolver",
 ]
