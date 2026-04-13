@@ -209,7 +209,7 @@ class Bag(BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer
         Returns an empty dict if this is a standalone Bag with no parent node.
         """
         if self.parent_node is not None:
-            return self.parent_node.get_attr()  # type: ignore[return-value]
+            return self.parent_node.get_attr()  # type: ignore[no-any-return]
         return {}
 
     @property
@@ -427,7 +427,7 @@ class Bag(BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer
         obj = result
 
         # Delegate EVERYTHING to BagNodeContainer.set
-        return obj._nodes.set(
+        return obj._nodes.set(  # type: ignore[no-any-return]
             label,
             value,
             node_position,
@@ -530,7 +530,7 @@ class Bag(BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer
             obj = result
             n = obj._pop(label, _reason=_reason)
             if n:
-                return n
+                return n  # type: ignore[no-any-return]
         return None
 
     # -------------------- clear --------------------------------

@@ -123,6 +123,10 @@ warn_unused_configs = true
 disallow_untyped_defs = false
 files = ["src/genro_bag"]
 
+[[tool.mypy.overrides]]
+module = "psutil"
+ignore_missing_imports = true
+
 [tool.coverage.run]
 source = ["src/genro_bag"]
 branch = true

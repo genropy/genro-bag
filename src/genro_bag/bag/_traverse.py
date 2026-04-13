@@ -117,7 +117,7 @@ class BagTraverse:
             return curr, pathlist[0]
 
         result = self._traverse_inner(curr, pathlist, write_mode, static)
-        return smartcontinuation(result, finalize)  # type: ignore[return-value]
+        return smartcontinuation(result, finalize)  # type: ignore[no-any-return, return-value]
 
     def _is_coroutine(self, value: Any) -> bool:
         """Check if value is a coroutine (only possible in async context)."""
@@ -126,11 +126,11 @@ class BagTraverse:
     def _get_new_curr(self, node: BagNode, value: Any, write_mode: bool) -> Bag | None:
         """Get next curr for traversal, creating Bag if needed in write_mode."""
         if hasattr(value, "_htraverse"):
-            return value  # type: ignore[return-value]
+            return value  # type: ignore[no-any-return, return-value]
         if write_mode:
             new_bag = self.__class__()
             node.set_value(new_bag)
-            return new_bag
+            return new_bag  # type: ignore[return-value]
         return None
 
     def _traverse_inner(

@@ -116,7 +116,7 @@ class BagParser:
             result = result["GenRoBag"]
         if result is None:
             result = cls()
-        return result
+        return result  # type: ignore[no-any-return]
 
     # ==================== from_tytx ====================
 
@@ -180,7 +180,7 @@ class BagParser:
                 if node:
                     node.node_tag = tag
 
-        return bag
+        return bag  # type: ignore[return-value]
 
     # ==================== from_json ====================
 
@@ -209,7 +209,7 @@ class BagParser:
             # Wrap scalar in a dict
             source = {"value": source}
 
-        return cls._from_json_recursive(source, list_joiner)
+        return cls._from_json_recursive(source, list_joiner)  # type: ignore[no-any-return]
 
     @classmethod
     def _from_json_recursive(

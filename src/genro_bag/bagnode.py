@@ -772,13 +772,13 @@ class BagNodeContainer:
 
         return len(self._list)
 
-    def __getitem__(self, key: str | int) -> Any:
+    def __getitem__(self, key: str | int) -> BagNode | None:
         """Get item by label or index."""
         if isinstance(key, int):
             return self._list[key] if 0 <= key < len(self._list) else None
         return self._dict.get(key)
 
-    def get(self, key: str | int) -> Any:
+    def get(self, key: str | int) -> BagNode | None:
         """Get node by label, index, or #n/#attr=value syntax.
 
         Args:
@@ -824,7 +824,7 @@ class BagNodeContainer:
         """Return number of elements."""
         return len(self._list)
 
-    def __iter__(self) -> Iterator[Any]:
+    def __iter__(self) -> Iterator[BagNode]:
         """Iterate over nodes in order."""
         return iter(self._list)
 
@@ -953,7 +953,7 @@ class BagNodeContainer:
 
         return node
 
-    def pop(self, key: str | int) -> Any:
+    def pop(self, key: str | int) -> BagNode | None:
         """Remove and return item.
 
         Args:

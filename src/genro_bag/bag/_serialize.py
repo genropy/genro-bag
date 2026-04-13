@@ -333,7 +333,7 @@ class BagSerializer:
         result = [self._node_to_json_dict(node, typed) for node in self]
 
         if typed:
-            return tytx_encode(result)
+            return tytx_encode(result)  # type: ignore[return-value]
         return json.dumps(result)
 
     def _node_to_json_dict(self, node: Any, typed: bool) -> dict:

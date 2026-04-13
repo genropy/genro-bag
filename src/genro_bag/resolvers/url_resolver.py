@@ -95,7 +95,7 @@ class UrlResolver(BagResolver):
             body = self._kw["_body"]
 
         # Collect path args (arg_0, arg_1, ...) and extra qs params
-        path_args = []
+        path_args: list[str | None] = []
         extra_qs = {}
         for key, value in self._kw.items():
             if key.startswith("arg_") and value is not None:

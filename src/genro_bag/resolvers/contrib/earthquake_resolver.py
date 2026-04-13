@@ -60,7 +60,7 @@ class EarthquakeResolver(UrlResolver):
     def process_response(self, response: httpx.Response) -> Bag:
         """Parse USGS GeoJSON response into a Bag."""
         if response.status_code == 304:
-            return self.cached_value
+            return self.cached_value  # type: ignore[no-any-return]
 
         response.raise_for_status()
         self._last_modified = response.headers.get("Last-Modified")

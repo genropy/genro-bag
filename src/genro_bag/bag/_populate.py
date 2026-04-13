@@ -203,7 +203,7 @@ class BagPopulate:
         from genro_bag.resolvers import UrlResolver
 
         resolver = UrlResolver(url, timeout=timeout, as_bag=True)
-        return resolver()
+        return resolver()  # type: ignore[no-any-return]
 
     # -------------------- deepcopy --------------------------------
 

@@ -113,7 +113,7 @@ class BagQuery:
         for node in sub_bags:
             found = node.value.get_node_by_attr(attr, value)
             if found:
-                return found
+                return found  # type: ignore[no-any-return]
 
         return None
 
