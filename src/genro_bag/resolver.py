@@ -28,43 +28,18 @@ from __future__ import annotations
 import asyncio
 import functools
 import importlib
-import inspect
 import json
-import random
-import time
 from collections.abc import Callable
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
-from genro_toolbox import cancel_timer, set_interval, smartasync
+from genro_toolbox import RETRY_PRESETS, cancel_timer, retry_call, set_interval, smartasync
 
 # =============================================================================
-# RETRY POLICIES - predefined configurations
+# RETRY POLICIES - backward-compatible alias for genro_toolbox.RETRY_PRESETS
 # =============================================================================
 
-RETRY_POLICIES: dict[str, dict[str, Any]] = {
-    "network": {
-        "max_attempts": 3,
-        "delay": 1.0,
-        "backoff": 2.0,
-        "jitter": True,
-        "on": (ConnectionError, TimeoutError, OSError),
-    },
-    "aggressive": {
-        "max_attempts": 5,
-        "delay": 0.5,
-        "backoff": 2.0,
-        "jitter": True,
-        "on": (Exception,),
-    },
-    "gentle": {
-        "max_attempts": 2,
-        "delay": 2.0,
-        "backoff": 1.5,
-        "jitter": False,
-        "on": (ConnectionError, TimeoutError),
-    },
-}
+RETRY_POLICIES = RETRY_PRESETS
 
 
 # =============================================================================
@@ -72,84 +47,23 @@ RETRY_POLICIES: dict[str, dict[str, Any]] = {
 # =============================================================================
 
 
-def _retry_loop(func: Callable, self: Any, args: tuple, kwargs: dict, policy: dict) -> Any:
-    """Execute func with sync retry logic."""
-    max_attempts = policy.get("max_attempts", 3)
-    delay = policy.get("delay", 1.0)
-    backoff = policy.get("backoff", 2.0)
-    jitter = policy.get("jitter", True)
-    exceptions = policy.get("on", (Exception,))
-    last_error = None
-    current_delay = delay
-    for attempt in range(max_attempts):
-        try:
-            return func(self, *args, **kwargs)
-        except exceptions as e:
-            last_error = e
-            if attempt < max_attempts - 1:
-                sleep_time = current_delay
-                if jitter:
-                    sleep_time *= (1 + random.random() * 0.1)
-                time.sleep(sleep_time)
-                current_delay *= backoff
-    raise last_error  # type: ignore[misc]
-
-
-async def _async_retry_loop(func: Callable, self: Any, args: tuple, kwargs: dict, policy: dict) -> Any:
-    """Execute func with async retry logic."""
-    max_attempts = policy.get("max_attempts", 3)
-    delay = policy.get("delay", 1.0)
-    backoff = policy.get("backoff", 2.0)
-    jitter = policy.get("jitter", True)
-    exceptions = policy.get("on", (Exception,))
-    last_error = None
-    current_delay = delay
-    for attempt in range(max_attempts):
-        try:
-            return await func(self, *args, **kwargs)
-        except exceptions as e:
-            last_error = e
-            if attempt < max_attempts - 1:
-                sleep_time = current_delay
-                if jitter:
-                    sleep_time *= (1 + random.random() * 0.1)
-                await asyncio.sleep(sleep_time)
-                current_delay *= backoff
-    raise last_error  # type: ignore[misc]
-
-
 def with_retry(func: Callable) -> Callable:
     """Decorator that adds retry logic based on resolver's retry_policy.
 
     Reads self._kw["retry_policy"] to determine retry behavior:
     - None: no retry, execute function directly
-    - str: lookup in RETRY_POLICIES dict
+    - str: lookup in RETRY_PRESETS dict
     - dict: use as custom policy
 
-    Policy dict keys:
-    - max_attempts: maximum number of attempts (default: 3)
-    - delay: initial delay between retries in seconds (default: 1.0)
-    - backoff: multiplier for delay after each retry (default: 2.0)
-    - jitter: add random jitter to delay (default: True)
-    - on: tuple of exception types to retry on (default: (Exception,))
+    Delegates to genro_toolbox.retry_call for the actual retry logic.
     """
     @functools.wraps(func)
-    def sync_wrapper(self, *args, **kwargs):
+    def wrapper(self, *args, **kwargs):
         policy = _get_retry_policy(self)
         if policy is None:
             return func(self, *args, **kwargs)
-        return _retry_loop(func, self, args, kwargs, policy)
-
-    @functools.wraps(func)
-    async def async_wrapper(self, *args, **kwargs):
-        policy = _get_retry_policy(self)
-        if policy is None:
-            return await func(self, *args, **kwargs)
-        return await _async_retry_loop(func, self, args, kwargs, policy)
-
-    if inspect.iscoroutinefunction(func):
-        return async_wrapper
-    return sync_wrapper
+        return retry_call(func, args=(self, *args), kwargs=kwargs, policy=policy)
+    return wrapper
 
 
 def _get_retry_policy(resolver) -> dict[str, Any] | None:
@@ -158,7 +72,7 @@ def _get_retry_policy(resolver) -> dict[str, Any] | None:
     if policy is None:
         return None
     if isinstance(policy, str):
-        return RETRY_POLICIES.get(policy)
+        return RETRY_PRESETS.get(policy)
     result: dict[str, Any] = policy
     return result
 

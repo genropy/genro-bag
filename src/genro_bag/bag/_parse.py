@@ -234,7 +234,8 @@ class BagParser:
                     if "resolver" in item:
                         resolver = BagResolver.deserialize(item["resolver"])
                     node_tag = item.get("tag")
-                    result.set_item(                        label, value, _attributes=attr,
+                    result.set_item(
+                        label, value, _attributes=attr,
                         resolver=resolver, node_tag=node_tag,
                     )
                 return result

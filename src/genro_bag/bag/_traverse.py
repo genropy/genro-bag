@@ -68,7 +68,7 @@ class BagTraverse:
 
     def _htraverse(
         self, path: str | list, write_mode: bool = False, static: bool = True
-    ) -> tuple[Any, str | None]:
+    ) -> tuple[Any, str]:
         """Traverse a hierarchical path - unified sync/async version.
 
         Single method that handles both sync and async contexts:
@@ -95,7 +95,7 @@ class BagTraverse:
 
         curr, pathlist = self._htraverse_before(path)
         if curr is None:
-            return None, None
+            return None, ""
         if not pathlist:
             return curr, ""
 
@@ -104,7 +104,7 @@ class BagTraverse:
             curr, pathlist = result
             if not write_mode:
                 if len(pathlist) > 1:
-                    return None, None
+                    return None, ""
                 return curr, pathlist[0]
             # Write mode: create intermediate nodes
             while len(pathlist) > 1:

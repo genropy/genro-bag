@@ -425,7 +425,6 @@ class Bag(BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer
         # Traverse path (write_mode=True guarantees label is str)
         result, label = self._htraverse(path, write_mode=True)
         obj = result
-        label = label  # type: ignore[assignment]
 
         # Delegate EVERYTHING to BagNodeContainer.set
         return obj._nodes.set(
