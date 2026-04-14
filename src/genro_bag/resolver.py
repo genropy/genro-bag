@@ -482,45 +482,19 @@ class BagResolver:
             # as_bag not explicitly set: convert if will be cached (not read_only)
             should_convert = not self.read_only
 
-        if should_convert and result is not None:
-            result = self._convert_to_bag(result)
+        if should_convert and result is not None and self.parent_node is not None:
+            bag_class = self.parent_node.parent_bag.__class__
+            if not isinstance(result, bag_class):
+                try:
+                    bag = bag_class()
+                    bag.fill_from(result)
+                    if len(bag):
+                        result = bag
+                except (TypeError, FileNotFoundError, ValueError):
+                    pass  # Not convertible to Bag — keep original result
         self._cache_last_update = datetime.now()
         if not self.read_only:
             self.cached_value = result
-        return result
-
-    def _convert_to_bag(self, result: Any) -> Any:
-        """Convert result to Bag if possible.
-
-        Args:
-            result: The value to convert.
-
-        Returns:
-            Bag if conversion is possible, original result otherwise.
-        """
-        from .bag import Bag
-
-        if isinstance(result, Bag):
-            return result
-        if isinstance(result, dict):
-            return Bag(result)
-        if isinstance(result, list):
-            bag = Bag()
-            for i, item in enumerate(result):
-                bag[str(i)] = item if not isinstance(item, dict) else Bag(item)
-            return bag
-        if isinstance(result, str):
-            result = result.strip()
-            if result.startswith("<"):
-                return Bag.from_xml(result)
-            if result.startswith("{") or result.startswith("["):
-                return Bag.from_json(result)
-        if isinstance(result, bytes):
-            text = result.decode("utf-8").strip()
-            if text.startswith("<"):
-                return Bag.from_xml(text)
-            if text.startswith("{") or text.startswith("["):
-                return Bag.from_json(text)
         return result
 
     @with_retry

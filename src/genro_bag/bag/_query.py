@@ -22,8 +22,12 @@ from __future__ import annotations
 from collections.abc import Callable, Iterator
 from typing import TYPE_CHECKING, Any, overload
 
+from genro_toolbox import safe_is_instance
+
 if TYPE_CHECKING:
     from genro_bag.bagnode import BagNode, BagNodeContainer
+
+_IS_BAG = "genro_bag.bag._core.Bag"
 
 
 class BagQuery:
@@ -100,14 +104,11 @@ class BagQuery:
         Returns:
             BagNode if found, None otherwise.
         """
-        # Import here to avoid circular import
-        from genro_bag.bag._core import Bag
-
         sub_bags = []
         for node in self._nodes:
             if node.has_attr(attr, value):
                 return node
-            if isinstance(node.value, Bag):
+            if safe_is_instance(node.value, _IS_BAG):
                 sub_bags.append(node)
 
         for node in sub_bags:
@@ -221,9 +222,6 @@ class BagQuery:
             ...     print('.'.join(_pathlist))
             >>> bag.walk(my_cb, _pathlist=[])
         """
-        # Import here to avoid circular import
-        from genro_bag.bag._core import Bag
-
         if callback is not None:
             # Legacy callback mode
             for idx, node in enumerate(self._nodes):
@@ -238,7 +236,7 @@ class BagQuery:
                     return result
 
                 value = node.get_value(static=static)
-                if isinstance(value, Bag):
+                if safe_is_instance(value, _IS_BAG):
                     result = value.walk(callback, static=static, **kw)
                     if result:
                         return result
@@ -250,7 +248,7 @@ class BagQuery:
                 path = f"{prefix}.{node.label}" if prefix else node.label
                 yield path, node
                 value = node.get_value(static=static)
-                if isinstance(value, Bag):
+                if safe_is_instance(value, _IS_BAG):
                     yield from _walk_gen(value, path)
 
         return _walk_gen(self, "")
@@ -313,9 +311,6 @@ class BagQuery:
             >>> for path, val in bag.query('#p,#v', deep=True, iter=True):
             ...     print(f"{path} = {val}")
         """
-        # Import here to avoid circular import
-        from genro_bag.bag._core import Bag
-
         if not what:
             what = "#k,#v,#a"
         if isinstance(what, str):
@@ -342,7 +337,7 @@ class BagQuery:
             elif w == "#v":
                 v = node.get_value(static=static)
                 # With deep=True, Bag values return None (content comes in later iterations)
-                return None if is_deep and isinstance(v, Bag) else v
+                return None if is_deep and safe_is_instance(v, _IS_BAG) else v
             elif w.startswith("#v."):
                 inner_path = w.split(".", 1)[1]
                 value = node.get_value(static=static)
@@ -358,7 +353,7 @@ class BagQuery:
 
         def _should_include(node: BagNode) -> bool:
             """Check if node should be included based on leaf/branch filters."""
-            is_branch = isinstance(node.get_value(static=static), Bag)
+            is_branch = safe_is_instance(node.get_value(static=static), _IS_BAG)
             if is_branch and not branch:
                 return False
             if not is_branch and not leaf:

@@ -120,35 +120,34 @@ class TestUrlResolverBasic:
 
 
 class TestUrlResolverAsBag:
-    """Fetching and parsing as Bag."""
+    """Fetching and parsing as Bag via node attachment."""
 
     @pytest.mark.network
     def test_fetch_ecb_xml_as_bag(self):
         """Fetch ECB exchange rates XML and parse as Bag."""
-        resolver = UrlResolver(ECB_RATES_URL, as_bag=True)
-        result = resolver()
+        bag = Bag()
+        bag["ecb"] = UrlResolver(ECB_RATES_URL, as_bag=True)
+        result = bag["ecb"]
 
         assert isinstance(result, Bag)
-        # ECB XML structure: <gesmes:Envelope><Cube>...</Cube></gesmes:Envelope>
-        # The root should have children
         assert len(result) > 0
 
     @pytest.mark.network
     def test_fetch_httpbin_xml_as_bag(self):
         """Fetch httpbin XML and parse as Bag."""
-        resolver = UrlResolver(HTTPBIN_XML, as_bag=True)
-        result = resolver()
+        bag = Bag()
+        bag["slides"] = UrlResolver(HTTPBIN_XML, as_bag=True)
+        result = bag["slides"]
 
         assert isinstance(result, Bag)
-        # httpbin/xml returns a slideshow structure
         assert len(result) > 0
 
     @pytest.mark.network
     def test_auto_detect_xml_from_content(self):
         """Auto-detect XML format from content even without .xml extension."""
-        # httpbin/xml doesn't have .xml extension but returns XML
-        resolver = UrlResolver(HTTPBIN_XML, as_bag=True)
-        result = resolver()
+        bag = Bag()
+        bag["slides"] = UrlResolver(HTTPBIN_XML, as_bag=True)
+        result = bag["slides"]
         assert isinstance(result, Bag)
 
 
@@ -169,25 +168,26 @@ class TestUrlResolverAsync:
     @pytest.mark.asyncio
     @pytest.mark.network
     async def test_async_fetch_as_bag(self):
-        """Async fetch and parse as Bag."""
-        resolver = UrlResolver(ECB_RATES_URL, as_bag=True)
-
-        result = await resolver()
+        """Async fetch and parse as Bag via node attachment."""
+        bag = Bag()
+        bag["ecb"] = UrlResolver(ECB_RATES_URL, as_bag=True)
+        result = await bag.get_item("ecb")
         assert isinstance(result, Bag)
         assert len(result) > 0
 
     @pytest.mark.asyncio
     @pytest.mark.network
     async def test_multiple_async_fetches(self):
-        """Multiple async fetches can run concurrently."""
-        resolver1 = UrlResolver(HTTPBIN_JSON, as_bag=False)
-        resolver2 = UrlResolver(HTTPBIN_XML, as_bag=True)
+        """Multiple async fetches via node attachment."""
+        bag = Bag()
+        bag["json"] = UrlResolver(HTTPBIN_JSON, as_bag=False)
+        bag["xml"] = UrlResolver(HTTPBIN_XML, as_bag=True)
 
-        # Run concurrently - resolver() returns coroutines in async context
-        results = await asyncio.gather(resolver1(), resolver2())
+        result_json = await bag.get_item("json")
+        result_xml = await bag.get_item("xml")
 
-        assert isinstance(results[0], bytes)
-        assert isinstance(results[1], Bag)
+        assert isinstance(result_json, bytes)
+        assert isinstance(result_xml, Bag)
 
 
 class TestUrlResolverCaching:

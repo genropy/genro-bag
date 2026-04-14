@@ -2710,7 +2710,7 @@ class TestBagCoverageMissing:
     def test_fill_from_invalid_type(self):
         """fill_from raises TypeError for unsupported types."""
         bag = Bag()
-        with pytest.raises(TypeError, match="fill_from expects"):
+        with pytest.raises(TypeError, match="fill_from"):
             bag.fill_from(12345)
 
     # Line 356: path as list (not string)

@@ -45,6 +45,7 @@ from typing import Any
 from genro_toolbox import smartcontinuation
 
 from genro_bag.bag._events import BagEvents
+from genro_bag.bag._exceptions import BagException  # noqa: F401 — re-export
 from genro_bag.bag._parse import BagParser
 from genro_bag.bag._populate import BagPopulate
 from genro_bag.bag._query import BagQuery
@@ -962,17 +963,3 @@ class Bag(BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer
                 value = node.get_value(static=True)
                 if isinstance(value, Bag):
                     value.clear_backref()
-
-
-
-class BagException(Exception):
-    """Exception raised for Bag-specific errors.
-
-    Raised when operations on a Bag fail due to invalid paths,
-    illegal operations, or constraint violations.
-
-    Example:
-        - Attempting to autocreate with '#n' syntax for non-existent index
-    """
-
-    pass

@@ -6,15 +6,19 @@ Provides fill_from, from_url, deepcopy, pickle support, and update methods.
 
 from __future__ import annotations
 
+import asyncio
 import os
 from collections.abc import Iterator
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from genro_toolbox import safe_is_instance
 from typing_extensions import Self
 
 if TYPE_CHECKING:
     from genro_bag.bag._core import Bag
+
+_IS_BAG = "genro_bag.bag._core.Bag"
 
 
 class BagPopulate:
@@ -32,56 +36,66 @@ class BagPopulate:
         def __iter__(self) -> Iterator: ...
 
     def fill_from(
-        self, source: dict[str, Any] | str | Path | Bag | None = None, transport: str | None = None
+        self, source: Any = None, transport: str | None = None
     ) -> Self:
         """Fill bag from a source and return self for chaining.
 
         Populates the bag with data from various sources:
         - None: No-op, returns self unchanged
         - dict: Keys become labels, values become node values
-        - str (file path): Load from file based on extension:
-            - .xml: Parse as XML
-            - .bag.json: Parse as TYTX JSON
-            - .bag.mp: Parse as TYTX MessagePack
+        - list: Items become numbered nodes (0, 1, 2, ...).
+            Dict items in the list are converted to Bag.
         - Bag: Copy nodes from another Bag
+        - str (file path): Load from file based on extension
+        - str (XML inline): Detected by leading '<', parsed as XML
+        - str (JSON inline): Detected by leading '{' or '[', parsed as JSON
+        - bytes: Decoded to str, then detected as XML or JSON
+        - Path: Load from file
 
         Existing nodes are cleared first (except when source is None).
 
         Args:
-            source: Data source (dict, file path, Bag, or None).
+            source: Data source.
             transport: Force transport for file loading ('xml', 'json', 'msgpack').
-                If None, transport is detected from file extension.
 
         Returns:
             Self for method chaining.
-
-        Example:
-            >>> bag = Bag().fill_from({'x': 1, 'y': {'z': 2}})
-            >>> bag['y.z']
-            2
-            >>>
-            >>> bag2 = Bag().fill_from('/path/to/data.bag.json')
-            >>>
-            >>> bag3 = Bag().fill_from(None)  # returns empty bag
-            >>>
-            >>> # Force XML format regardless of extension
-            >>> bag4 = Bag().fill_from('/path/to/schema.xsd', transport='xml')
         """
-        from genro_bag.bag._core import Bag
-
         if source is None:
             return self
-        if isinstance(source, (str, Path)):
-            self._fill_from_file(str(source), transport=transport)
-        elif isinstance(source, Bag):
+        if safe_is_instance(source, _IS_BAG):
             self._fill_from_bag(source)
         elif isinstance(source, dict):
             self._fill_from_dict(source)
+        elif isinstance(source, list):
+            self._fill_from_list(source)
+        elif isinstance(source, bytes):
+            self.fill_from(source.decode("utf-8").strip())
+        elif isinstance(source, Path):
+            self._fill_from_file(str(source), transport=transport)
+        elif isinstance(source, str):
+            stripped = source.strip()
+            if stripped.startswith("<"):
+                loaded = self.__class__.from_xml(stripped)
+                self._fill_from_bag(loaded)
+            elif stripped.startswith("{") or stripped.startswith("["):
+                loaded = self.__class__.from_json(stripped)
+                self._fill_from_bag(loaded)
+            else:
+                self._fill_from_file(source, transport=transport)
         else:
             raise TypeError(
-                f"fill_from expects str, Path, Bag, dict, or None, got {type(source).__name__}"
+                f"fill_from: unsupported source type {type(source).__name__}"
             )
         return self
+
+    def _fill_from_list(self, data: list) -> None:
+        """Populate bag from a list. Items become numbered nodes."""
+        self.clear()
+        for i, item in enumerate(data):
+            if isinstance(item, dict):
+                item = self.__class__(item)
+            self.set_item(str(i), item)
 
     def _fill_from_file(self, path: str, transport: str | None = None) -> None:
         """Load bag contents from a file.
@@ -99,8 +113,6 @@ class BagPopulate:
             FileNotFoundError: If file does not exist.
             ValueError: If file extension is not recognized and format not specified.
         """
-        from genro_bag.bag._core import Bag
-
         if not os.path.isfile(path):
             raise FileNotFoundError(f"File not found: {path}")
 
@@ -118,22 +130,23 @@ class BagPopulate:
                 )
 
         # Load based on transport
+        cls = self.__class__
         if transport == "json":
             with open(path, encoding="utf-8") as f:
                 data = f.read()
-            loaded = Bag.from_tytx(data, transport="json")
+            loaded = cls.from_tytx(data, transport="json")
             self._fill_from_bag(loaded)
 
         elif transport == "msgpack":
             with open(path, "rb") as f:
                 data_bytes = f.read()
-            loaded = Bag.from_tytx(data_bytes, transport="msgpack")
+            loaded = cls.from_tytx(data_bytes, transport="msgpack")
             self._fill_from_bag(loaded)
 
         elif transport == "xml":
             with open(path, encoding="utf-8") as f:
                 data = f.read()
-            loaded = Bag.from_xml(data)
+            loaded = cls.from_xml(data)
             self._fill_from_bag(loaded)
 
     def _fill_from_bag(self, other: Bag) -> None:
@@ -144,13 +157,11 @@ class BagPopulate:
         Args:
             other: Source Bag to copy from.
         """
-        from genro_bag.bag._core import Bag
-
         self.clear()
         for node in other:
             # Deep copy the value if it's a Bag
             value = node.value
-            if isinstance(value, Bag):
+            if safe_is_instance(value, _IS_BAG):
                 value = value.deepcopy()
             self.set_item(node.label, value, **dict(node.attr))
 
@@ -163,12 +174,10 @@ class BagPopulate:
         Args:
             data: Dict where keys become labels and values become node values.
         """
-        from genro_bag.bag._core import Bag
-
         self.clear()
         for key, value in data.items():
             if isinstance(value, dict):
-                value = Bag(value)
+                value = self.__class__(value)
             self.set_item(key, value)
 
     # -------------------- class methods --------------------------------
@@ -202,8 +211,20 @@ class BagPopulate:
         """
         from genro_bag.resolvers import UrlResolver
 
-        resolver = UrlResolver(url, timeout=timeout, as_bag=True)
-        return resolver()  # type: ignore[no-any-return]
+        resolver = UrlResolver(url, timeout=timeout, as_bag=False)
+        result = resolver()
+
+        if asyncio.iscoroutine(result):
+            async def _async_from_url():
+                data = await result
+                bag = cls()
+                bag.fill_from(data)
+                return bag
+            return _async_from_url()  # type: ignore[return-value]
+
+        bag = cls()
+        bag.fill_from(result)
+        return bag  # type: ignore[return-value]
 
     # -------------------- deepcopy --------------------------------
 
@@ -224,12 +245,10 @@ class BagPopulate:
             >>> bag['b.c']  # Original unchanged
             2
         """
-        from genro_bag.bag._core import Bag
-
         result = self.__class__()
         for node in self:
             value = node.static_value
-            if isinstance(value, Bag):
+            if safe_is_instance(value, _IS_BAG):
                 value = value.deepcopy()
             result.set_item(node.label, value, _attributes=dict(node.attr))
         return result
@@ -248,8 +267,6 @@ class BagPopulate:
 
     def _make_picklable(self) -> None:
         """Prepare Bag for pickling (internal)."""
-        from genro_bag.bag._core import Bag
-
         if self._backref:
             self._backref = "x"
         self.parent = None
@@ -257,20 +274,18 @@ class BagPopulate:
         for node in self:
             node._parent_bag = None
             value = node.static_value
-            if isinstance(value, Bag):
+            if safe_is_instance(value, _IS_BAG):
                 value._make_picklable()
 
     def _restore_from_picklable(self) -> None:
         """Restore Bag from its picklable form (internal)."""
-        from genro_bag.bag._core import Bag
-
         if self._backref == "x":
             self.set_backref()
         else:
             for node in self:
                 node._parent_bag = None
                 value = node.static_value
-                if isinstance(value, Bag):
+                if safe_is_instance(value, _IS_BAG):
                     value._restore_from_picklable()
 
     # -------------------- update --------------------------------
@@ -292,8 +307,6 @@ class BagPopulate:
             >>> bag['a'], bag['b'], bag['c']
             (10, 2, 3)
         """
-        from genro_bag.bag._core import Bag
-
         # Normalize to list of (label, value, attr)
         items: list[tuple[Any, Any, dict[str, Any]]]
         if isinstance(source, dict):
@@ -306,7 +319,7 @@ class BagPopulate:
                 curr_node = self._nodes[label]
                 curr_node.attr.update(attr)
                 curr_value = curr_node.static_value
-                if isinstance(value, Bag) and isinstance(curr_value, Bag):
+                if safe_is_instance(value, _IS_BAG) and safe_is_instance(curr_value, _IS_BAG):
                     curr_value.update(value, ignore_none=ignore_none)
                 else:
                     if not ignore_none or value is not None:

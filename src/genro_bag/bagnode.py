@@ -633,10 +633,7 @@ class BagNode:
         Returns:
             True if the node's value is a Bag, False otherwise.
         """
-        # Import here to avoid circular import
-        from .bag import Bag
-
-        return isinstance(self._value, Bag)
+        return safe_is_instance(self._value, "genro_bag.bag._core.Bag")
 
     # -------------------------------------------------------------------------
     # Utility Methods
