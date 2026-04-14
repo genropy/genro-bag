@@ -14,32 +14,8 @@ import json
 import pickle
 
 
-# ============================================================
-# Helpers
-# ============================================================
-
-
-def _make_nested_bag(cls):
-    """Create a nested Bag for testing: a.x=1, a.y=2, b.z=3, c=4."""
-    bag = cls()
-    a = cls()
-    a["x"] = 1
-    a["y"] = 2
-    b = cls()
-    b["z"] = 3
-    bag["a"] = a
-    bag["b"] = b
-    bag["c"] = 4
-    return bag
-
-
-def _make_flat_bag(cls):
-    """Create a flat Bag: name=Alice, age=30, city=Rome."""
-    bag = cls()
-    bag["name"] = "Alice"
-    bag["age"] = 30
-    bag["city"] = "Rome"
-    return bag
+from helpers import make_flat_bag as _make_flat_bag
+from helpers import make_nested_bag as _make_nested_bag
 
 
 # ============================================================

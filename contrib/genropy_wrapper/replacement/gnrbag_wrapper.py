@@ -817,7 +817,7 @@ class Bag(_CamelDeprecationMixin, genro_bag.Bag):
             if node_resolver is None or resolved:
                 node_value = n.get_value(static=True) if hasattr(n, "get_value") else n.static_value
                 node_resolver = None
-            if n.label in list(self.keys()):
+            if n.label in self._nodes:
                 curr_node = self.get_node(n.label)
                 node_attr = curr_node.attr
                 if not preservePattern:

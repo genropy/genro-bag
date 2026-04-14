@@ -24,14 +24,7 @@ from replacement.gnrbag import (
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _impl_name(cls):
-    """Derive implementation name from a Bag class."""
-    module = cls.__module__
-    if module == "gnr.core.gnrbag":
-        return "original"
-    elif module.startswith("genro_bag"):
-        return "new"
-    return "wrapper"
+from helpers import impl_name_from_class as _impl_name
 
 
 # ===========================================================================

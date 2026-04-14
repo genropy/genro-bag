@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import datetime
 import io
-import os
 import re
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any, Literal
@@ -96,11 +95,6 @@ class BagParser:
         )
         if isinstance(source, bytes):
             source = source.decode()
-
-        # Replace environment variables (GNR_*)
-        for k in os.environ:
-            if k.startswith("GNR_"):
-                source = source.replace(f"{{{k}}}", os.environ[k])
 
         # Create secure parser (disable DTD and external entities to prevent XXE)
         parser = sax.make_parser()

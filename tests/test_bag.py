@@ -3399,13 +3399,6 @@ class TestSerializationEdgeCases:
 
     # ==================== bag_parse.py edge cases ====================
 
-    def test_from_xml_with_gnr_env_var(self, monkeypatch):
-        """from_xml substitutes GNR_* environment variables."""
-        monkeypatch.setenv("GNR_TEST_VALUE", "replaced")
-        xml = "<root><item>{GNR_TEST_VALUE}</item></root>"
-        bag = Bag.from_xml(xml)
-        assert bag["root.item"] == "replaced"
-
     def test_from_xml_empty_result_returns_empty_bag(self):
         """from_xml with content that produces None returns empty Bag."""
         # XML con solo whitespace nel contenuto

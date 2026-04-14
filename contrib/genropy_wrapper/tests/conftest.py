@@ -1,17 +1,28 @@
 """Pytest configuration and fixtures for comparative testing.
 
-Provides fixtures that yield Bag classes from three implementations:
+Provides fixtures that yield Bag classes from four implementations:
 - original: gnr.core.gnrbag (Genropy's original monolithic Bag)
 - new: genro_bag (modern modular rewrite)
 - wrapper: replacement.gnrbag (compatibility wrapper over genro_bag)
+- new_wrapper: replacement.gnrbag_wrapper (deprecation wrapper with __getattr__)
 """
 
-import pytest
-import genro_bag
-from gnr.core.gnrbag import Bag as OriginalBag
-from genro_toolbox import reset_smartasync_cache
-from replacement.gnrbag import Bag as WrapperBag
-from replacement.gnrbag_wrapper import Bag as NewWrapperBag
+import sys
+from pathlib import Path
+
+# Ensure tests/ directory is importable (for helpers.py)
+_tests_dir = str(Path(__file__).parent)
+if _tests_dir not in sys.path:
+    sys.path.insert(0, _tests_dir)
+
+import pytest  # noqa: E402
+from genro_toolbox import reset_smartasync_cache  # noqa: E402
+from gnr.core.gnrbag import Bag as OriginalBag  # noqa: E402
+from helpers import impl_name_from_class  # noqa: E402
+from replacement.gnrbag import Bag as WrapperBag  # noqa: E402
+from replacement.gnrbag_wrapper import Bag as NewWrapperBag  # noqa: E402
+
+import genro_bag  # noqa: E402
 
 
 @pytest.fixture(autouse=True)
@@ -64,10 +75,4 @@ def bag_class_snake(request):
 @pytest.fixture
 def impl_name(bag_class):
     """Return the implementation name for the current bag_class."""
-    module = bag_class.__module__
-    if module == "gnr.core.gnrbag":
-        return "original"
-    elif module.startswith("genro_bag"):
-        return "new"
-    else:
-        return "wrapper"
+    return impl_name_from_class(bag_class)

@@ -49,15 +49,7 @@ from replacement.gnrbag import BagResolver as WrapperBagResolver
 _results: dict[str, dict[str, dict[str, bool]]] = {}
 
 
-def _impl_name(bag_class):
-    """Return implementation name for a Bag or BagNode class."""
-    mod = bag_class.__module__
-    if mod.startswith("gnr."):
-        return "original"
-    elif mod.startswith("genro_bag"):
-        return "new"
-    else:
-        return "wrapper"
+from helpers import impl_name_from_class as _impl_name
 
 
 def _record(area, test_name, impl, passed):

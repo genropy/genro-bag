@@ -42,17 +42,7 @@ _N_MEDIUM = 500   # medium operations (creation, iteration)
 _N_SLOW = 100     # slow operations (serialization)
 
 
-def _impl_name(bag_class) -> str:
-    """Return 'original', 'new', 'wrapper', or 'new_wrapper' for a Bag class."""
-    mod = bag_class.__module__
-    if mod.startswith("gnr."):
-        return "original"
-    elif mod.startswith("genro_bag"):
-        return "new"
-    elif "gnrbag_wrapper" in mod:
-        return "new_wrapper"
-    else:
-        return "wrapper"
+from helpers import impl_name_from_class as _impl_name
 
 
 def _bench(category: str, op_name: str, bag_class, fn, n: int = _N_FAST):
