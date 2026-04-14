@@ -242,7 +242,7 @@ class BagResolver:
     # =========================================================================
 
     @property
-    def cache_time(self) -> int | bool:
+    def cache_time(self) -> int | float | bool:
         """Get cache time setting.
 
         Returns:
@@ -310,7 +310,7 @@ class BagResolver:
                 an async event loop to avoid thread-safety issues.
         """
         cache_time = self.cache_time
-        if cache_time is False or not isinstance(cache_time, int) or cache_time >= 0:
+        if cache_time is False or not isinstance(cache_time, (int, float)) or cache_time >= 0:
             return
         if self.read_only:
             return
@@ -393,7 +393,7 @@ class BagResolver:
             return self.cached_value
 
         # Active cache: timer manages reloads, just return cached value
-        if self.cache_time is not False and isinstance(self.cache_time, int) and self.cache_time < 0 and self.cached_value is not None:
+        if self.cache_time is not False and isinstance(self.cache_time, (int, float)) and self.cache_time < 0 and self.cached_value is not None:
             return self.cached_value
 
         # With call_kwargs: always load, bypass cache without altering it
