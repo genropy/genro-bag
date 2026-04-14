@@ -33,7 +33,14 @@ from collections.abc import Callable
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
-from genro_toolbox import RETRY_PRESETS, cancel_timer, retry_call, set_interval, smartasync
+from genro_toolbox import (
+    RETRY_PRESETS,
+    cancel_timer,
+    is_async_context,
+    retry_call,
+    set_interval,
+    smartasync,
+)
 
 # =============================================================================
 # RETRY POLICIES - backward-compatible alias for genro_toolbox.RETRY_PRESETS
@@ -309,7 +316,7 @@ class BagResolver:
             return
         if self._timer_id is not None:
             return
-        if not self.in_async_context:
+        if not is_async_context():
             raise RuntimeError(
                 "Active cache (cache_time < 0) requires an async context. "
                 "Use cache_time > 0 (passive cache) in sync code."
@@ -357,18 +364,6 @@ class BagResolver:
         """
         # Check if async_load was overridden (not the base class version)
         return type(self).async_load is not BagResolver.async_load
-
-    @property
-    def in_async_context(self) -> bool:
-        """Whether we are currently running inside an async context.
-
-        Returns True if there's a running event loop, False otherwise.
-        """
-        try:
-            asyncio.get_running_loop()
-            return True
-        except RuntimeError:
-            return False
 
     # =========================================================================
     # __call__ - MAIN ENTRY POINT
@@ -440,7 +435,7 @@ class BagResolver:
 
     def _dispatch_load(self) -> Any:
         """Dispatch to correct load method based on sync/async context."""
-        match (self.is_async, self.in_async_context):
+        match (self.is_async, is_async_context()):
             case (False, False):
                 return self._sync_sync_load()
             case (False, True):

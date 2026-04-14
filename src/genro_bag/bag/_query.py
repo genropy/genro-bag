@@ -324,7 +324,8 @@ class BagQuery:
             whatsplit = what
             obj = self
 
-        def _extract_value(node: BagNode, w: str, path: str, is_deep: bool) -> Any:
+        def _extract_value(node: BagNode, w: str, path: str,
+                           is_deep: bool, value: Any = None) -> Any:
             """Extract a single value from a node based on what specifier."""
             if w == "#k":
                 return node.label
@@ -335,57 +336,54 @@ class BagQuery:
             elif callable(w):
                 return w(node)
             elif w == "#v":
-                v = node.get_value(static=static)
-                # With deep=True, Bag values return None (content comes in later iterations)
-                return None if is_deep and safe_is_instance(v, _IS_BAG) else v
+                if value is None:
+                    value = node.get_value(static=static)
+                return None if is_deep and safe_is_instance(value, _IS_BAG) else value
             elif w.startswith("#v."):
                 inner_path = w.split(".", 1)[1]
-                value = node.get_value(static=static)
+                if value is None:
+                    value = node.get_value(static=static)
                 return value[inner_path] if hasattr(value, "get_item") else None
             elif w == "#__v":
-                return node.static_value  # Always static, ignores parameter
+                return node.static_value
             elif w.startswith("#a"):
                 attr = w.split(".", 1)[1] if "." in w else None
                 return node.get_attr(attr)
             else:
-                value = node.get_value(static=static)
+                if value is None:
+                    value = node.get_value(static=static)
                 return value[w] if hasattr(value, "__getitem__") else None
-
-        def _should_include(node: BagNode) -> bool:
-            """Check if node should be included based on leaf/branch filters."""
-            is_branch = safe_is_instance(node.get_value(static=static), _IS_BAG)
-            if is_branch and not branch:
-                return False
-            if not is_branch and not leaf:
-                return False
-            return condition is None or condition(node)
 
         def _iter_digest() -> Iterator:
             """Generator that yields tuples for each node."""
-            count = 0
-            if deep:
-                # Use walk() for recursive traversal
-                for path, node in obj.walk(static=static):
-                    if _should_include(node):
-                        if len(whatsplit) == 1:
-                            yield _extract_value(node, whatsplit[0], path, True)
-                        else:
-                            yield tuple(_extract_value(node, w, path, True) for w in whatsplit)
-                        count += 1
-                        if limit is not None and count >= limit:
+            nonlocal limit
+            count = [0]
+
+            def _iter_nodes(bag: Any, prefix: str, is_deep: bool) -> Iterator:
+                for node in bag._nodes:
+                    path = f"{prefix}.{node.label}" if prefix else node.label
+                    value = node.get_value(static=static)
+                    is_branch = safe_is_instance(value, _IS_BAG)
+
+                    if ((is_branch and branch) or (not is_branch and leaf)) and (
+                        condition is None or condition(node)):
+                            if len(whatsplit) == 1:
+                                yield _extract_value(node, whatsplit[0], path, is_deep, value)
+                            else:
+                                yield tuple(
+                                    _extract_value(node, w, path, is_deep, value)
+                                    for w in whatsplit
+                                )
+                            count[0] += 1
+                            if limit is not None and count[0] >= limit:
+                                return
+
+                    if deep and is_branch:
+                        yield from _iter_nodes(value, path, True)
+                        if limit is not None and count[0] >= limit:
                             return
-            else:
-                # First level only
-                for node in obj._nodes:
-                    if _should_include(node):
-                        path = node.label
-                        if len(whatsplit) == 1:
-                            yield _extract_value(node, whatsplit[0], path, False)
-                        else:
-                            yield tuple(_extract_value(node, w, path, False) for w in whatsplit)
-                        count += 1
-                        if limit is not None and count >= limit:
-                            return
+
+            yield from _iter_nodes(obj, "", deep)
 
         if iter:
             return _iter_digest()

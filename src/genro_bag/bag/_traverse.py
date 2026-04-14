@@ -11,7 +11,7 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING, Any
 
-from genro_toolbox import smartawait, smartcontinuation
+from genro_toolbox import is_async_context, smartawait, smartcontinuation
 
 from genro_bag.bag._exceptions import BagException
 
@@ -25,15 +25,6 @@ class BagTraverse:
 
     _nodes: Any
     parent: Any
-
-    @property
-    def in_async_context(self) -> bool:
-        """Whether we are currently running inside an async context."""
-        try:
-            asyncio.get_running_loop()
-            return True
-        except RuntimeError:
-            return False
 
     def _htraverse_before(self, path: str | list) -> tuple[Bag | None, list[str]]:
         """Parse path and handle #parent navigation.
@@ -121,7 +112,7 @@ class BagTraverse:
 
     def _is_coroutine(self, value: Any) -> bool:
         """Check if value is a coroutine (only possible in async context)."""
-        return self.in_async_context and asyncio.iscoroutine(value)
+        return is_async_context() and asyncio.iscoroutine(value)
 
     def _get_new_curr(self, node: BagNode, value: Any, write_mode: bool) -> Bag | None:
         """Get next curr for traversal, creating Bag if needed in write_mode."""
