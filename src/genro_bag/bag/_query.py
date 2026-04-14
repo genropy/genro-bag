@@ -31,7 +31,11 @@ _IS_BAG = "genro_bag.bag._core.Bag"
 
 
 class BagQuery:
-    """Mixin class providing query and iteration methods for Bag."""
+    """Mixin providing query, iteration and aggregation methods for Bag.
+
+    Includes walk (depth-first traversal), query/digest (filtering with deep
+    option), dict-like keys/values/items, and node lookup by attr or value.
+    """
 
     _nodes: BagNodeContainer
 

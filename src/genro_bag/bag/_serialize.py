@@ -25,7 +25,11 @@ _INVALID_XML_TAG_CHARS = re.compile(r"[^\w.]", re.ASCII)
 
 
 class BagSerializer:
-    """Mixin providing serialization instance methods for Bag."""
+    """Mixin providing serialization instance methods for Bag.
+
+    Supports to_xml (with optional pretty-print), to_tytx (compact typed
+    text format), and to_json output formats.
+    """
 
     if TYPE_CHECKING:
         def __iter__(self) -> Iterator[BagNode]: ...

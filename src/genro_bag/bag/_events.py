@@ -17,7 +17,11 @@ if TYPE_CHECKING:
 
 
 class BagEvents:
-    """Mixin providing event subscription and propagation for Bag."""
+    """Mixin providing event subscription and propagation for Bag.
+
+    Manages four subscriber dicts (_upd, _ins, _del, _tmr) and propagates
+    change/insert/delete events up the parent hierarchy via backref chain.
+    """
 
     _upd_subscribers: dict
     _ins_subscribers: dict

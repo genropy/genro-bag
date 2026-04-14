@@ -21,7 +21,11 @@ if TYPE_CHECKING:
 
 
 class BagTraverse:
-    """Mixin providing hierarchical path traversal for Bag."""
+    """Mixin providing hierarchical path traversal for Bag.
+
+    Resolves dot-separated paths (e.g. 'a.b.c') into (container, label) tuples,
+    transparently triggering resolver loads in both sync and async contexts.
+    """
 
     _nodes: Any
     parent: Any

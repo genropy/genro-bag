@@ -22,7 +22,11 @@ _IS_BAG = "genro_bag.bag._core.Bag"
 
 
 class BagPopulate:
-    """Mixin providing population, copy, pickle and update methods for Bag."""
+    """Mixin providing population, copy, pickle and update methods for Bag.
+
+    Supports fill_from with multiple sources (dict, list, file path, XML/JSON
+    string, another Bag), plus deepcopy, pickle, and update semantics.
+    """
 
     _nodes: Any
     _backref: Any
