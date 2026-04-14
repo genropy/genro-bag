@@ -26,4 +26,25 @@ When the user asks to show code lines:
 
 ---
 
+## Exceptions to Parent Rules
+
+### @classmethod allowed for alternative constructors
+
+The parent CLAUDE.md forbids `@classmethod`. In genro-bag, `@classmethod` is allowed
+exclusively for **alternative constructors** (factory methods that create instances):
+
+- `Bag.from_xml()`, `Bag.from_json()`, `Bag.from_tytx()`, `Bag.from_url()`
+- `BagResolver.deserialize()`
+- Internal helpers of the above (e.g. `_from_json_recursive`)
+
+These use `cls()` for polymorphic instance creation and follow the standard Python
+alternative constructor pattern. No other use of `@classmethod` is permitted.
+
+### @staticmethod allowed for pure helpers in serialization
+
+`_sanitize_tag` and `_extract_namespaces` in `_serialize.py` are `@staticmethod`
+because they are pure functions used by both the core and the wrapper (via inheritance).
+
+---
+
 **All general policies are inherited from the parent document.**
