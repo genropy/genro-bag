@@ -29,7 +29,6 @@ import asyncio
 import contextlib
 import functools
 import importlib
-import json
 from collections.abc import Callable
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
@@ -154,7 +153,6 @@ class BagResolver:
         "_init_args",  # list: original positional args (for serialize)
         "_init_kwargs",  # dict: original keyword args (for serialize)
         "_parent_node",  # BagNode | None: bidirectional link to parent
-        "_fingerprint",  # int: hash for __eq__ comparison
         "_cache_last_update",  # datetime | None: last load() timestamp
         "_cached_value",  # Any: cached result when standalone (no parent node)
         "_timer_id",  # str | None: smarttimer ID for active cache
@@ -201,9 +199,6 @@ class BagResolver:
         # Extra kwargs also go to _kw
         self._kw.update(kwargs)
 
-        # Compute fingerprint for equality comparison
-        self._fingerprint: int = self._compute_fingerprint()
-
         # Hook for subclasses
         self.init()
 
@@ -212,20 +207,10 @@ class BagResolver:
     # =========================================================================
 
     def __eq__(self, other: object) -> bool:
-        """Two resolvers are equal if same class and same fingerprint."""
+        """Two resolvers are equal if same class and same parameters."""
         if not isinstance(other, self.__class__):
             return False
-        return self._fingerprint == other._fingerprint
-
-    def _compute_fingerprint(self) -> int:
-        """Compute hash based on class and parameters."""
-        data = {
-            "resolver_class": self.__class__.__name__,
-            "resolver_module": self.__class__.__module__,
-            "args": self._init_args,
-            "kwargs": self._kw,
-        }
-        return hash(json.dumps(data, sort_keys=True, default=str))
+        return self._init_args == other._init_args and self._kw == other._kw
 
     # =========================================================================
     # PARENT NODE PROPERTY
