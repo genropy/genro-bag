@@ -243,6 +243,7 @@ del bag['x']     # Prints: del: x
 
 - `ins` - Node inserted
 - `upd_value` - Node value changed
+- `upd_attrs` - Node attributes changed
 - `del` - Node deleted
 
 Subscribe to specific events or all:
@@ -276,7 +277,8 @@ bag.unsubscribe('my_watcher', update=True)   # Remove only update
 Yes:
 
 ```python
-def validate_email(node, evt, **kw):
+def validate_email(**kw):
+    node = kw['node']
     if node.label == 'email' and '@' not in str(node.value):
         raise ValueError('Invalid email')
 

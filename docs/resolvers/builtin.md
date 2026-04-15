@@ -130,7 +130,7 @@ bag['config'] = DirectoryResolver('/path/to/config/')
 
 ### Default Cache
 
-DirectoryResolver defaults to `cache_time=500`.
+DirectoryResolver defaults to `cache_time=0` (rescan on each access).
 
 ## OpenApiResolver
 
@@ -278,7 +278,7 @@ All resolvers support three independent parameters:
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `cache_time` | varies | Cache: 0=none, >0=passive TTL, <0=active refresh (async only), False=infinite |
+| `cache_time` | varies | Cache: 0=none, >0=passive TTL (int or float seconds), <0=active refresh (async only), False=infinite |
 | `read_only` | False | If True, value is NOT stored in `node._value` |
 | `as_bag` | None | If True, convert result to Bag; if None, follows `read_only` |
 
@@ -327,5 +327,5 @@ Where `[value]` indicates the computed default: `as_bag` defaults to `not read_o
 | `UrlResolver` | 300 |
 | `DirectoryResolver` | 0 |
 | `OpenApiResolver` | False |
-| `TxtDocResolver` | 0 |
-| `SerializedBagResolver` | 0 |
+| `TxtDocResolver` | 500 |
+| `SerializedBagResolver` | 500 |

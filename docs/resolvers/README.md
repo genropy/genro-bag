@@ -51,6 +51,8 @@ result = bag['data']  # NOW the API is called
 | `OpenApiResolver` | Navigate OpenAPI specifications |
 | `TxtDocResolver` | Load file content |
 | `SerializedBagResolver` | Load serialized Bag files |
+| `EnvResolver` | Read environment variables |
+| `UuidResolver` | Generate UUID strings |
 
 ## Caching
 

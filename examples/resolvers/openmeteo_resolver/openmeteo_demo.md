@@ -4,7 +4,7 @@
 
 ```python
 >>> from genro_bag import Bag
->>> from open_meteo_resolver import OpenMeteoResolver
+>>> from genro_bag.resolvers.contrib import OpenMeteoResolver
 >>>
 >>> bag = Bag()
 >>> bag['meteo'] = OpenMeteoResolver()
@@ -28,7 +28,7 @@
 
 ```python
 >>> from genro_bag import Bag
->>> from open_meteo_resolver import OpenMeteoResolver
+>>> from genro_bag.resolvers.contrib import OpenMeteoResolver
 >>>
 >>> meteo = Bag()
 >>> cities = ["london", "paris", "rome", "berlin", "madrid"]
@@ -67,7 +67,7 @@
 
 ```python
 >>> from genro_bag import Bag
->>> from open_meteo_resolver import OpenMeteoResolver
+>>> from genro_bag.resolvers.contrib import OpenMeteoResolver
 >>> from genro_toolbox import smartawait
 >>> import asyncio
 >>>

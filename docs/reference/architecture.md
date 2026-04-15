@@ -122,7 +122,7 @@ classDiagram
         <<abstract>>
         +load() Any
         +async_load() Any
-        +cache_time: int
+        +cache_time: int | float | bool
     }
 
     class BagCbResolver {
@@ -184,7 +184,7 @@ sequenceDiagram
 |-------|---------|
 | `ins` | New node inserted |
 | `upd_value` | Node value changed |
-| `upd_attr` | Node attribute changed |
+| `upd_attrs` | Node attributes changed |
 | `del` | Node deleted |
 
 ```mermaid
@@ -192,24 +192,25 @@ flowchart LR
     subgraph Events
         INS[ins: insert]
         UPD_V[upd_value: value change]
-        UPD_A[upd_attr: attr change]
+        UPD_A[upd_attrs: attrs change]
         DEL[del: delete]
     end
 
     subgraph Subscription
-        ANY[any: all events]
-        UPDATE[update: ins + upd_*]
+        INSERT[insert: ins only]
+        UPDATE[update: upd_value + upd_attrs]
         DELETE[delete: del only]
+        ANY[any: ins + upd_* + del]
     end
 
+    INS --> INSERT
     INS --> ANY
-    INS --> UPDATE
-    UPD_V --> ANY
     UPD_V --> UPDATE
-    UPD_A --> ANY
+    UPD_V --> ANY
     UPD_A --> UPDATE
-    DEL --> ANY
+    UPD_A --> ANY
     DEL --> DELETE
+    DEL --> ANY
 ```
 
 ## Serialization

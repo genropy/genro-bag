@@ -101,7 +101,7 @@ In practice, it's the "less is more" approach applied to data structures: one we
 
 >>> # Reactive
 >>> changes = []
->>> config.subscribe('watcher', any=lambda node, evt, **kw: changes.append(evt))
+>>> config.subscribe('watcher', any=lambda **kw: changes.append(kw['evt']))
 >>> config['database.timeout'] = 30
 >>> 'ins' in changes
 True

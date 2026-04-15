@@ -58,6 +58,7 @@ bag['count'] = 1  # Prints: "Changed: count"
 |-------|----------------|
 | `ins` | New node added |
 | `upd_value` | Node value changed |
+| `upd_attrs` | Node attributes changed |
 | `del` | Node removed |
 | `tmr` | Timer interval elapsed |
 

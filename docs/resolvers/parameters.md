@@ -31,7 +31,7 @@ Both methods pass parameters to the resolver with the same effect.
 
 ### Type Suffixes
 
-Values use [TYTX type suffixes](../../tytx.md):
+Values use TYTX type suffixes:
 
 | Suffix | Type | Example |
 |--------|------|---------|

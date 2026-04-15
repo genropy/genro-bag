@@ -3,7 +3,7 @@
 ```python
 >>> from genro_bag import Bag
 >>> from genro_bag.resolvers import DirectoryResolver
->>> from system_resolver import SystemResolver
+>>> from genro_bag.resolvers.contrib import SystemResolver
 >>>
 >>> computer = Bag()
 >>> computer['sys'] = SystemResolver()

@@ -116,9 +116,9 @@ pip install genro-bag
 | Directory | Description |
 |-----------|-------------|
 | [`src/genro_bag/`](src/genro_bag/) | Core implementation |
-| [`src/genro_bag/resolvers/`](src/genro_bag/resolvers/) | Built-in resolvers (URL, Directory, OpenAPI) |
+| [`src/genro_bag/resolvers/`](src/genro_bag/resolvers/) | Built-in resolvers (URL, Directory, OpenAPI, Env, UUID, etc.) |
 | [`examples/`](examples/) | Usage examples |
-| [`tests/`](tests/) | Test suite (1500+ tests) |
+| [`tests/`](tests/) | Test suite (1800+ tests) |
 | [`docs/`](docs/) | Sphinx documentation source |
 
 ## Development

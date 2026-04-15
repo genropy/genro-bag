@@ -55,7 +55,7 @@ bag['price'] = 150  # total updates automatically!
 |-------|---------|
 | `ins` | New node created |
 | `upd_value` | Value changed |
-| `upd_attr` | Attributes changed |
+| `upd_attrs` | Attributes changed |
 | `del` | Node deleted |
 | `tmr` | Timer interval elapsed |
 
