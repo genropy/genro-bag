@@ -131,19 +131,23 @@ bag['data'] = AsyncApiResolver(
 result = await smartawait(bag.get_item('data'))
 ```
 
-## Example: File Watcher
+## Example: File Watcher with mtime Check
+
+> **Note:** For simple file loading (JSON, CSV, text, XML), use the built-in
+> [`FileResolver`](builtin.md#fileresolver). The example below shows how to
+> extend behavior with a custom mtime-based change detection.
 
 ```python
 from genro_bag.resolver import BagResolver
 from pathlib import Path
 import json
 
-class JsonFileResolver(BagResolver):
-    """Load JSON file, re-read when file changes."""
+class MtimeJsonResolver(BagResolver):
+    """Load JSON file, re-read only when file modification time changes."""
 
     class_args = ['filepath']
     class_kwargs = {
-        'cache_time': 0,  # Always check
+        'cache_time': 0,  # Always check mtime
         'read_only': True
     }
 
@@ -164,7 +168,7 @@ class JsonFileResolver(BagResolver):
 
 # Usage
 bag = Bag()
-bag['config'] = JsonFileResolver('/etc/myapp/config.json')
+bag['config'] = MtimeJsonResolver('/etc/myapp/config.json')
 ```
 
 ## Returning a Bag

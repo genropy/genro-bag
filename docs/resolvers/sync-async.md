@@ -24,7 +24,7 @@ Override `load()` for synchronous operations:
 ```python
 from genro_bag.resolver import BagResolver
 
-class FileResolver(BagResolver):
+class SimpleTextReader(BagResolver):
     class_args = ['path']
 
     def load(self):

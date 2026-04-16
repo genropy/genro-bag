@@ -200,6 +200,84 @@ config['database.host']
 - `.bag.json` - TYTX JSON
 - `.bag.mp` - TYTX MessagePack
 
+## FileResolver
+
+Lazily load a file with automatic format detection by extension.
+
+```python
+from genro_bag import Bag
+from genro_bag.resolvers import FileResolver
+
+bag = Bag()
+
+# Text files — returned as string
+bag['style'] = FileResolver('/path/to/style.css')
+bag['readme'] = FileResolver('/path/to/readme.md')
+
+# JSON — returned as dict/list (or Bag with as_bag=True)
+bag['config'] = FileResolver('/path/to/config.json')
+bag['data'] = FileResolver('/path/to/data.json', as_bag=True)
+
+# CSV — returned as Bag of records
+bag['contacts'] = FileResolver('/path/to/contacts.csv')
+
+# Native Bag formats — returned as Bag
+bag['settings'] = FileResolver('/path/to/settings.bag.json')
+```
+
+### Format Detection
+
+| Extension | Returns | Notes |
+| --- | --- | --- |
+| `.txt`, `.css`, `.html`, `.md` | `str` | Text content |
+| `.json` | `dict`/`list`/scalar | Bag if `as_bag=True` |
+| `.csv` | `Bag` | Rows as nodes with column attributes |
+| `.bag.json`, `.bag.mp`, `.xml` | `Bag` | Delegates to `fill_from` |
+| (other) | `str` | Fallback to text |
+
+### CSV Structure
+
+Each row becomes a Bag node with column values as attributes:
+
+```python
+# contacts.csv:
+# name,age,city
+# Alice,30,NYC
+# Bob,25,LA
+
+bag['contacts'] = FileResolver('/path/to/contacts.csv')
+contacts = bag['contacts']
+
+node = contacts.get_node('r0')
+node.attr['name']   # 'Alice'
+node.attr['age']    # '30'
+node.attr['city']   # 'NYC'
+```
+
+Without headers (`csv_has_header=False`), attributes are named `c0`, `c1`, `c2`, etc.
+
+### Relative Paths
+
+```python
+# Resolve relative to a base directory
+bag['style'] = FileResolver('static/style.css', base_path='/app')
+
+# Without base_path, resolves relative to cwd
+bag['style'] = FileResolver('style.css')
+```
+
+### Parameters
+
+| Parameter | Default | Description |
+| --- | --- | --- |
+| `path` | (required) | File path (absolute or relative) |
+| `base_path` | `None` | Base directory for relative paths (default: cwd) |
+| `encoding` | `"utf-8"` | Text encoding |
+| `csv_delimiter` | `","` | CSV column delimiter |
+| `csv_has_header` | `True` | Whether first CSV row is headers |
+
+FileResolver defaults to `cache_time=0` (re-read every time) and `read_only=True`.
+
 ## EnvResolver
 
 Read an environment variable on demand, with optional caching.
@@ -323,6 +401,7 @@ Where `[value]` indicates the computed default: `as_bag` defaults to `not read_o
 |----------|--------------|
 | `BagCbResolver` | 0 |
 | `EnvResolver` | 0 |
+| `FileResolver` | 0 |
 | `UuidResolver` | False |
 | `UrlResolver` | 300 |
 | `DirectoryResolver` | 0 |

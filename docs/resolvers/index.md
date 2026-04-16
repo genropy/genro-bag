@@ -99,7 +99,8 @@ restored = Bag.from_tytx(tytx)
 | `UrlResolver` | HTTP requests |
 | `DirectoryResolver` | Load directory structure |
 | `OpenApiResolver` | Navigate OpenAPI specs |
-| `TxtDocResolver` | Load file content |
+| `FileResolver` | Load files with format detection |
+| `TxtDocResolver` | Load file content as bytes |
 | `SerializedBagResolver` | Load serialized Bag files |
 
 → [Built-in Resolvers](builtin.md)
