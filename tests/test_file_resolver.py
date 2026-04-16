@@ -111,6 +111,31 @@ class TestFileResolverJson:
         result = FileResolver(str(f))()
         assert result["users"][0]["name"] == "A"
 
+    def test_load_json_bag_node_format(self, tmp_path):
+        """JSON with label/value/attr is handled by Bag.from_json when as_bag=True."""
+        f = tmp_path / "contacts.json"
+        data = [
+            {"label": "c0", "value": None, "attr": {"name": "Alice", "role": "Engineer"}},
+            {"label": "c1", "value": None, "attr": {"name": "Bob", "role": "Designer"}},
+        ]
+        f.write_text(json.dumps(data))
+        result = FileResolver(str(f), as_bag=True)()
+        assert isinstance(result, Bag)
+        assert len(result) == 2
+        node0 = result.get_node("c0")
+        assert node0.attr["name"] == "Alice"
+        assert node0.attr["role"] == "Engineer"
+        node1 = result.get_node("c1")
+        assert node1.attr["name"] == "Bob"
+
+    def test_load_json_as_bag_standalone(self, tmp_path):
+        """as_bag=True works without Bag attachment (standalone resolver)."""
+        f = tmp_path / "data.json"
+        f.write_text(json.dumps({"x": 1, "y": 2}))
+        result = FileResolver(str(f), as_bag=True)()
+        assert isinstance(result, Bag)
+        assert result["x"] == 1
+
 
 # =========================================================================
 # CSV format

@@ -92,7 +92,10 @@ class FileResolver(BagResolver):
         """Parse JSON file. Result type depends on content and as_bag."""
         encoding = self._kw.get("encoding", "utf-8")
         with open(path, encoding=encoding) as f:
-            return json.load(f)
+            raw = f.read()
+        if self._kw.get("as_bag"):
+            return Bag.from_json(raw)
+        return json.loads(raw)
 
     def _load_csv(self, path: str) -> Bag:
         """Parse CSV file, return Bag of records."""
