@@ -1,9 +1,15 @@
 # Copyright 2025 Softwell S.r.l. - SPDX-License-Identifier: Apache-2.0
 
-"""Earthquake logger example — active cache + subscriptions.
+"""Earthquake logger example — pure dataflow via interval + subscribe.
 
-Active cache (cache_time < 0) requires an async context. The timer
-runs on the asyncio event loop — no threads, no concurrency issues.
+Pattern:
+    interval -> feed update event -> process_feed -> quakes insert event
+        -> log_event
+
+A single timer lives inside the resolver. The refresh writes the new
+feed value via the node mutation channel (emitting an update event), so
+a subscriber on 'feed' is the natural trigger for parsing — no external
+timer-subscribe is needed.
 
 Usage:
     pip install genro-bag[contrib-resolvers]
@@ -27,16 +33,25 @@ class EarthquakeLogger:
 
     def __init__(self, interval: int = 60):
         self.bag = Bag()
+        self.bag.set_backref()
 
-        # Quakes bag + subscription
+        # Quakes bag + subscription on new insertions
         self.bag["quakes"] = Bag()
         self.bag["quakes"].subscribe("logger", insert=self.log_event)
 
-        # Feed resolver + timer subscription
+        # Feed resolver: the interval timer refreshes feed and emits an
+        # update event. The parser subscribes to that event directly —
+        # no second timer, no polling.
         self.bag["feed"] = EarthquakeResolver(interval=interval)
-        self.bag.subscribe("poll_feed", timer=self.process_feed, interval=interval)
+        self.bag.subscribe("parser", update=self.on_feed_update)
 
-    def process_feed(self, **kw):
+    def on_feed_update(self, node=None, pathlist=None, **_kw):
+        """React to a feed refresh: parse into versioned quakes."""
+        if not pathlist or pathlist[0] != "feed":
+            return  # ignore unrelated updates
+        self.process_feed()
+
+    def process_feed(self):
         """Process raw feed into versioned quakes."""
         features = self.bag["feed.features"]
         quakes = self.bag["quakes"]
@@ -66,7 +81,7 @@ class EarthquakeLogger:
 
 
 async def main():
-    logger = EarthquakeLogger(interval=10)
+    EarthquakeLogger(interval=10)
     print("Listening for new earthquakes (refresh every 10s)...")
     print("Press Ctrl+C to stop.\n")
     await asyncio.Event().wait()
@@ -77,4 +92,3 @@ if __name__ == "__main__":
         asyncio.run(main())
     except KeyboardInterrupt:
         print("\nStopped.")
- 
