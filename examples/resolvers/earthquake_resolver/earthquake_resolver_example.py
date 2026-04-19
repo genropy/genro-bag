@@ -39,11 +39,13 @@ class EarthquakeLogger:
         self.bag["quakes"] = Bag()
         self.bag["quakes"].subscribe("logger", insert=self.log_event)
 
-        # Feed resolver: the interval timer refreshes feed and emits an
-        # update event on the 'feed' node. The parser subscribes to the
-        # node directly — no filter, no polling, no second timer.
-        self.bag["feed"] = EarthquakeResolver(interval=interval)
-        self.bag.get_node("feed").subscribe("parser", self.process_feed)
+        # Feed: build the resolver without interval, attach it, subscribe
+        # to the 'feed' node, then turn on the timer. Doing the "power on"
+        # explicitly (last line) keeps construction separate from activation.
+        self.bag["feed"] = EarthquakeResolver()
+        feed_node = self.bag.get_node("feed")
+        feed_node.subscribe("parser", self.process_feed)
+        feed_node.resolver.interval = interval
 
     def process_feed(self, **_kw):
         """Process raw feed into versioned quakes."""
