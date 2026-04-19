@@ -31,28 +31,19 @@ class EarthquakeLogger:
         interval: Seconds between feed checks.
     """
 
-    def __init__(self):
-        # Sync phase: build the bag structure. No resolvers with timers,
-        # no event loop needed. Safe to run anywhere.
+    def __init__(self, interval: int = 10):
+        self.interval = interval
         self.bag = Bag()
-        self.bag.set_backref()
+        self.bag["feed.content"] = EarthquakeResolver()
+        self.bag["feed"].subscribe("parser", update=self.process_feed)
         self.bag["quakes"] = Bag()
         self.bag["quakes"].subscribe("logger", insert=self.log_event)
 
-    async def start(self, interval: int = 60):
-        # Async phase: attach the resolver, subscribe to its node, turn
-        # on the interval. The last line is the explicit "power on".
-        self.bag["feed"] = EarthquakeResolver()
-        feed_node = self.bag.get_node("feed")
-        feed_node.subscribe("parser", self.process_feed)
-        feed_node.resolver.interval = interval
-
-    def process_feed(self, **_kw):
+    def process_feed(self, node=None, pathlist=None, oldvalue=None, evt=None, reason=None):
         """Process raw feed into versioned quakes."""
-        features = self.bag["feed.features"]
         quakes = self.bag["quakes"]
 
-        for fid, attrs, updated in features.query("#k,#a,#a.updated"):
+        for fid, attrs, updated in node.value["features"].query("#k,#a,#a.updated"):
             key = f"{fid[:2]}.{fid[2:]}"
             if key not in quakes:
                 quakes[key] = Bag()
@@ -75,17 +66,18 @@ class EarthquakeLogger:
         record["tag"] = "New Quake" if node.label == "00" else "Update Quake"
         print(LOG_TEMPLATE.format(**record))
 
+    def run(self):
+        try:
+            asyncio.run(self.main())
+        except KeyboardInterrupt:
+            print("\nStopped.")
 
-async def main():
-    logger = EarthquakeLogger()         # sync: structure only
-    await logger.start(interval=10)     # async: attach + power on
-    print("Listening for new earthquakes (refresh every 10s)...")
-    print("Press Ctrl+C to stop.\n")
-    await asyncio.Event().wait()
+    async def main(self):
+        self.bag.get_node('feed.content').resolver.interval = self.interval
+        print("Listening for new earthquakes...")
+        print("Press Ctrl+C to stop.\n")
+        await asyncio.Event().wait()
 
 
 if __name__ == "__main__":
-    try:
-        asyncio.run(main())
-    except KeyboardInterrupt:
-        print("\nStopped.")
+    EarthquakeLogger(interval=10).run()
