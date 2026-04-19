@@ -169,7 +169,6 @@ class BagResolver:
         "_cache_last_update",  # datetime | None: last load() timestamp
         "_cached_value",  # Any: cached result when standalone (no parent node)
         "_timer_id",  # str | None: smarttimer ID for active cache
-        "_emit_on_finalize",  # bool: active trigger path, emit mutation event
     )
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -193,7 +192,6 @@ class BagResolver:
         self._cache_last_update: datetime | None = None
         self._cached_value: Any = None
         self._timer_id: str | None = None
-        self._emit_on_finalize: bool = False
 
         # Build _kw dict from class_args and class_kwargs
         self._kw: dict[str, Any] = {}
@@ -356,20 +354,29 @@ class BagResolver:
             cancel_timer(self._timer_id)
             self._timer_id = None
 
-    def _background_load(self) -> None:
-        """Execute load in background and update cached value.
+    async def _background_load(self) -> None:
+        """Execute load in background and propagate the result.
 
-        Bypasses cache check (always reloads) but does the full
-        parameter merge (resolver._kw + node.attr) like __call__.
+        Always runs in async context (interval requires an event loop).
         Writes the result via the node mutation channel so subscribers
-        receive an update event (active trigger semantics).
+        receive an update event (active trigger semantics, distinct from
+        the silent pull path).
+
+        Bypasses cache check (always reloads) but does the full parameter
+        merge (resolver._kw + node.attr) like __call__.
         """
-        self._emit_on_finalize = True
-        try:
-            with contextlib.suppress(Exception):
-                self._load_with_kw(self._build_effective_kw())
-        finally:
-            self._emit_on_finalize = False
+        with contextlib.suppress(Exception):
+            effective_kw = self._build_effective_kw()
+            original_kw = self._kw
+            self._kw = effective_kw
+            try:
+                if self.is_async:
+                    result = await self.async_load()
+                else:
+                    result = await asyncio.to_thread(self.load)
+            finally:
+                self._kw = original_kw
+            self._finalize_result_and_notify(result)
 
     @property
     def expired(self) -> bool:
@@ -481,8 +488,8 @@ class BagResolver:
     # LOAD VARIANTS - 4 cases (is_async, in_async_context)
     # =========================================================================
 
-    def _finalize_result(self, result: Any) -> Any:
-        """Store result in cache and node (if not read_only).
+    def _prepare_result(self, result: Any) -> Any:
+        """Common post-load processing: as_bag conversion + timestamp update.
 
         Conversion to Bag (controlled by as_bag parameter):
         - as_bag=True: always convert to Bag if possible
@@ -497,10 +504,6 @@ class BagResolver:
         - Bag: returned as-is
         """
         as_bag = self._kw.get("as_bag")
-        # Determine if we should convert:
-        # - as_bag=True: always convert
-        # - as_bag=False: never convert
-        # - as_bag=None (not set): convert if not read_only
         if as_bag is True:
             should_convert = True
         elif as_bag is False:
@@ -520,14 +523,37 @@ class BagResolver:
                 except (TypeError, FileNotFoundError, ValueError):
                     pass  # Not convertible to Bag — keep original result
         self._cache_last_update = datetime.now()
+        return result
+
+    def _finalize_result(self, result: Any) -> Any:
+        """Store result in cache silently (passive, pull-driven path).
+
+        Used by the pull path: reading a node with a resolver calls load()
+        and writes the result without emitting a mutation event. A pull is
+        a read, not a semantic mutation.
+        """
+        result = self._prepare_result(result)
         if not self.read_only:
-            if self._emit_on_finalize and self._parent_node is not None:
-                # Active trigger path (interval timer): write via node mutation
-                # channel so subscribers receive the update event.
-                self._parent_node.set_value(result)
-            else:
-                # Passive path (pull-driven): silent write, no event.
-                self.cached_value = result
+            self.cached_value = result
+        return result
+
+    def _finalize_result_and_notify(self, result: Any) -> Any:
+        """Store result through the node mutation channel (active path).
+
+        Used by active triggers (interval timer, future reactive, etc.):
+        writes via parent_node.set_value(), which fires _on_node_changed
+        so subscribers receive an update event.
+
+        Falls back to silent write if the resolver has no parent_node or
+        is read_only (no observable target for the event).
+        """
+        result = self._prepare_result(result)
+        if self.read_only:
+            return result
+        if self._parent_node is not None:
+            self._parent_node.set_value(result)
+        else:
+            self.cached_value = result
         return result
 
     @with_retry
