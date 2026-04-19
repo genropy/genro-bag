@@ -539,8 +539,12 @@ class Bag(BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer
     def clear(self) -> None:
         """Remove all nodes from this Bag.
 
-        Empties the Bag completely. In backref mode, triggers delete events
-        for all removed nodes.
+        Empties the Bag in place: self remains connected to its parent.
+        Semantically an atomic content replacement (not a sequence of deletes):
+        if nested under a parent and backref is enabled, emits a single 'upd'
+        event on self.parent_node. oldvalue is an orphan Bag holding the old
+        nodes (detached from the tree, navigable, garbage-collected when no
+        longer referenced).
 
         Example:
             >>> bag = Bag()
@@ -552,10 +556,24 @@ class Bag(BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer
             >>> len(bag)
             0
         """
-        old_nodes = list(self._nodes)
-        self._nodes.clear()
-        if self.backref:
-            self._on_node_deleted(old_nodes, -1)
+        if not len(self._nodes):
+            return
+        old_container = self._nodes
+        self._nodes = self.container_class()
+        if self.backref and self.parent is not None and self.parent_node is not None:
+            orphans = self.__class__()
+            orphans._nodes = old_container
+            for node in old_container:
+                node._parent_bag = orphans
+            self.parent._on_node_changed(
+                self.parent_node,
+                [self.parent_node.label],
+                evt="upd_value",
+                oldvalue=orphans,
+            )
+        else:
+            for node in old_container:
+                node._parent_bag = None
 
     def move(self, what: int | list[int], position: int, trigger: bool = True) -> None:
         """Move element(s) to a new position.

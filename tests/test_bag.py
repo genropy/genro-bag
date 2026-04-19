@@ -2823,19 +2823,27 @@ class TestBagCoverageMissing:
         result = bag.pop_node("x.y.z")
         assert result is None
 
-    # Line 829: clear with backref
+    # Line 829: clear with backref on nested bag emits upd on parent
     def test_clear_with_backref(self):
-        """clear() with backref fires delete events."""
-        bag = Bag()
-        bag.set_backref()
-        bag["a"] = 1
-        bag["b"] = 2
-        deleted = []
-        # node is a list of all deleted nodes when clear() is called
-        bag.subscribe("test", delete=lambda **kw: deleted.extend([n.label for n in kw["node"]]))
-        bag.clear()
-        assert len(bag) == 0
-        assert "a" in deleted and "b" in deleted
+        """clear() on a nested bag with backref emits one upd on parent_node."""
+        root = Bag()
+        root.set_backref()
+        root["sub.a"] = 1
+        root["sub.b"] = 2
+        events = []
+        root.subscribe(
+            "test",
+            update=lambda **kw: events.append((kw["node"].label, kw["oldvalue"])),
+        )
+        root["sub"].clear()
+        assert len(root["sub"]) == 0
+        # exactly one upd event on the parent_node ('sub')
+        assert len(events) == 1
+        label, oldvalue = events[0]
+        assert label == "sub"
+        # oldvalue is a Bag containing the old nodes
+        old_labels = [n.label for n in oldvalue]
+        assert "a" in old_labels and "b" in old_labels
 
     # Line 897: set_attr uses get_node with autocreate
     def test_set_attr_on_existing_node(self):
