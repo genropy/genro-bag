@@ -31,6 +31,35 @@ class TestCacheTimeNegativeDeprecated:
         assert "interval" in str(excinfo.value)
 
 
+class TestReadOnlyIntervalIncompatible:
+    """read_only=True and interval are semantically incompatible."""
+
+    def test_readonly_plus_interval_raises(self):
+        """read_only=True with interval raises ValueError at construction."""
+        with pytest.raises(ValueError, match="read_only"):
+            BagCbResolver(lambda: 1, interval=1, read_only=True)
+
+    def test_readonly_error_message_mentions_both(self):
+        """Error message mentions both read_only and interval explicitly."""
+        with pytest.raises(ValueError) as excinfo:
+            BagCbResolver(lambda: 1, interval=5, read_only=True)
+        msg = str(excinfo.value)
+        assert "read_only" in msg
+        assert "interval" in msg
+
+    def test_readonly_false_plus_interval_ok(self):
+        """read_only=False with interval is valid (default behavior)."""
+        # This should not raise
+        resolver = BagCbResolver(lambda: 1, interval=1, read_only=False)
+        assert resolver is not None
+
+    def test_readonly_default_plus_interval_ok(self):
+        """read_only not passed with interval is valid (derived False)."""
+        # This should not raise
+        resolver = BagCbResolver(lambda: 1, interval=1)
+        assert resolver is not None
+
+
 class TestIntervalSyncRejection:
     """interval in sync context raises RuntimeError (requires event loop)."""
 

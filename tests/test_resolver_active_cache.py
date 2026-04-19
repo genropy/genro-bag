@@ -68,16 +68,10 @@ class TestActiveCacheBasic:
         # Cleanup
         bag.get_node("data").resolver.parent_node = None
 
-    def test_active_cache_read_only_no_timer(self):
-        """interval with read_only=True does NOT start timer."""
-        resolver = BagCbResolver(lambda: 1, interval=1, read_only=True)
-        bag = Bag()
-        bag.set_item("data", resolver)
-
-        assert resolver._timer_id is None
-
-        # Cleanup
-        bag.get_node("data").resolver.parent_node = None
+    def test_active_cache_read_only_rejected(self):
+        """interval with read_only=True raises ValueError at construction."""
+        with pytest.raises(ValueError, match="read_only"):
+            BagCbResolver(lambda: 1, interval=1, read_only=True)
 
     def test_cache_time_false_no_timer(self):
         """cache_time=False (infinite cache) does NOT start timer."""

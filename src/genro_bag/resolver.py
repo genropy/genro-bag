@@ -220,6 +220,14 @@ class BagResolver:
                 f"Use interval={abs(ct)} for background refresh."
             )
 
+        if self._kw.get("interval") is not None and self._init_kwargs.get("read_only") is True:
+            raise ValueError(
+                "read_only=True is incompatible with interval: the active "
+                "refresh writes the value to the node for subscribers to observe, "
+                "but read_only prevents that write. Use read_only=False or "
+                "drop the interval."
+            )
+
         # Hook for subclasses
         self.init()
 
@@ -324,11 +332,14 @@ class BagResolver:
     # =========================================================================
 
     def _start_interval(self) -> None:
-        """Start background refresh if interval is set and not read_only.
+        """Start background refresh if interval is set.
 
         The first refresh is scheduled at the next loop tick (initial_delay=0),
         so subscribers registered immediately after resolver attachment see the
         first value without waiting a full interval.
+
+        The read_only + interval combination is rejected at construction
+        (see __init__ validation), so no runtime check is needed here.
 
         Raises:
             RuntimeError: If called in a sync context. Background refresh
@@ -336,8 +347,6 @@ class BagResolver:
         """
         interval = self._kw.get("interval")
         if interval is None:
-            return
-        if self.read_only:
             return
         if self._timer_id is not None:
             return
