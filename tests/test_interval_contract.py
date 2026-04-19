@@ -198,6 +198,70 @@ class TestIntervalEmitsEvent:
         assert events == []
 
 
+class TestIntervalSetter:
+    """interval is a mutable property; assigning it reconfigures the timer."""
+
+    def test_interval_construction_without_value_ok_in_sync(self):
+        """No interval at construction -> no timer, OK in sync."""
+        bag = Bag()
+        resolver = BagCbResolver(lambda: 42)
+        bag.set_item("data", resolver)
+        assert resolver._timer_id is None
+
+    @pytest.mark.asyncio
+    async def test_interval_setter_starts_timer(self):
+        """Assigning interval on an attached resolver starts the timer."""
+        resolver = BagCbResolver(lambda: 42)
+        bag = Bag()
+        bag.set_item("data", resolver)
+
+        assert resolver._timer_id is None
+
+        resolver.interval = 1
+        assert resolver._timer_id is not None
+
+        # Cleanup
+        resolver.parent_node = None
+
+    @pytest.mark.asyncio
+    async def test_interval_setter_none_stops_timer(self):
+        """Setting interval to None stops the timer."""
+        resolver = BagCbResolver(lambda: 42, interval=1)
+        bag = Bag()
+        bag.set_item("data", resolver)
+        assert resolver._timer_id is not None
+
+        resolver.interval = None
+        assert resolver._timer_id is None
+
+    @pytest.mark.asyncio
+    async def test_interval_setter_changes_period(self):
+        """Assigning a different interval restarts the timer with new period."""
+        resolver = BagCbResolver(lambda: 42, interval=1)
+        bag = Bag()
+        bag.set_item("data", resolver)
+        first_timer = resolver._timer_id
+        assert first_timer is not None
+
+        resolver.interval = 2
+        second_timer = resolver._timer_id
+        assert second_timer is not None
+        assert second_timer != first_timer
+
+        # Cleanup
+        resolver.parent_node = None
+
+    def test_interval_getter_returns_value(self):
+        """interval getter returns the current value."""
+        resolver = BagCbResolver(lambda: 42, interval=5)
+        assert resolver.interval == 5
+
+    def test_interval_getter_returns_none_when_not_set(self):
+        """interval getter returns None when not configured."""
+        resolver = BagCbResolver(lambda: 42)
+        assert resolver.interval is None
+
+
 class TestIntervalLifecycle:
     """interval lifecycle: start on attach, stop on detach."""
 

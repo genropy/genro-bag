@@ -279,6 +279,39 @@ class BagResolver:
         return self._kw.get("cache_time", 0)  # type: ignore[no-any-return]
 
     # =========================================================================
+    # INTERVAL PROPERTY (mutable: assignment reconfigures the timer)
+    # =========================================================================
+
+    @property
+    def interval(self) -> int | float | None:
+        """Get interval setting (background refresh period, in seconds).
+
+        Returns:
+            None: no active refresh.
+            N>0: refresh every N seconds (requires async context when running).
+        """
+        return self._kw.get("interval")
+
+    @interval.setter
+    def interval(self, value: int | float | None) -> None:
+        """Set interval and reconfigure the timer.
+
+        Assigning a new value stops the current timer (if any) and starts
+        a fresh one matching the new value. Assigning None stops the timer.
+        Rejects the read_only + interval combination as at construction.
+        """
+        if value is not None and self._init_kwargs.get("read_only") is True:
+            raise ValueError(
+                "read_only=True is incompatible with interval: the active "
+                "refresh writes the value to the node for subscribers to observe, "
+                "but read_only prevents that write."
+            )
+        self._kw["interval"] = value
+        self._stop_interval()
+        if value is not None and self._parent_node is not None:
+            self._start_interval()
+
+    # =========================================================================
     # READ ONLY PROPERTY
     # =========================================================================
 
