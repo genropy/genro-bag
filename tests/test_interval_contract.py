@@ -125,6 +125,50 @@ class TestIntervalFirstTickImmediate:
         bag.get_node("data").resolver.parent_node = None
 
 
+class TestIntervalEmitsEvent:
+    """interval background refresh emits update event on the node."""
+
+    @pytest.mark.asyncio
+    async def test_background_refresh_emits_update_event(self):
+        """Background refresh driven by interval calls update subscribers."""
+        counter = [0]
+
+        async def incrementing():
+            counter[0] += 1
+            return counter[0]
+
+        bag = Bag()
+        bag.set_backref()
+        bag.set_item("data", BagCbResolver(incrementing, interval=1))
+
+        events = []
+        bag.subscribe("watcher", update=lambda **kw: events.append(kw))
+
+        # Yield to loop so the timer can fire at least once.
+        await asyncio.sleep(1.2)
+
+        assert len(events) >= 1, (
+            f"Expected at least one update event, got {len(events)}"
+        )
+
+        # Cleanup
+        bag.get_node("data").resolver.parent_node = None
+
+    def test_pull_passive_no_event(self):
+        """A passive pull (no interval) still does NOT emit event."""
+        bag = Bag()
+        bag.set_backref()
+        bag.set_item("data", BagCbResolver(lambda: 42, cache_time=5))
+
+        events = []
+        bag.subscribe("watcher", update=lambda **kw: events.append(kw))
+
+        # Pull the value (triggers load)
+        _ = bag["data"]
+
+        assert events == []
+
+
 class TestIntervalLifecycle:
     """interval lifecycle: start on attach, stop on detach."""
 

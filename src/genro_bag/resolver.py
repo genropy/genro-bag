@@ -169,6 +169,7 @@ class BagResolver:
         "_cache_last_update",  # datetime | None: last load() timestamp
         "_cached_value",  # Any: cached result when standalone (no parent node)
         "_timer_id",  # str | None: smarttimer ID for active cache
+        "_emit_on_finalize",  # bool: active trigger path, emit mutation event
     )
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -192,6 +193,7 @@ class BagResolver:
         self._cache_last_update: datetime | None = None
         self._cached_value: Any = None
         self._timer_id: str | None = None
+        self._emit_on_finalize: bool = False
 
         # Build _kw dict from class_args and class_kwargs
         self._kw: dict[str, Any] = {}
@@ -359,9 +361,15 @@ class BagResolver:
 
         Bypasses cache check (always reloads) but does the full
         parameter merge (resolver._kw + node.attr) like __call__.
+        Writes the result via the node mutation channel so subscribers
+        receive an update event (active trigger semantics).
         """
-        with contextlib.suppress(Exception):
-            self._load_with_kw(self._build_effective_kw())
+        self._emit_on_finalize = True
+        try:
+            with contextlib.suppress(Exception):
+                self._load_with_kw(self._build_effective_kw())
+        finally:
+            self._emit_on_finalize = False
 
     @property
     def expired(self) -> bool:
@@ -513,7 +521,13 @@ class BagResolver:
                     pass  # Not convertible to Bag — keep original result
         self._cache_last_update = datetime.now()
         if not self.read_only:
-            self.cached_value = result
+            if self._emit_on_finalize and self._parent_node is not None:
+                # Active trigger path (interval timer): write via node mutation
+                # channel so subscribers receive the update event.
+                self._parent_node.set_value(result)
+            else:
+                # Passive path (pull-driven): silent write, no event.
+                self.cached_value = result
         return result
 
     @with_retry
