@@ -1,7 +1,7 @@
 # Copyright 2025 Softwell S.r.l. - Genropy Team
 # SPDX-License-Identifier: Apache-2.0
 
-"""Tests for active cache (cache_time < 0) in BagResolver."""
+"""Tests for interval (background refresh) in BagResolver."""
 
 import asyncio
 
@@ -12,13 +12,13 @@ from genro_bag.resolver import BagCbResolver
 
 
 class TestActiveCacheSyncRejection:
-    """Active cache must raise RuntimeError in sync context."""
+    """interval must raise RuntimeError in sync context."""
 
     def test_active_cache_raises_in_sync(self):
-        """cache_time < 0 in sync context raises RuntimeError."""
+        """interval=N in sync context raises RuntimeError."""
         bag = Bag()
         with pytest.raises(RuntimeError, match="requires an async context"):
-            bag.set_item("data", BagCbResolver(lambda: 1, cache_time=-1))
+            bag.set_item("data", BagCbResolver(lambda: 1, interval=1))
 
     def test_passive_cache_works_in_sync(self):
         """cache_time > 0 in sync context works normally."""
@@ -40,11 +40,11 @@ class TestActiveCacheSyncRejection:
 
 
 class TestActiveCacheBasic:
-    """Active cache starts background refresh when cache_time < 0 in async."""
+    """interval starts background refresh in async."""
 
     @pytest.mark.asyncio
     async def test_active_cache_updates_value(self):
-        """cache_time < 0 triggers periodic background refresh in async."""
+        """interval=N triggers periodic background refresh in async."""
         counter = [0]
 
         async def incrementing():
@@ -52,7 +52,7 @@ class TestActiveCacheBasic:
             return counter[0]
 
         bag = Bag()
-        bag.set_item("data", BagCbResolver(incrementing, cache_time=-1))
+        bag.set_item("data", BagCbResolver(incrementing, interval=1))
 
         # First access triggers load
         first = await bag["data"]
@@ -69,8 +69,8 @@ class TestActiveCacheBasic:
         bag.get_node("data").resolver.parent_node = None
 
     def test_active_cache_read_only_no_timer(self):
-        """cache_time < 0 with read_only=True does NOT start timer."""
-        resolver = BagCbResolver(lambda: 1, cache_time=-1, read_only=True)
+        """interval with read_only=True does NOT start timer."""
+        resolver = BagCbResolver(lambda: 1, interval=1, read_only=True)
         bag = Bag()
         bag.set_item("data", resolver)
 
@@ -110,7 +110,7 @@ class TestActiveCacheLifecycle:
     @pytest.mark.asyncio
     async def test_timer_starts_on_attach(self):
         """Timer starts when resolver is attached to a node in async."""
-        resolver = BagCbResolver(lambda: 1, cache_time=-1)
+        resolver = BagCbResolver(lambda: 1, interval=1)
         assert resolver._timer_id is None
 
         bag = Bag()
@@ -124,7 +124,7 @@ class TestActiveCacheLifecycle:
     @pytest.mark.asyncio
     async def test_timer_stops_on_detach(self):
         """Timer stops when resolver is detached from node."""
-        resolver = BagCbResolver(lambda: 1, cache_time=-1)
+        resolver = BagCbResolver(lambda: 1, interval=1)
         bag = Bag()
         bag.set_item("data", resolver)
 
@@ -136,8 +136,8 @@ class TestActiveCacheLifecycle:
     @pytest.mark.asyncio
     async def test_replace_resolver_stops_old_timer(self):
         """Replacing resolver on a node stops the old resolver's timer."""
-        old_resolver = BagCbResolver(lambda: 1, cache_time=-1)
-        new_resolver = BagCbResolver(lambda: 2, cache_time=-1)
+        old_resolver = BagCbResolver(lambda: 1, interval=1)
+        new_resolver = BagCbResolver(lambda: 2, interval=1)
 
         bag = Bag()
         bag.set_item("data", old_resolver)
@@ -163,7 +163,7 @@ class TestActiveCacheLifecycle:
                 raise RuntimeError("simulated error")
             return counter[0]
 
-        resolver = BagCbResolver(failing_after_first, cache_time=-1)
+        resolver = BagCbResolver(failing_after_first, interval=1)
         bag = Bag()
         bag.set_item("data", resolver)
 
@@ -192,7 +192,7 @@ class TestActiveCacheLifecycle:
             return len(calls)
 
         bag = Bag()
-        bag.set_item("data", BagCbResolver(tracked, cache_time=-1))
+        bag.set_item("data", BagCbResolver(tracked, interval=1))
 
         result = await bag["data"]
         assert result == 1
@@ -203,7 +203,7 @@ class TestActiveCacheLifecycle:
 
 
 class TestInfiniteCache:
-    """cache_time=False replaces the old cache_time=-1 for infinite cache."""
+    """cache_time=False replaces the old interval=1 for infinite cache."""
 
     def test_infinite_cache_loads_once(self):
         """cache_time=False loads once and never expires."""

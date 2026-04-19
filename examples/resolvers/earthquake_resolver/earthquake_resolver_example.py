@@ -33,7 +33,7 @@ class EarthquakeLogger:
         self.bag["quakes"].subscribe("logger", insert=self.log_event)
 
         # Feed resolver + timer subscription
-        self.bag["feed"] = EarthquakeResolver(cache_time=-interval)
+        self.bag["feed"] = EarthquakeResolver(interval=interval)
         self.bag.subscribe("poll_feed", timer=self.process_feed, interval=interval)
 
     def process_feed(self, **kw):

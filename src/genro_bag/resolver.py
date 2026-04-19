@@ -151,9 +151,15 @@ class BagResolver:
         # -> 70 (call_kwargs has highest priority)
     """
 
-    class_kwargs: dict[str, Any] = {"cache_time": 0, "read_only": False, "retry_policy": None, "as_bag": None}
+    class_kwargs: dict[str, Any] = {
+        "cache_time": 0,
+        "interval": None,
+        "read_only": False,
+        "retry_policy": None,
+        "as_bag": None,
+    }
     class_args: list[str] = []
-    internal_params: set[str] = {"cache_time", "read_only", "retry_policy", "as_bag"}
+    internal_params: set[str] = {"cache_time", "interval", "read_only", "retry_policy", "as_bag"}
 
     __slots__ = (
         "_kw",  # dict: all parameters from class_kwargs/class_args
@@ -206,6 +212,14 @@ class BagResolver:
         # Extra kwargs also go to _kw
         self._kw.update(kwargs)
 
+        # Validate parameters
+        ct = self._kw.get("cache_time", 0)
+        if isinstance(ct, (int, float)) and not isinstance(ct, bool) and ct < 0:
+            raise ValueError(
+                f"cache_time={ct!r} is no longer supported. "
+                f"Use interval={abs(ct)} for background refresh."
+            )
+
         # Hook for subclasses
         self.init()
 
@@ -230,12 +244,12 @@ class BagResolver:
 
     @parent_node.setter
     def parent_node(self, parent_node: BagNode | None) -> None:
-        """Set the parent node. Starts/stops active cache as needed."""
+        """Set the parent node. Starts/stops interval timer as needed."""
         if self._parent_node is not None and parent_node is None:
-            self._stop_active_cache()
+            self._stop_interval()
         self._parent_node = parent_node
         if parent_node is not None:
-            self._start_active_cache()
+            self._start_interval()
 
     # =========================================================================
     # CACHE TIME PROPERTY
@@ -243,11 +257,16 @@ class BagResolver:
 
     @property
     def cache_time(self) -> int | float | bool:
-        """Get cache time setting.
+        """Get cache time setting (expiration policy).
 
         Returns:
-            0: no cache, >0: passive TTL seconds, <0: active cache (async only),
-            False: infinite cache.
+            0: no cache, reload on every access.
+            N>0: passive TTL, cache valid for N seconds.
+            False: infinite cache (until manual reset()).
+
+        Note:
+            For background refresh (timer-driven), use the `interval` parameter
+            instead. cache_time is only for expiration policy.
         """
         return self._kw.get("cache_time", 0)  # type: ignore[no-any-return]
 
@@ -260,11 +279,13 @@ class BagResolver:
         """Whether resolver is in read-only mode.
 
         If True, the resolved value is NOT stored in node._value.
-        If not explicitly passed, derived from cache_time:
-        cache_time == 0 → read_only=True, cache_time != 0 → read_only=False.
+        If not explicitly passed, derived from cache_time and interval:
+        no cache and no interval → read_only=True, otherwise read_only=False.
         """
         if "read_only" in self._init_kwargs:
             return self._init_kwargs["read_only"]  # type: ignore[no-any-return]
+        if self._kw.get("interval") is not None:
+            return False
         return self.cache_time is not False and self.cache_time == 0
 
     # =========================================================================
@@ -291,26 +312,30 @@ class BagResolver:
     def reset(self) -> None:
         """Invalidate cache, forcing reload on next call.
 
-        If active cache is running, restarts the timer.
+        If interval timer is running, restarts it.
         """
         self._cache_last_update = None
         if self._timer_id is not None:
-            self._stop_active_cache()
-            self._start_active_cache()
+            self._stop_interval()
+            self._start_interval()
 
     # =========================================================================
-    # ACTIVE CACHE (background refresh via set_interval)
+    # INTERVAL (background refresh via set_interval)
     # =========================================================================
 
-    def _start_active_cache(self) -> None:
-        """Start background refresh if cache_time < 0 and not read_only.
+    def _start_interval(self) -> None:
+        """Start background refresh if interval is set and not read_only.
+
+        The first refresh is scheduled at the next loop tick (initial_delay=0),
+        so subscribers registered immediately after resolver attachment see the
+        first value without waiting a full interval.
 
         Raises:
-            RuntimeError: If called in a sync context. Active cache requires
-                an async event loop to avoid thread-safety issues.
+            RuntimeError: If called in a sync context. Background refresh
+                requires an async event loop to avoid thread-safety issues.
         """
-        cache_time = self.cache_time
-        if cache_time is False or not isinstance(cache_time, (int, float)) or cache_time >= 0:
+        interval = self._kw.get("interval")
+        if interval is None:
             return
         if self.read_only:
             return
@@ -318,12 +343,12 @@ class BagResolver:
             return
         if not is_async_context():
             raise RuntimeError(
-                "Active cache (cache_time < 0) requires an async context. "
+                "interval requires an async context. "
                 "Use cache_time > 0 (passive cache) in sync code."
             )
-        self._timer_id = set_interval(abs(cache_time), self._background_load, initial_delay=1)
+        self._timer_id = set_interval(interval, self._background_load, initial_delay=0)
 
-    def _stop_active_cache(self) -> None:
+    def _stop_interval(self) -> None:
         """Stop background refresh if running."""
         if self._timer_id is not None:
             cancel_timer(self._timer_id)
@@ -347,9 +372,8 @@ class BagResolver:
             return self._cache_last_update is None
         if cache_time == 0:
             return True
-        # For both positive and negative, use abs value as TTL
         elapsed = datetime.now() - (self._cache_last_update or datetime.min)
-        return elapsed > timedelta(seconds=abs(cache_time))
+        return elapsed > timedelta(seconds=cache_time)
 
     # =========================================================================
     # ASYNC PROPERTIES
@@ -392,8 +416,8 @@ class BagResolver:
         if static:
             return self.cached_value
 
-        # Active cache: timer manages reloads, just return cached value
-        if self.cache_time is not False and isinstance(self.cache_time, (int, float)) and self.cache_time < 0 and self.cached_value is not None:
+        # Interval timer manages reloads: just return cached value if present
+        if self._kw.get("interval") is not None and self.cached_value is not None:
             return self.cached_value
 
         # With call_kwargs: always load, bypass cache without altering it
@@ -683,9 +707,9 @@ class BagCbResolver(BagResolver):
         >>> await resolver()  # works in async context
     """
 
-    class_kwargs = {"cache_time": 0, "read_only": False, "as_bag": False}
+    class_kwargs = {"cache_time": 0, "interval": None, "read_only": False, "as_bag": False}
     class_args = ["callback"]
-    internal_params = {"cache_time", "read_only", "retry_policy", "as_bag", "callback"}
+    internal_params = BagResolver.internal_params | {"callback"}
 
     @property
     def is_async(self) -> bool:
