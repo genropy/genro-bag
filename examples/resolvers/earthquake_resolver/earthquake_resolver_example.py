@@ -31,17 +31,17 @@ class EarthquakeLogger:
         interval: Seconds between feed checks.
     """
 
-    def __init__(self, interval: int = 60):
+    def __init__(self):
+        # Sync phase: build the bag structure. No resolvers with timers,
+        # no event loop needed. Safe to run anywhere.
         self.bag = Bag()
         self.bag.set_backref()
-
-        # Quakes bag + subscription on new insertions
         self.bag["quakes"] = Bag()
         self.bag["quakes"].subscribe("logger", insert=self.log_event)
 
-        # Feed: build the resolver without interval, attach it, subscribe
-        # to the 'feed' node, then turn on the timer. Doing the "power on"
-        # explicitly (last line) keeps construction separate from activation.
+    async def start(self, interval: int = 60):
+        # Async phase: attach the resolver, subscribe to its node, turn
+        # on the interval. The last line is the explicit "power on".
         self.bag["feed"] = EarthquakeResolver()
         feed_node = self.bag.get_node("feed")
         feed_node.subscribe("parser", self.process_feed)
@@ -77,7 +77,8 @@ class EarthquakeLogger:
 
 
 async def main():
-    EarthquakeLogger(interval=10)
+    logger = EarthquakeLogger()         # sync: structure only
+    await logger.start(interval=10)     # async: attach + power on
     print("Listening for new earthquakes (refresh every 10s)...")
     print("Press Ctrl+C to stop.\n")
     await asyncio.Event().wait()
