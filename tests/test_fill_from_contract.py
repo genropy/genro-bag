@@ -19,6 +19,8 @@ Invariants covered here:
     - Nested sub-Bags receive proper backref after the swap.
 """
 
+from xml.sax import SAXParseException
+
 import pytest
 
 from genro_bag import Bag
@@ -128,8 +130,6 @@ class TestFillFromAtomicity:
 
     def test_atomicity_on_malformed_xml(self):
         """Invalid XML source raises without touching self."""
-        from xml.sax import SAXParseException
-
         outer = Bag()
         outer.set_backref()
         outer.set_item("inner", Bag({"keep": "me"}))
