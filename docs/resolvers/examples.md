@@ -14,11 +14,15 @@ Source: [`examples/resolvers/resolver_parameters/`](../../examples/resolvers/res
 
 ### Parameter Priority
 
-When a resolver is called, parameters come from three sources (highest priority first):
+When a resolver is called, parameters come from two sources (highest priority first):
 
-1. **call_kwargs**: Passed to `get_item()` or `get_value()` at call time
-2. **node.attr**: Attributes set on the parent BagNode
-3. **resolver._kw**: Default parameters set at resolver construction
+1. **node.attr**: Attributes set on the parent BagNode (mutable)
+2. **resolver._kw**: Default parameters set at resolver construction
+
+Passing kwargs at call time (`bag.get_item('path', x=10)`) is syntactic sugar
+for `set_attr(x=10)` followed by the read — the call updates node.attr so the
+cached value stays coherent with it. "Changing arguments = updating resolver
+state" (no transient overrides).
 
 ### Basic Example with BagCbResolver
 
@@ -32,22 +36,22 @@ When a resolver is called, parameters come from three sources (highest priority 
 >>> bag = Bag()
 >>> bag['calc'] = BagCbResolver(multiply, base=10, multiplier=2)
 >>>
->>> # Level 3: Uses resolver defaults (base=10, multiplier=2)
+>>> # Defaults: base=10, multiplier=2
 >>> bag['calc']
 20
 >>>
->>> # Level 2: Override via node attributes
+>>> # Update via node attributes
 >>> bag.set_attr('calc', multiplier=5)
 >>> bag['calc']
 50
 >>>
->>> # Level 1: Override via call_kwargs (highest priority)
+>>> # Pass kwargs at call time: updates node.attr and loads
 >>> bag.get_item('calc', multiplier=10)
 100
 >>>
->>> # Node attr is still there, used when no call_kwargs
+>>> # The update persists: node.attr now has multiplier=10
 >>> bag['calc']
-50
+100
 ```
 
 ### Query String Syntax in Path
@@ -104,16 +108,18 @@ node.get_value(**call_kwargs)
     v
 resolver(static=False, **call_kwargs)
     |
+    +--- if call_kwargs:
+    |       node.set_attr(**call_kwargs)   # write into node.attr
+    |
     v
 +------------------------------------------+
 | effective_kw = {}                         |
-| effective_kw.update(resolver._kw)     # 3 |
-| effective_kw.update(node.attr)        # 2 |
-| effective_kw.update(call_kwargs)      # 1 |
+| effective_kw.update(resolver._kw)     # 2 |
+| effective_kw.update(node.attr)        # 1 |  (node.attr now has the call_kwargs)
 +------------------------------------------+
     |
     v
-resolver.load()  # uses self._kw = effective_kw
+resolver.load()  # reads from self._kw (merged)
     |
     v
 result (cached if cache_time != 0)

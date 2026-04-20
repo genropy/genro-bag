@@ -114,18 +114,22 @@ The `_body` parameter:
 
 When multiple sources provide the same parameter:
 
-1. **Path syntax / call kwargs** (highest priority)
-2. **Node attributes** (`bag.set_attr('node', param=value)`)
-3. **Resolver defaults** (lowest priority)
+1. **Node attributes** (`bag.set_attr('node', param=value)`)
+2. **Resolver defaults** (lowest priority)
+
+Path syntax and call kwargs are **not a third source**: they are shortcuts for
+writing into node.attr before the read. So `bag.get_item('calc', factor=7)` is
+equivalent to `bag.set_attr('calc', factor=7); bag['calc']` — the update
+persists on the node. This keeps the cached value coherent with node.attr.
 
 ```python
 bag['calc'] = BagCbResolver(multiply, base=10, factor=2)  # defaults
 
 bag.set_attr('calc', factor=3)  # node attribute
+bag['calc']                     # 30 (uses node attr factor=3)
 
-bag['calc']                  # 30 (uses node attr factor=3)
-bag['calc?factor=5::L']      # 50 (path syntax overrides)
-bag.get_item('calc', factor=7)  # 70 (kwargs override)
+bag.get_item('calc', factor=7)  # 70; node.attr now has factor=7
+bag['calc']                     # 70 (state persists)
 ```
 
 ## Navigating Resolved Values

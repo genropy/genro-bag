@@ -133,8 +133,14 @@ class TestResolverCallKwargs:
         assert node.resolver(a=100) == 105  # 100 + 5
         assert node.resolver(a=100, b=200) == 300
 
-    def test_call_kwargs_temporary(self):
-        """call_kwargs don't persist - next call uses normal priority."""
+    def test_call_kwargs_update_state(self):
+        """call_kwargs update the resolver state permanently.
+
+        A standalone resolver (no parent_node) stores call_kwargs in _kw.
+        "Changing arguments = updating resolver state" — there is no
+        temporary override. The next call with no kwargs uses the updated
+        values, not the construction defaults.
+        """
 
         def somma(a, b):
             return a + b
@@ -143,7 +149,7 @@ class TestResolverCallKwargs:
 
         assert resolver() == 8
         assert resolver(a=100) == 105
-        assert resolver() == 8  # back to default
+        assert resolver() == 105  # state updated, a stays at 100
 
 
 class TestResolverCacheInvalidation:
@@ -198,8 +204,13 @@ class TestResolverCacheInvalidation:
         assert bag["data"] == 5
         assert call_count == 1  # no reload
 
-    def test_call_kwargs_bypass_cache_without_altering_it(self):
-        """call_kwargs bypass cache but don't alter the cached value."""
+    def test_call_kwargs_update_cached_state(self):
+        """call_kwargs update cached state and params coherently.
+
+        The invariant is "cached value coherent with current params": passing
+        call_kwargs updates both. A subsequent call with no kwargs sees the
+        updated state — it does not "restore" the previous cache.
+        """
         call_count = 0
 
         def counter(x):
@@ -215,20 +226,25 @@ class TestResolverCacheInvalidation:
         assert resolver() == 5
         assert call_count == 1  # cached
 
-        # Different call_kwargs - always loads, bypasses cache
+        # Different call_kwargs - updates state, runs load
         assert resolver(x=10) == 10
         assert call_count == 2
 
-        # Back to original - cache is still valid (not altered by call_kwargs)
-        assert resolver() == 5
-        assert call_count == 2  # no reload needed
+        # No kwargs now — state is x=10, cached value is 10
+        assert resolver() == 10
+        assert call_count == 2  # no reload, cache holds the coherent value
 
 
 class TestResolverParameterPriority:
     """Tests for parameter priority: call_kwargs > node.attr > resolver._kw"""
 
     def test_full_priority_chain(self):
-        """All three sources work with correct priority."""
+        """All three sources work: call_kwargs write into node.attr.
+
+        Priority at merge time is node.attr over resolver._kw defaults.
+        call_kwargs are no longer a third source — they update node.attr
+        (when attached) so subsequent calls keep seeing the new values.
+        """
 
         def show(a, b, c):
             return f"a={a},b={b},c={c}"
@@ -243,12 +259,15 @@ class TestResolverParameterPriority:
         bag.set_attr("test", a=10, b=20)
         assert bag["test"] == "a=10,b=20,c=3"
 
-        # call_kwargs override
+        # call_kwargs update node.attr coherently
         node = bag.get_node("test")
         assert node.resolver(a=100) == "a=100,b=20,c=3"
-        assert node.resolver(b=200) == "a=10,b=200,c=3"
-        assert node.resolver(c=300) == "a=10,b=20,c=300"
-        assert node.resolver(a=100, b=200, c=300) == "a=100,b=200,c=300"
+        # After the call, node.attr reflects the update
+        assert bag["test"] == "a=100,b=20,c=3"
+
+        assert node.resolver(b=200) == "a=100,b=200,c=3"
+        assert node.resolver(c=300) == "a=100,b=200,c=300"
+        assert node.resolver(a=1, b=2, c=3) == "a=1,b=2,c=3"
 
 
 class TestResolverInternalParams:
@@ -390,7 +409,11 @@ class TestResolverStandaloneVsAttached:
     """Tests for resolver behavior standalone vs attached to node."""
 
     def test_standalone_uses_only_defaults_and_call_kwargs(self):
-        """Standalone resolver uses _kw and call_kwargs only."""
+        """Standalone resolver state is updated by call_kwargs.
+
+        Without a parent_node, there is no node.attr. call_kwargs update
+        _kw directly and persist across calls.
+        """
 
         def show(a, b):
             return f"a={a},b={b}"
@@ -399,7 +422,8 @@ class TestResolverStandaloneVsAttached:
 
         assert resolver() == "a=1,b=2"
         assert resolver(a=10) == "a=10,b=2"
-        assert resolver(b=20) == "a=1,b=20"
+        # a=10 persists from the previous call; now b becomes 20 too
+        assert resolver(b=20) == "a=10,b=20"
 
     def test_attached_uses_node_attrs(self):
         """Attached resolver reads from node attrs."""
@@ -558,7 +582,7 @@ class TestGetItemWithKwargs:
     """Tests for get_item passing kwargs to resolver."""
 
     def test_get_item_passes_kwargs_to_resolver(self):
-        """get_item passes kwargs to resolver, overriding defaults."""
+        """get_item kwargs update node.attr and load with new state."""
 
         def somma(a, b):
             return a + b
@@ -569,13 +593,13 @@ class TestGetItemWithKwargs:
         # Default values
         assert bag.get_item("calc") == 8
 
-        # Override with get_item kwargs
+        # kwargs update state; a persists between calls
         assert bag.get_item("calc", a=10) == 15
-        assert bag.get_item("calc", b=20) == 23
+        assert bag.get_item("calc", b=20) == 30   # a still 10
         assert bag.get_item("calc", a=100, b=200) == 300
 
     def test_get_item_kwargs_override_node_attrs(self):
-        """get_item kwargs have priority over node attributes."""
+        """get_item kwargs update node attrs (coherent with the cached value)."""
 
         def somma(a, b):
             return a + b
@@ -587,13 +611,13 @@ class TestGetItemWithKwargs:
         bag.set_attr("calc", a=10, b=20)
         assert bag.get_item("calc") == 30
 
-        # get_item kwargs override node attrs
+        # kwargs update node.attr coherently
         assert bag.get_item("calc", a=100) == 120  # 100 + 20
-        assert bag.get_item("calc", b=200) == 210  # 10 + 200
-        assert bag.get_item("calc", a=100, b=200) == 300
+        assert bag.get_item("calc", b=200) == 300  # now 100 + 200
+        assert bag.get_item("calc", a=1, b=2) == 3
 
-    def test_get_item_kwargs_are_temporary(self):
-        """get_item kwargs don't persist."""
+    def test_get_item_kwargs_persist_in_node_attr(self):
+        """get_item kwargs persist: they write into node.attr."""
 
         def somma(a, b):
             return a + b
@@ -603,10 +627,12 @@ class TestGetItemWithKwargs:
 
         assert bag.get_item("calc") == 8
         assert bag.get_item("calc", a=100) == 105
-        assert bag.get_item("calc") == 8  # back to default
+        # a=100 was written into node.attr; next call reflects it
+        assert bag.get_item("calc") == 105
+        assert bag.get_node("calc").attr.get("a") == 100
 
     def test_get_item_with_nested_path_and_kwargs(self):
-        """get_item works with nested paths and kwargs."""
+        """get_item kwargs update the nested node's attrs."""
 
         def multiply(x, y):
             return x * y
@@ -618,8 +644,9 @@ class TestGetItemWithKwargs:
 
         # Access through nested path
         assert bag.get_item("nested.mult") == 6
-        assert bag.get_item("nested.mult", x=10) == 30
-        assert bag.get_item("nested.mult", y=10) == 20
+        assert bag.get_item("nested.mult", x=10) == 30  # x=10, y=3
+        # x=10 persists from the previous call
+        assert bag.get_item("nested.mult", y=10) == 100  # x=10, y=10
         assert bag.get_item("nested.mult", x=10, y=10) == 100
 
     def test_bag_get_with_kwargs(self):
@@ -650,8 +677,8 @@ class TestGetItemWithKwargs:
         assert node.get_value(a=10) == 15
         assert node.get_value(a=10, b=20) == 30
 
-    def test_get_item_kwargs_with_cache(self):
-        """get_item kwargs bypass cache without altering it."""
+    def test_get_item_kwargs_update_cached_state(self):
+        """get_item kwargs update both node.attr and the cached value."""
         call_count = 0
 
         def counter(x):
@@ -669,10 +696,10 @@ class TestGetItemWithKwargs:
         assert bag.get_item("data") == 5
         assert call_count == 1
 
-        # Different params via get_item - always loads
+        # Different params: state update + load
         assert bag.get_item("data", x=10) == 10
         assert call_count == 2
 
-        # Back to original - cache still valid (not altered by call_kwargs)
-        assert bag.get_item("data") == 5
-        assert call_count == 2  # no reload needed
+        # State is now x=10 and cached value is 10
+        assert bag.get_item("data") == 10
+        assert call_count == 2  # no reload: cache holds the coherent value

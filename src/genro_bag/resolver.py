@@ -14,8 +14,12 @@ Key Concepts:
 Caching Semantics:
     - cache_time = 0      -> NO cache, load() called ALWAYS
     - cache_time > 0      -> passive cache for N seconds (TTL, reload on next access)
-    - cache_time < 0      -> active cache, background refresh every abs(N) seconds (async only)
-    - cache_time = False   -> INFINITE cache (until manual reset())
+    - cache_time = False  -> INFINITE cache (until manual reset())
+
+Active triggers (async only):
+    - interval = N        -> timer-driven refresh every N seconds
+    - reactive = True     -> auto-refresh when a non-internal param changes
+    - reset(refresh=True) -> explicit eager refresh + notify subscribers
 
 Retry Policy:
     - retry_policy = None -> NO retry (default)
@@ -95,20 +99,21 @@ class BagResolver:
     configurable duration.
 
     Parameter Flow:
-        Parameters can come from three sources, with priority (highest first):
-        1. call_kwargs: passed to get_item()/get_value() at call time
-        2. node.attr: attributes on the parent BagNode
-        3. resolver._kw: default parameters set at resolver construction
+        Parameters come from two sources, with priority (highest first):
+        1. node.attr: attributes on the parent BagNode (mutable)
+        2. resolver._kw: defaults set at resolver construction
 
-        The resolver merges these into effective_kw before calling load().
-        Cache is invalidated when effective parameters change.
+        Passing kwargs to the call (get_item/get_value) is syntactic sugar
+        for set_attr(**kwargs) followed by the read: changing arguments is
+        modelled as "updating the resolver state", not as a transient
+        override. This preserves the invariant that a cached value is always
+        coherent with the current node.attr.
 
         Example flow:
-            bag.get_item('data', x=10)  # call_kwargs: x=10
-                -> node.get_value(x=10)
-                    -> resolver(x=10)
-                        -> effective_kw = {**resolver._kw, **node.attr, x: 10}
-                        -> load() uses self._kw (which is effective_kw)
+            bag.get_item('data', x=10)
+                ≡ bag.set_attr('data', x=10); bag['data']
+                -> merge node.attr (x=10) with resolver._kw (defaults)
+                -> load(); cache + node.attr stay coherent
 
     read_only Mode:
         - read_only=True: Each call invokes load(). Result is NOT stored in
@@ -117,10 +122,18 @@ class BagResolver:
           Good for expensive operations.
         NOTE: If cache_time != 0, read_only is forced to False.
 
+    Reactive Mode:
+        - reactive=True: When a non-internal param changes via set_attr, the
+          resolver schedules a coalesced refresh at the next event loop tick
+          (emits update event). Enables dataflow cascades.
+        - Requires async context at trigger time. Incompatible with read_only.
+
     Class Attributes:
         class_kwargs: dict of {param_name: default_value}
             Parameters with defaults, passable as keyword args.
-            - 'cache_time': 0 = no cache, >0 = passive TTL, <0 = active cache (async only), False = infinite
+            - 'cache_time': 0 = no cache, >0 = passive TTL, False = infinite
+            - 'interval': None = passive, N>0 = background refresh every N s
+            - 'reactive': False = lazy, True = push-refresh on param change
             - 'read_only': if True, value is NOT saved in node._value
             - 'retry_policy': retry config or preset name ('network', 'aggressive')
 
@@ -128,15 +141,15 @@ class BagResolver:
             Required parameters, passable as positional args.
 
         internal_params: set of parameter names that are internal
-            These parameters (cache_time, read_only, retry_policy) are NOT
-            read from node.attr during parameter merging. They control
-            resolver behavior, not computation parameters.
+            These parameters (cache_time, interval, reactive, read_only,
+            retry_policy, as_bag) are NOT read from node.attr during merging
+            and do NOT trigger reactive refresh. They control resolver
+            behavior, not computation.
 
     Example:
         class CalcResolver(BagResolver):
             class_kwargs = {'cache_time': 60, 'multiplier': 2}
             class_args = ['base']
-            internal_params = {'cache_time', 'read_only', 'retry_policy'}
 
             def load(self):
                 return self._kw['base'] * self._kw['multiplier']
@@ -144,7 +157,7 @@ class BagResolver:
         bag['calc'] = CalcResolver(10, multiplier=3)  # base=10, multiplier=3
         bag['calc']  # -> 30 (uses resolver defaults)
 
-        bag.set_attr('calc', multiplier=5)  # override via node attr
+        bag.set_attr('calc', multiplier=5)  # update via node attr
         bag['calc']  # -> 50 (reads multiplier from node.attr)
 
         bag.get_item('calc', multiplier=7)  # override via call_kwargs
@@ -154,12 +167,15 @@ class BagResolver:
     class_kwargs: dict[str, Any] = {
         "cache_time": 0,
         "interval": None,
+        "reactive": False,
         "read_only": False,
         "retry_policy": None,
         "as_bag": None,
     }
     class_args: list[str] = []
-    internal_params: set[str] = {"cache_time", "interval", "read_only", "retry_policy", "as_bag"}
+    internal_params: set[str] = {
+        "cache_time", "interval", "reactive", "read_only", "retry_policy", "as_bag",
+    }
 
     __slots__ = (
         "_kw",  # dict: all parameters from class_kwargs/class_args
@@ -169,6 +185,8 @@ class BagResolver:
         "_cache_last_update",  # datetime | None: last load() timestamp
         "_cached_value",  # Any: cached result when standalone (no parent node)
         "_timer_id",  # str | None: smarttimer ID for active cache
+        "_refresh_pending",  # bool: a refresh is scheduled for next tick
+        "_refresh_running",  # bool: a refresh is currently executing
     )
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
@@ -192,6 +210,10 @@ class BagResolver:
         self._cache_last_update: datetime | None = None
         self._cached_value: Any = None
         self._timer_id: str | None = None
+
+        # Refresh coalescing state (used by reset(refresh=True))
+        self._refresh_pending: bool = False
+        self._refresh_running: bool = False
 
         # Build _kw dict from class_args and class_kwargs
         self._kw: dict[str, Any] = {}
@@ -226,6 +248,14 @@ class BagResolver:
                 "refresh writes the value to the node for subscribers to observe, "
                 "but read_only prevents that write. Use read_only=False or "
                 "drop the interval."
+            )
+
+        if self._kw.get("reactive") and self._init_kwargs.get("read_only") is True:
+            raise ValueError(
+                "read_only=True is incompatible with reactive=True: the "
+                "reactive refresh writes the value to the node for subscribers "
+                "to observe, but read_only prevents that write. Use read_only=False "
+                "or drop reactive."
             )
 
         # Hook for subclasses
@@ -312,6 +342,36 @@ class BagResolver:
             self._start_interval()
 
     # =========================================================================
+    # REACTIVE PROPERTY (mutable)
+    # =========================================================================
+
+    @property
+    def reactive(self) -> bool:
+        """Whether the resolver auto-refreshes on parameter change.
+
+        When True, any set_attr on the parent node that changes a domain
+        parameter (non-internal) triggers reset(refresh=True) instead of the
+        default lazy reset(). Reactive refreshes are coalesced to the next
+        event loop tick: multiple param changes in the same sync turn cause
+        at most one load.
+        """
+        return bool(self._kw.get("reactive"))
+
+    @reactive.setter
+    def reactive(self, value: bool) -> None:
+        """Toggle reactive behavior after construction.
+
+        Rejects the read_only + reactive combination as at construction.
+        """
+        if value and self._init_kwargs.get("read_only") is True:
+            raise ValueError(
+                "read_only=True is incompatible with reactive=True: the "
+                "reactive refresh writes the value to the node for subscribers "
+                "to observe, but read_only prevents that write."
+            )
+        self._kw["reactive"] = bool(value)
+
+    # =========================================================================
     # READ ONLY PROPERTY
     # =========================================================================
 
@@ -320,12 +380,12 @@ class BagResolver:
         """Whether resolver is in read-only mode.
 
         If True, the resolved value is NOT stored in node._value.
-        If not explicitly passed, derived from cache_time and interval:
-        no cache and no interval → read_only=True, otherwise read_only=False.
+        If not explicitly passed, derived from cache_time, interval, reactive:
+        no cache and no active trigger → read_only=True, otherwise read_only=False.
         """
         if "read_only" in self._init_kwargs:
             return self._init_kwargs["read_only"]  # type: ignore[no-any-return]
-        if self._kw.get("interval") is not None:
+        if self._kw.get("interval") is not None or self._kw.get("reactive"):
             return False
         return self.cache_time is not False and self.cache_time == 0
 
@@ -350,15 +410,80 @@ class BagResolver:
     # CACHE MANAGEMENT
     # =========================================================================
 
-    def reset(self) -> None:
-        """Invalidate cache, forcing reload on next call.
+    def reset(self, refresh: bool = False) -> None:
+        """Invalidate the cache, optionally forcing an immediate refresh.
 
-        If interval timer is running, restarts it.
+        Args:
+            refresh: If False (default) just invalidate — next pull reloads
+                silently (passive, lazy). If True, invalidate AND schedule an
+                immediate reload that writes the new value through the node
+                mutation channel, firing an update event for subscribers
+                (active, push).
+
+        Coalescing:
+            refresh=True schedules the reload for the next event loop tick.
+            If a refresh is already pending or running, subsequent calls are
+            collapsed: at most one load runs per burst of triggers.
+
+        Raises:
+            ValueError: refresh=True on a read_only resolver (nowhere to emit).
+            RuntimeError: refresh=True outside an async context.
         """
         self._cache_last_update = None
         if self._timer_id is not None:
             self._stop_interval()
             self._start_interval()
+
+        if not refresh:
+            return
+
+        if self.read_only:
+            raise ValueError(
+                "reset(refresh=True) is incompatible with read_only=True: "
+                "the refresh writes the value to the node for subscribers to "
+                "observe, but read_only prevents that write."
+            )
+        if not is_async_context():
+            raise RuntimeError(
+                "reset(refresh=True) requires an async context. "
+                "Reactive/push refresh relies on the event loop to coalesce "
+                "triggers and schedule the reload."
+            )
+        if self._refresh_pending or self._refresh_running:
+            return
+        self._refresh_pending = True
+        loop = asyncio.get_running_loop()
+        loop.call_soon(self._schedule_refresh)
+
+    def _schedule_refresh(self) -> None:
+        """Create the refresh task from the next-tick callback."""
+        asyncio.ensure_future(self._do_refresh())
+
+    async def _do_refresh(self) -> None:
+        """Execute a coalesced refresh: load + notify via mutation channel.
+
+        Runs in async context (scheduled by reset(refresh=True)). Clears the
+        pending flag at entry so a new trigger can schedule a follow-up
+        refresh after this one completes, but the running flag blocks
+        overlapping loads (simple policy — a trigger while running is dropped,
+        the next param change will reschedule).
+
+        Updates self._kw with the merged effective params so load/async_load
+        see the current node.attr values ("changing arguments = updating
+        resolver state"). No restore: the new params are the new state.
+        """
+        self._refresh_pending = False
+        self._refresh_running = True
+        try:
+            with contextlib.suppress(Exception):
+                self._kw = self._build_effective_kw()
+                if self.is_async:
+                    result = await self.async_load()
+                else:
+                    result = await asyncio.to_thread(self.load)
+                self._finalize_result_and_notify(result)
+        finally:
+            self._refresh_running = False
 
     # =========================================================================
     # INTERVAL (background refresh via set_interval)
@@ -397,28 +522,16 @@ class BagResolver:
             self._timer_id = None
 
     async def _background_load(self) -> None:
-        """Execute load in background and propagate the result.
+        """Execute a timer-driven refresh.
 
-        Always runs in async context (interval requires an event loop).
-        Writes the result via the node mutation channel so subscribers
-        receive an update event (active trigger semantics, distinct from
-        the silent pull path).
-
-        Bypasses cache check (always reloads) but does the full parameter
-        merge (resolver._kw + node.attr) like __call__.
+        Wrapper kept for backward compatibility and as the set_interval
+        callback. Delegates to _do_refresh, which implements the full
+        coalesced active-trigger path. Each interval tick runs one refresh;
+        overlapping ticks are suppressed by the _refresh_running flag.
         """
-        with contextlib.suppress(Exception):
-            effective_kw = self._build_effective_kw()
-            original_kw = self._kw
-            self._kw = effective_kw
-            try:
-                if self.is_async:
-                    result = await self.async_load()
-                else:
-                    result = await asyncio.to_thread(self.load)
-            finally:
-                self._kw = original_kw
-            self._finalize_result_and_notify(result)
+        if self._refresh_running:
+            return
+        await self._do_refresh()
 
     @property
     def expired(self) -> bool:
@@ -455,20 +568,25 @@ class BagResolver:
 
         Args:
             static: If True, return cached value without triggering load.
-            **call_kwargs: Override parameters for this call only.
+            **call_kwargs: Parameters for this call. They update node.attr
+                (or resolver._kw for standalone resolvers) — "changing
+                arguments = updating resolver state". No temporary overrides.
 
         Returns:
             The resolved value, or a coroutine if in async context.
 
-        Parameter Priority (highest to lowest):
-            1. call_kwargs: Parameters passed to this call
-            2. node.attr: Attributes on the parent node (if attached)
-            3. resolver._kw: Default parameters set at construction
+        Semantic rule:
+            node.attr is the current input of the resolver. When cached,
+            node._value is coherent with node.attr. Passing kwargs updates
+            node.attr (visible to subscribers via upd_attrs) and then runs
+            the normal pull path — so the new cached value is coherent with
+            the new attributes.
 
-        Cache Invalidation:
-            Cache is invalidated by set_attr on the parent node when a
-            resolver parameter changes, or by cache expiration (TTL).
-            When call_kwargs are provided, cache is always bypassed.
+            Standalone resolvers (no parent_node) update self._kw directly.
+
+        Parameter Priority (highest to lowest at merge time):
+            1. node.attr: Attributes on the parent node (if attached)
+            2. resolver._kw: Defaults from construction
         """
         if static:
             return self.cached_value
@@ -477,17 +595,16 @@ class BagResolver:
         if self._kw.get("interval") is not None and self.cached_value is not None:
             return self.cached_value
 
-        # With call_kwargs: always load, bypass cache without altering it
+        # call_kwargs update the resolver state before the load. When attached,
+        # they go through node.attr (emitting upd_attrs and, when reactive,
+        # scheduling the refresh via the existing set_attr hook). Standalone
+        # resolvers update _kw directly since there is no node.
         if call_kwargs:
-            effective_kw = self._build_effective_kw()
-            effective_kw.update(call_kwargs)
-            saved_cache = self.cached_value
-            saved_time = self._cache_last_update
-            try:
-                return self._load_with_kw(effective_kw)
-            finally:
-                self.cached_value = saved_cache
-                self._cache_last_update = saved_time
+            if self._parent_node is not None:
+                self._parent_node.set_attr(**call_kwargs)
+            else:
+                self._kw.update(call_kwargs)
+                self._cache_last_update = None
 
         # Without call_kwargs: use cache if valid
         if not self.read_only and not self.expired:
@@ -506,13 +623,15 @@ class BagResolver:
         return effective_kw
 
     def _load_with_kw(self, effective_kw: dict[str, Any]) -> Any:
-        """Execute load with the given effective parameters."""
-        original_kw = self._kw
+        """Execute load with the given effective parameters.
+
+        Assigns effective_kw to self._kw permanently: changing arguments is
+        modelled as "updating the resolver state", not as a transient swap.
+        This avoids a subtle async bug where a try/finally restore runs
+        before the awaited load actually reads self._kw.
+        """
         self._kw = effective_kw
-        try:
-            return self._dispatch_load()
-        finally:
-            self._kw = original_kw
+        return self._dispatch_load()
 
     def _dispatch_load(self) -> Any:
         """Dispatch to correct load method based on sync/async context."""
