@@ -56,7 +56,12 @@ class BagPopulate:
         - bytes: Decoded to str, then detected as XML or JSON
         - Path: Load from file
 
-        Existing nodes are cleared first (except when source is None).
+        Atomic semantics (issue #44):
+            The new content is built into an offline orphan Bag first; the
+            node containers are then swapped atomically. If the source fails
+            to parse, self stays unchanged — never partially populated. When
+            self is attached with backref, observers see a single upd_value
+            event with oldvalue = orphan Bag carrying the previous content.
 
         Args:
             source: Data source.
@@ -67,42 +72,92 @@ class BagPopulate:
         """
         if source is None:
             return self
+
+        # 1. Build the new content offline in an orphan Bag (no events emitted
+        #    since the new bag has no parent and no backref).
+        new_bag = self.__class__()
+        self._populate_into(new_bag, source, transport=transport)
+
+        # 2. Orphan the current nodes: detach them from self before the swap.
+        #    BagNode.orphaned() clears _parent_bag and recursively clear_backref
+        #    on any nested Bag value — mirrors the JS legacy helper.
+        for node in list(self._nodes):
+            node.orphaned()
+
+        # 3. Swap the containers atomically.
+        old_nodes = self._nodes
+        self._nodes = new_bag._nodes
+        new_bag._nodes = old_nodes
+
+        # 4. Adopt the new nodes through the parent_bag setter, which
+        #    propagates set_backref recursively to nested Bag values when
+        #    self has backref. For orphan self this is a plain re-pointer.
+        for node in self._nodes:
+            node.parent_bag = self
+
+        # 5. Place the old nodes inside new_bag as a navigable snapshot.
+        #    new_bag is orphan (no backref, no parent), so assigning directly
+        #    to _parent_bag is enough and avoids firing any event.
+        for node in new_bag._nodes:
+            node._parent_bag = new_bag
+
+        # 6. Emit a single atomic upd_value event on the parent when attached.
+        if self.backref and self.parent is not None and self.parent_node is not None:
+            self.parent._on_node_changed(
+                self.parent_node,
+                [self.parent_node.label],
+                evt="upd_value",
+                oldvalue=new_bag,
+            )
+
+        return self
+
+    def _populate_into(
+        self, target: Bag, source: Any, transport: str | None = None
+    ) -> None:
+        """Dispatch source decoding and populate target in place.
+
+        Target can be self (default populate path) or an offline orphan Bag
+        (atomic fill_from path): the helpers that actually write nodes
+        operate on `target`, leaving self untouched.
+        """
         if safe_is_instance(source, _IS_BAG):
-            self._fill_from_bag(source)
+            self._fill_from_bag(source, target)
         elif isinstance(source, dict):
-            self._fill_from_dict(source)
+            self._fill_from_dict(source, target)
         elif isinstance(source, list):
-            self._fill_from_list(source)
+            self._fill_from_list(source, target)
         elif isinstance(source, bytes):
-            self.fill_from(source.decode("utf-8").strip())
+            self._populate_into(target, source.decode("utf-8").strip(), transport)
         elif isinstance(source, Path):
-            self._fill_from_file(str(source), transport=transport)
+            self._fill_from_file(str(source), target, transport=transport)
         elif isinstance(source, str):
             stripped = source.strip()
             if stripped.startswith("<"):
                 loaded = self.__class__.from_xml(stripped)
-                self._fill_from_bag(loaded)
+                self._fill_from_bag(loaded, target)
             elif stripped.startswith("{") or stripped.startswith("["):
                 loaded = self.__class__.from_json(stripped)
-                self._fill_from_bag(loaded)
+                self._fill_from_bag(loaded, target)
             else:
-                self._fill_from_file(source, transport=transport)
+                self._fill_from_file(source, target, transport=transport)
         else:
             raise TypeError(
                 f"fill_from: unsupported source type {type(source).__name__}"
             )
-        return self
 
-    def _fill_from_list(self, data: list) -> None:
-        """Populate bag from a list. Items become numbered nodes."""
-        self.clear()
+    def _fill_from_list(self, data: list, target: Bag) -> None:
+        """Populate target from a list. Items become numbered nodes."""
+        target.clear()
         for i, item in enumerate(data):
             if isinstance(item, dict):
                 item = self.__class__(item)
-            self.set_item(str(i), item)
+            target.set_item(str(i), item)
 
-    def _fill_from_file(self, path: str, transport: str | None = None) -> None:
-        """Load bag contents from a file.
+    def _fill_from_file(
+        self, path: str, target: Bag, transport: str | None = None
+    ) -> None:
+        """Load bag contents from a file into target.
 
         Detects transport from file extension (unless transport is specified):
         - .bag.json: TYTX JSON format
@@ -111,6 +166,7 @@ class BagPopulate:
 
         Args:
             path: Path to the file to load.
+            target: Bag to populate.
             transport: Force transport ('xml', 'json', 'msgpack'). If None, detect from extension.
 
         Raises:
@@ -139,50 +195,55 @@ class BagPopulate:
             with open(path, encoding="utf-8") as f:
                 data = f.read()
             loaded = cls.from_tytx(data, transport="json")
-            self._fill_from_bag(loaded)
+            self._fill_from_bag(loaded, target)
 
         elif transport == "msgpack":
             with open(path, "rb") as f:
                 data_bytes = f.read()
             loaded = cls.from_tytx(data_bytes, transport="msgpack")
-            self._fill_from_bag(loaded)
+            self._fill_from_bag(loaded, target)
 
         elif transport == "xml":
             with open(path, encoding="utf-8") as f:
                 data = f.read()
             loaded = cls.from_xml(data)
-            self._fill_from_bag(loaded)
+            self._fill_from_bag(loaded, target)
 
-    def _fill_from_bag(self, other: Bag) -> None:
-        """Copy nodes from another Bag.
+    def _fill_from_bag(self, other: Bag, target: Bag) -> None:
+        """Copy nodes from another Bag into target.
 
-        Clears current contents and copies all nodes from the source Bag.
+        Clears target's current contents first and copies all nodes from the
+        source Bag.
 
         Args:
             other: Source Bag to copy from.
+            target: Bag to populate.
         """
-        self.clear()
+        target.clear()
         for node in other:
             # Deep copy the value if it's a Bag
             value = node.value
             if safe_is_instance(value, _IS_BAG):
                 value = value.deepcopy()
-            self.set_item(node.label, value, **dict(node.attr))
+            target.set_item(node.label, value, **dict(node.attr))
 
-    def _fill_from_dict(self, data: dict[str, Any]) -> None:
-        """Populate bag from a dictionary.
+    def _fill_from_dict(
+        self, data: dict[str, Any], target: Bag
+    ) -> None:
+        """Populate target from a dictionary.
 
-        Clears current contents and creates nodes from dict items.
+        Clears target's current contents first and creates nodes from dict items.
         Nested dicts are converted to nested Bags.
 
         Args:
             data: Dict where keys become labels and values become node values.
+            target: Bag to populate.
         """
-        self.clear()
+        target.clear()
         for key, value in data.items():
             if isinstance(value, dict):
                 value = self.__class__(value)
-            self.set_item(key, value)
+            target.set_item(key, value)
 
     # -------------------- class methods --------------------------------
 

@@ -173,6 +173,26 @@ class BagNode:
             if hasattr(self._value, "_htraverse") and parent_bag.backref:
                 self._value.set_backref(node=self, parent=parent_bag)
 
+    def orphaned(self) -> BagNode:
+        """Detach this node from its parent bag, clearing backref recursively.
+
+        Mirrors the legacy JS BagNode.orphaned() helper:
+        - clears _parent_bag (no back-pointer to the previous parent)
+        - if the node's value is a Bag, clears backref on the whole subtree
+          so nested events no longer bubble upward through the old tree
+
+        Use when a node is being moved out of its container (e.g. during
+        fill_from swap) and must not keep residual references to its former
+        parent.
+
+        Returns:
+            Self, for chaining.
+        """
+        self._parent_bag = None
+        if hasattr(self._value, "_htraverse"):
+            self._value.clear_backref()
+        return self
+
     @property
     def _(self) -> Bag:
         """Return parent Bag for navigation/chaining.
