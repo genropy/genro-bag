@@ -39,12 +39,13 @@ Async Usage with Resolvers:
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from typing import Any
 
 from genro_toolbox import smartcontinuation
 
-from genro_bag.bag._events import BagEvents
+from genro_bag.bag._events import BagEvents, _current_transaction
 from genro_bag.bag._exceptions import BagException  # noqa: F401 — re-export
 from genro_bag.bag._parse import BagParser
 from genro_bag.bag._populate import BagPopulate
@@ -108,10 +109,44 @@ class Bag(BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer
         self._ins_subscribers: dict = {}
         self._del_subscribers: dict = {}
         self._tmr_subscribers: dict = {}
+        self._txn_subscribers: dict = {}
         self._root_attributes: dict | None = None
 
         if source:
             self.fill_from(source)
+
+    # -------------------- transaction --------------------------------
+
+    @contextmanager
+    def transaction(self) -> Iterator[Bag]:
+        """Group mutations into a single coalesced event.
+
+        Inside the ``with`` block, granular subscribers (update/insert/delete
+        and ``any``) are silenced: mutations are accumulated into a list on
+        a module-level ContextVar. On exit, subscribers registered with
+        ``subscribe(transaction=...)`` receive the ordered list.
+
+        Each ``with`` (including nested ones) has its own list and emits
+        its own event on exit; no propagation to an outer ``with``.
+
+        If the body raises, no transaction event is emitted at this level;
+        mutations already applied remain (no rollback).
+
+        Yields:
+            This bag itself, so ``as tx`` binds to it. Writing directly on
+            the bag inside the block is equivalent to writing via ``tx``.
+        """
+        mutations: list = []
+        token = _current_transaction.set(mutations)
+        completed = False
+        try:
+            yield self
+            completed = True
+        finally:
+            _current_transaction.reset(token)
+            if completed and mutations:
+                for sub in list(self._txn_subscribers.values()):
+                    sub(bag=self, mutations=mutations)
 
     # -------------------- properties --------------------------------
 

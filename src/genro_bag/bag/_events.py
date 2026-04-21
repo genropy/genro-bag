@@ -8,12 +8,18 @@ that propagate changes up the parent hierarchy.
 
 from __future__ import annotations
 
+from contextvars import ContextVar
 from typing import TYPE_CHECKING, Any
 
 from genro_toolbox import cancel_timer, set_interval
 
 if TYPE_CHECKING:
     from genro_bag.bagnode import BagNode
+
+
+_current_transaction: ContextVar[list | None] = ContextVar(
+    "genro_bag_current_transaction", default=None
+)
 
 
 class BagEvents:
@@ -27,6 +33,7 @@ class BagEvents:
     _ins_subscribers: dict
     _del_subscribers: dict
     _tmr_subscribers: dict
+    _txn_subscribers: dict
     parent: Any
     parent_node: Any
     backref: Any
@@ -46,8 +53,15 @@ class BagEvents:
     ) -> None:
         """Trigger for node change events.
 
-        Propagates to parent unless a subscriber returns False.
+        Inside an active transaction, appends the mutation to the current
+        list and returns (no subscriber dispatch, no parent bubble).
+        Otherwise, dispatches to local subscribers and propagates to parent
+        unless a subscriber returns False.
         """
+        txn = _current_transaction.get()
+        if txn is not None:
+            txn.append(("upd", node, pathlist, evt, oldvalue, reason))
+            return
         for s in list(self._upd_subscribers.values()):
             if s(node=node, pathlist=pathlist, oldvalue=oldvalue, evt=evt, reason=reason) is False:
                 return
@@ -61,7 +75,10 @@ class BagEvents:
     ) -> None:
         """Trigger for node insert events.
 
-        Propagates to parent unless a subscriber returns False.
+        Inside an active transaction, appends the mutation to the current
+        list and returns (no subscriber dispatch, no parent bubble).
+        Otherwise, dispatches to local subscribers and propagates to parent
+        unless a subscriber returns False.
         """
         parent = node.parent_bag
         value = node._value
@@ -70,6 +87,10 @@ class BagEvents:
 
         if pathlist is None:
             pathlist = []
+        txn = _current_transaction.get()
+        if txn is not None:
+            txn.append(("ins", node, pathlist, ind, reason))
+            return
         for s in list(self._ins_subscribers.values()):
             if s(node=node, pathlist=pathlist, ind=ind, evt="ins", reason=reason) is False:
                 return
@@ -83,8 +104,15 @@ class BagEvents:
     ) -> None:
         """Trigger for node delete events.
 
-        Propagates to parent unless a subscriber returns False.
+        Inside an active transaction, appends the mutation to the current
+        list and returns (no subscriber dispatch, no parent bubble).
+        Otherwise, dispatches to local subscribers and propagates to parent
+        unless a subscriber returns False.
         """
+        txn = _current_transaction.get()
+        if txn is not None:
+            txn.append(("del", node, pathlist if pathlist is not None else [], ind, reason))
+            return
         for s in list(self._del_subscribers.values()):
             if s(node=node, pathlist=pathlist, ind=ind, evt="del", reason=reason) is False:
                 return
@@ -133,6 +161,7 @@ class BagEvents:
         timer: Any = None,
         interval: float | None = None,
         any: Any = None,
+        transaction: Any = None,
     ) -> None:
         """Subscribe a callback to bag events.
 
@@ -143,7 +172,9 @@ class BagEvents:
             delete: Callback for delete events.
             timer: Callback for timer events (requires interval).
             interval: Seconds between timer ticks (required if timer is set).
-            any: Callback for update, insert, and delete events (not timer).
+            any: Callback for update, insert, and delete events (not timer/transaction).
+            transaction: Callback for transaction events (separate category,
+                not covered by ``any``). Receives ``bag=<bag>, mutations=<list>``.
 
         Raises:
             ValueError: If timer is set without interval.
@@ -153,6 +184,7 @@ class BagEvents:
         self._subscribe(subscriber_id, self._upd_subscribers, update or any)
         self._subscribe(subscriber_id, self._ins_subscribers, insert or any)
         self._subscribe(subscriber_id, self._del_subscribers, delete or any)
+        self._subscribe(subscriber_id, self._txn_subscribers, transaction)
 
         if timer is not None:
             if interval is None:
@@ -172,6 +204,7 @@ class BagEvents:
         delete: bool = False,
         timer: bool = False,
         any: bool = False,
+        transaction: bool = False,
     ) -> None:
         """Remove a subscription.
 
@@ -181,7 +214,9 @@ class BagEvents:
             insert: Remove insert subscription.
             delete: Remove delete subscription.
             timer: Remove timer subscription.
-            any: Remove all subscriptions (including timer).
+            any: Remove update/insert/delete/timer subscriptions
+                (does not cover ``transaction``, which is a separate category).
+            transaction: Remove transaction subscription.
         """
         if update or any:
             self._upd_subscribers.pop(subscriber_id, None)
@@ -193,3 +228,5 @@ class BagEvents:
             entry = self._tmr_subscribers.pop(subscriber_id, None)
             if entry:
                 cancel_timer(entry["timer_id"])
+        if transaction:
+            self._txn_subscribers.pop(subscriber_id, None)
