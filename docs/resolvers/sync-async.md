@@ -28,7 +28,7 @@ class SimpleTextReader(BagResolver):
     class_args = ['path']
 
     def load(self):
-        with open(self._kw['path']) as f:
+        with open(self.kw['path']) as f:
             return f.read()
 ```
 
@@ -46,7 +46,7 @@ class ApiResolver(BagResolver):
 
     async def async_load(self):
         async with httpx.AsyncClient() as client:
-            response = await client.get(self._kw['url'])
+            response = await client.get(self.kw['url'])
             return response.json()
 ```
 
@@ -126,7 +126,7 @@ class WeatherResolver(BagResolver):
     class_kwargs = {'cache_time': 600}  # Cache for 10 minutes
 
     async def async_load(self):
-        url = f'https://api.weather.com/{self._kw["city"]}'
+        url = f'https://api.weather.com/{self.kw["city"]}'
         async with httpx.AsyncClient() as client:
             response = await client.get(url)
             return response.json()

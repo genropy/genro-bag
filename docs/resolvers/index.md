@@ -117,7 +117,7 @@ class DatabaseResolver(BagResolver):
     class_kwargs = {'connection': None, 'cache_time': 60}
 
     def load(self):
-        return self._kw['connection'].execute(self._kw['query'])
+        return self.kw['connection'].execute(self.kw['query'])
 ```
 
 → [Custom Resolvers](custom.md)

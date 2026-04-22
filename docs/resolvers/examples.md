@@ -119,7 +119,7 @@ resolver(static=False, **call_kwargs)
 +------------------------------------------+
     |
     v
-resolver.load()  # reads from self._kw (merged)
+resolver.load()  # reads from self.kw (on_loading applied to merged self._kw)
     |
     v
 result (cached if cache_time != 0)
