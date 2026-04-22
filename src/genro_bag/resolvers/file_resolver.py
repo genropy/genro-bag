@@ -69,9 +69,9 @@ class FileResolver(BagResolver):
 
     def _resolve_path(self) -> str:
         """Resolve file path, applying base_path for relative paths."""
-        path: str = self._kw["path"]
+        path: str = self.kw["path"]
         if not os.path.isabs(path):
-            base: str = self._kw.get("base_path") or os.getcwd()
+            base: str = self.kw.get("base_path") or os.getcwd()
             path = os.path.join(base, path)
         return path
 
@@ -90,18 +90,18 @@ class FileResolver(BagResolver):
 
     def _load_json(self, path: str) -> Any:
         """Parse JSON file. Result type depends on content and as_bag."""
-        encoding = self._kw.get("encoding", "utf-8")
+        encoding = self.kw.get("encoding", "utf-8")
         with open(path, encoding=encoding) as f:
             raw = f.read()
-        if self._kw.get("as_bag"):
+        if self.kw.get("as_bag"):
             return Bag.from_json(raw)
         return json.loads(raw)
 
     def _load_csv(self, path: str) -> Bag:
         """Parse CSV file, return Bag of records."""
-        encoding = self._kw.get("encoding", "utf-8")
-        delimiter = self._kw.get("csv_delimiter", ",")
-        has_header = self._kw.get("csv_has_header", True)
+        encoding = self.kw.get("encoding", "utf-8")
+        delimiter = self.kw.get("csv_delimiter", ",")
+        has_header = self.kw.get("csv_has_header", True)
         result = Bag()
         with open(path, encoding=encoding, newline="") as f:
             reader = csv.reader(f, delimiter=delimiter)
@@ -121,7 +121,7 @@ class FileResolver(BagResolver):
 
     def _load_text(self, path: str) -> str:
         """Load file as text string."""
-        encoding = self._kw.get("encoding", "utf-8")
+        encoding = self.kw.get("encoding", "utf-8")
         with open(path, encoding=encoding) as f:
             return f.read()
 

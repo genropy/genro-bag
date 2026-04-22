@@ -152,7 +152,7 @@ class BagResolver:
             class_args = ['base']
 
             def load(self):
-                return self._kw['base'] * self._kw['multiplier']
+                return self.kw['base'] * self.kw['multiplier']
 
         bag['calc'] = CalcResolver(10, multiplier=3)  # base=10, multiplier=3
         bag['calc']  # -> 30 (uses resolver defaults)
@@ -340,6 +340,20 @@ class BagResolver:
         self._stop_interval()
         if value is not None and self._parent_node is not None:
             self._start_interval()
+
+    # =========================================================================
+    # KW PROPERTY (transformed kwargs for load)
+    # =========================================================================
+
+    @property
+    def kw(self) -> dict[str, Any]:
+        """Pre-processed kwargs, result of on_loading(self._kw).
+
+        Subclasses' load() / async_load() must read from self.kw (not self._kw)
+        so that on_loading transformations are visible. Default on_loading is
+        identity, so self.kw returns self._kw unchanged.
+        """
+        return self.on_loading(self._kw)
 
     # =========================================================================
     # REACTIVE PROPERTY (mutable)
@@ -684,7 +698,7 @@ class BagResolver:
                 except (TypeError, FileNotFoundError, ValueError):
                     pass  # Not convertible to Bag — keep original result
         self._cache_last_update = datetime.now()
-        return result
+        return self.on_loaded(result)
 
     def _finalize_result(self, result: Any) -> Any:
         """Store result in cache silently (passive, pull-driven path).
@@ -755,7 +769,7 @@ class BagResolver:
         Example:
             class FileResolver(BagResolver):
                 def load(self):
-                    return Path(self._kw['path']).read_text()
+                    return Path(self.kw['path']).read_text()
         """
         raise NotImplementedError("Sync resolvers must implement load()")
 
@@ -772,7 +786,7 @@ class BagResolver:
             class UrlResolver(BagResolver):
                 async def async_load(self):
                     async with httpx.AsyncClient() as client:
-                        response = await client.get(self._kw['url'])
+                        response = await client.get(self.kw['url'])
                         return response.text
         """
         raise NotImplementedError("Async resolvers must implement async_load()")
@@ -784,6 +798,32 @@ class BagResolver:
         without having to manage super().__init__().
         """
         pass
+
+    def on_loading(self, kw: dict[str, Any]) -> dict[str, Any]:
+        """Pre-processing hook applied to kwargs before load() / async_load().
+
+        Default implementation is identity: returns kw unchanged.
+
+        Subclasses override to transform inputs (e.g. resolve path pointers,
+        inject defaults, normalize values). Must return a COMPLETE dict with
+        the same keys as input, not a delta — some resolvers (url_resolver,
+        BagCbResolver) iterate over the full kwargs dict.
+
+        Called via the self.kw property; load() implementations read self.kw
+        (not self._kw) so transformations are visible.
+        """
+        return kw
+
+    def on_loaded(self, result: Any) -> Any:
+        """Post-processing hook applied after load() and _prepare_result.
+
+        Default implementation is identity: returns result unchanged.
+
+        Subclasses override to adapt the produced value (e.g. filter,
+        decorate, normalize). Runs AFTER the as_bag conversion in
+        _prepare_result, so if as_bag=True the hook receives a Bag.
+        """
+        return result
 
     # =========================================================================
     # SERIALIZATION
@@ -862,7 +902,7 @@ class BagSyncResolver(BagResolver):
         class ComponentResolver(BagSyncResolver):
             def load(self):
                 bag = Bag()
-                bag['title'] = self._kw['title']
+                bag['title'] = self.kw['title']
                 return bag
     """
 
@@ -918,11 +958,11 @@ class BagCbResolver(BagResolver):
         return asyncio.iscoroutinefunction(self._kw["callback"])
 
     def load(self) -> Any:
-        """Call sync callback with parameters from _kw."""
-        params = {k: v for k, v in self._kw.items() if k not in self.internal_params}
-        return self._kw["callback"](**params)
+        """Call sync callback with parameters from kw."""
+        params = {k: v for k, v in self.kw.items() if k not in self.internal_params}
+        return self.kw["callback"](**params)
 
     async def async_load(self) -> Any:
-        """Call async callback with parameters from _kw."""
-        params = {k: v for k, v in self._kw.items() if k not in self.internal_params}
-        return await self._kw["callback"](**params)
+        """Call async callback with parameters from kw."""
+        params = {k: v for k, v in self.kw.items() if k not in self.internal_params}
+        return await self.kw["callback"](**params)

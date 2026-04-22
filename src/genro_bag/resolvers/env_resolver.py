@@ -38,5 +38,5 @@ class EnvResolver(BagResolver):
 
     def load(self) -> str | None:
         """Read the environment variable, return default if unset."""
-        default: str | None = self._kw.get("default")
-        return os.environ.get(self._kw["var_name"], default)
+        default: str | None = self.kw.get("default")
+        return os.environ.get(self.kw["var_name"], default)
