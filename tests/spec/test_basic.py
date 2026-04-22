@@ -632,3 +632,251 @@ class TestSetItemResolverGuard:
         bag.set_item("data", "new", resolver=False)
         # il nodo non ha piu' resolver e il valore nuovo e' letto
         assert bag.get_item("data") == "new"
+
+
+# =============================================================================
+# 15. move - riordino di nodi (drag & drop)
+# =============================================================================
+
+
+class TestMove:
+    def test_move_single_node_forward(self):
+        """move(0, 2) sposta il primo nodo alla posizione 2."""
+        bag = Bag()
+        bag["a"] = 1
+        bag["b"] = 2
+        bag["c"] = 3
+        bag.move(0, 2)
+        assert bag.keys() == ["b", "c", "a"]
+
+    def test_move_single_node_backward(self):
+        """move(2, 0) sposta l'ultimo nodo in testa."""
+        bag = Bag()
+        bag["a"] = 1
+        bag["b"] = 2
+        bag["c"] = 3
+        bag.move(2, 0)
+        assert bag.keys() == ["c", "a", "b"]
+
+    def test_move_list_of_indices(self):
+        """move([0, 2], 1) sposta piu' nodi mantenendo l'ordine relativo."""
+        bag = Bag()
+        bag["a"] = 1
+        bag["b"] = 2
+        bag["c"] = 3
+        bag["d"] = 4
+        bag.move([0, 2], 1)
+        # i nodi spostati ('a' e 'c') vengono inseriti attorno alla destinazione
+        # la chiave importante: i nodi non spostati conservano ordine relativo
+        result = bag.keys()
+        assert set(result) == {"a", "b", "c", "d"}
+        # 'b' e 'd' (non spostati) mantengono ordine relativo
+        assert result.index("b") < result.index("d")
+
+    def test_move_to_same_position_is_noop(self):
+        """move(1, 1) non cambia l'ordine."""
+        bag = Bag()
+        bag["a"] = 1
+        bag["b"] = 2
+        bag["c"] = 3
+        bag.move(1, 1)
+        assert bag.keys() == ["a", "b", "c"]
+
+
+# =============================================================================
+# 16. as_dict - flag ascii / lower
+# =============================================================================
+
+
+class TestAsDictFlags:
+    def test_as_dict_lower(self):
+        """as_dict(lower=True) restituisce chiavi in minuscolo."""
+        bag = Bag()
+        bag["Name"] = "alice"
+        bag["AGE"] = 30
+        result = bag.as_dict(lower=True)
+        assert result == {"name": "alice", "age": 30}
+
+    def test_as_dict_ascii(self):
+        """as_dict(ascii=True) forza le chiavi a str (passaggio attraverso str())."""
+        bag = Bag()
+        bag["a"] = 1
+        result = bag.as_dict(ascii=True)
+        assert result == {"a": 1}
+
+
+# =============================================================================
+# 17. nodes property
+# =============================================================================
+
+
+class TestNodesProperty:
+    def test_nodes_returns_list_of_bagnodes(self):
+        """bag.nodes e' l'alias della lista di BagNode di primo livello."""
+        bag = Bag({"a": 1, "b": 2})
+        nodes = bag.nodes
+        assert isinstance(nodes, list)
+        assert len(nodes) == 2
+        assert all(isinstance(n, BagNode) for n in nodes)
+        assert [n.label for n in nodes] == ["a", "b"]
+
+
+# =============================================================================
+# 18. __contains__ con un BagNode
+# =============================================================================
+
+
+class TestContainsNode:
+    def test_node_in_bag_after_insertion(self):
+        """Un BagNode ottenuto via set_item e' contenuto nella Bag."""
+        bag = Bag()
+        node = bag.set_item("x", 1)
+        assert node in bag
+
+    def test_node_not_in_bag_after_pop(self):
+        """Un BagNode estratto con pop_node non e' piu' contenuto."""
+        bag = Bag()
+        bag.set_item("x", 1)
+        node = bag.pop_node("x")
+        assert isinstance(node, BagNode)
+        assert node not in bag
+
+
+# =============================================================================
+# 19. Path navigation: #parent, ../, backslash escape
+# =============================================================================
+
+
+class TestPathNavigation:
+    def test_parent_navigation_with_dotdot(self):
+        """Un path che inizia con '../' accede al parent della Bag corrente.
+
+        Richiede una Bag nested con backref (#parent resolve via parent chain).
+        """
+        root = Bag()
+        root["outer.inner"] = "target"
+        root["outer.sibling"] = "neighbor"
+        root.subscribe("w", update=lambda **kw: None)  # abilita backref
+        inner_bag = root.get_item("outer")
+        assert isinstance(inner_bag, Bag)
+        # dal contenitore 'outer' navigo a ../outer.inner
+        assert inner_bag.get_item("../outer.inner") == "target"
+
+    def test_parent_navigation_with_sharp_parent(self):
+        """'#parent' equivale a '../' (risolve al parent)."""
+        root = Bag()
+        root["outer.inner"] = "target"
+        root.subscribe("w", update=lambda **kw: None)
+        inner_bag = root.get_item("outer")
+        assert isinstance(inner_bag, Bag)
+        # #parent ritorna il Bag parent
+        assert inner_bag.get("#parent") is root
+
+    def test_backslash_escape_for_literal_dot_in_label(self):
+        """Un path con '\\.' tratta il punto come parte del label, non separatore.
+
+        Scenario: label che contengono un punto (es. email, domini, versioni).
+        """
+        bag = Bag()
+        # set_item con path 'user\.name' crea UN nodo con label 'user.name',
+        # non due nodi annidati
+        bag.set_item("user\\.name", "alice")
+        # la lettura con lo stesso escape ritrova il valore
+        assert bag.get_item("user\\.name") == "alice"
+        # l'accesso "ingenuo" (senza escape) invece interpreta il punto
+        # come separatore: 'user' seguito da 'name' non esiste
+        assert bag.get_item("user.name") is None
+
+
+# =============================================================================
+# 20. bag.get con pattern '#' - accesso posizionale e per attributo/valore
+# =============================================================================
+
+
+class TestGetWithSharpPatterns:
+    def test_get_by_numeric_index(self):
+        """bag.get('#0') ritorna il valore del nodo all'indice 0."""
+        bag = Bag({"a": 1, "b": 2, "c": 3})
+        assert bag.get("#0") == 1
+        assert bag.get("#1") == 2
+        assert bag.get("#2") == 3
+
+    def test_get_by_numeric_index_out_of_range_returns_default(self):
+        """bag.get('#99') oltre i nodi ritorna default."""
+        bag = Bag({"a": 1})
+        assert bag.get("#99", default="gone") == "gone"
+
+    def test_get_by_attribute_match(self):
+        """bag.get('#attr=value') ritorna il valore del nodo con quell'attributo.
+
+        Scenario reale: ricerca di un record in una lista ordinata per 'id' logico.
+        """
+        bag = Bag()
+        bag.set_item("row1", "alice", _attributes={"id": "x"})
+        bag.set_item("row2", "bob", _attributes={"id": "y"})
+        assert bag.get("#id=x") == "alice"
+        assert bag.get("#id=y") == "bob"
+
+    def test_get_by_attribute_match_no_result_returns_default(self):
+        """bag.get('#id=missing') quando nessun match ritorna default."""
+        bag = Bag()
+        bag.set_item("a", 1, _attributes={"id": "x"})
+        assert bag.get("#id=missing", default="none") == "none"
+
+    def test_get_by_value_match(self):
+        """bag.get('#=value') ritorna il valore del primo nodo con quel valore."""
+        bag = Bag()
+        bag.set_item("a", "foo")
+        bag.set_item("b", "bar")
+        assert bag.get("#=foo") == "foo"
+        assert bag.get("#=bar") == "bar"
+
+
+# =============================================================================
+# 21. node_position avanzato: '#n', '<#n', '>#n', '<missing'
+# =============================================================================
+
+
+class TestNodePositionSharpSyntax:
+    def test_position_sharp_n_insert_at_index(self):
+        """node_position='#2' inserisce all'indice 2."""
+        bag = Bag({"a": 1, "b": 2, "c": 3})
+        bag.set_item("new", 99, node_position="#1")
+        assert bag.keys() == ["a", "new", "b", "c"]
+
+    def test_position_lt_sharp_n_insert_before_index(self):
+        """node_position='<#n' inserisce prima dell'indice n."""
+        bag = Bag({"a": 1, "b": 2, "c": 3})
+        bag.set_item("new", 99, node_position="<#1")
+        assert bag.keys() == ["a", "new", "b", "c"]
+
+    def test_position_gt_sharp_n_insert_after_index(self):
+        """node_position='>#n' inserisce dopo l'indice n."""
+        bag = Bag({"a": 1, "b": 2, "c": 3})
+        bag.set_item("new", 99, node_position=">#1")
+        assert bag.keys() == ["a", "b", "new", "c"]
+
+    def test_position_lt_missing_label_appends(self):
+        """node_position='<missing' con label inesistente: appende in coda (fallback)."""
+        bag = Bag({"a": 1, "b": 2})
+        bag.set_item("new", 99, node_position="<nonexistent")
+        assert bag.keys() == ["a", "b", "new"]
+
+    def test_position_gt_missing_label_appends(self):
+        """node_position='>missing' con label inesistente: appende in coda."""
+        bag = Bag({"a": 1, "b": 2})
+        bag.set_item("new", 99, node_position=">nonexistent")
+        assert bag.keys() == ["a", "b", "new"]
+
+    def test_position_integer_clamped_to_valid_range(self):
+        """node_position=int oltre len viene limitato a len (append)."""
+        bag = Bag({"a": 1, "b": 2})
+        bag.set_item("new", 99, node_position=999)
+        # aggiunto in coda
+        assert bag.keys()[-1] == "new"
+
+    def test_position_negative_integer_clamped_to_zero(self):
+        """node_position=int negativo viene limitato a 0 (prepend)."""
+        bag = Bag({"a": 1, "b": 2})
+        bag.set_item("new", 99, node_position=-5)
+        assert bag.keys()[0] == "new"

@@ -451,3 +451,134 @@ class TestFromXmlExtra:
                 '<GenRoBag><x _T="L">not_a_number</x></GenRoBag>',
                 raise_on_error=True,
             )
+
+
+# =============================================================================
+# 18. XML tag sanitization (label Python validi ma invalidi come tag XML)
+# =============================================================================
+
+
+class TestXmlTagSanitization:
+    def test_label_with_invalid_chars_is_sanitized(self):
+        """Label con spazi/caratteri speciali: to_xml produce un tag valido.
+
+        Scenario reale: dati da CSV con header "My Col" o "col$1".
+        """
+        bag = Bag()
+        bag.set_item("root.my col", "v")
+        xml = bag.to_xml() or ""
+        # il tag e' sanitizzato (es. 'my_col') ma l'XML resta parsabile
+        assert "<root>" in xml
+        assert "</root>" in xml
+
+    def test_label_starting_with_digit_gets_underscore_prefix(self):
+        """Label che inizia con cifra: il tag sanitizzato ha prefisso '_'."""
+        bag = Bag()
+        bag.set_item("root.2024data", "v")
+        xml = bag.to_xml() or ""
+        # il tag emesso inizia con '_' (non con cifra)
+        assert "<_2024data" in xml or "<_" in xml
+
+    def test_empty_label_becomes_none_marker(self):
+        """Label vuoto produce il tag speciale '_none_'."""
+        # uso set_item con path contenente un segmento vuoto -> label ''
+        bag = Bag()
+        # setto direttamente un nodo con label vuoto tramite path "root." non funziona
+        # perche' split elimina gli empty. Passo per set sulla sub-Bag.
+        sub = Bag()
+        sub.set_item("", "v")
+        bag.set_item("root", sub)
+        xml = bag.to_xml() or ""
+        # il tag emesso include il marker _none_
+        assert "_none_" in xml
+
+
+# =============================================================================
+# 19. to_json typed + resolver: il resolver e' serializzato in JSON
+# =============================================================================
+
+
+class TestJsonWithResolver:
+    def test_to_json_includes_resolver_for_serializable_resolver(self):
+        """to_json(typed=True) emette 'resolver' per resolver serializzabili.
+
+        UuidResolver e' serializzabile (nessun callback, solo args/kwargs).
+        """
+        from genro_bag.resolvers import UuidResolver
+
+        bag = Bag()
+        bag["id"] = UuidResolver("uuid4")
+        data = bag.to_json(typed=True)
+        assert "resolver" in data
+        assert "UuidResolver" in data
+
+    def test_roundtrip_json_with_resolver_reconstructs_resolver(self):
+        """from_json(to_json(bag_with_resolver)) ricostruisce un resolver equivalente."""
+        from genro_bag.resolvers import UuidResolver
+
+        bag = Bag()
+        bag["id"] = UuidResolver("uuid4")
+        data = bag.to_json(typed=True)
+        restored = Bag.from_json(data)
+        resolver = restored.get_resolver("id")
+        assert isinstance(resolver, UuidResolver)
+
+
+# =============================================================================
+# 20. to_json emette 'tag' per node_tag
+# =============================================================================
+
+
+class TestJsonWithNodeTag:
+    def test_to_json_includes_node_tag(self):
+        """to_json emette 'tag' nel dict del nodo quando il nodo ha node_tag."""
+        bag = Bag()
+        bag.set_item("doc", "hello", node_tag="paragraph")
+        data = bag.to_json(typed=True)
+        assert "paragraph" in data
+
+
+# =============================================================================
+# 21. JSON edge case - list e dict vuoti
+# =============================================================================
+
+
+class TestJsonEmpty:
+    def test_empty_json_list_produces_empty_bag(self):
+        """from_json('[]') produce un Bag vuoto."""
+        bag = Bag.from_json("[]")
+        assert len(bag) == 0
+
+    def test_empty_json_dict_produces_empty_bag(self):
+        """from_json('{}') produce un Bag vuoto."""
+        bag = Bag.from_json("{}")
+        assert len(bag) == 0
+
+
+# =============================================================================
+# 22. XML legacy mixed content + from_json list_joiner
+# =============================================================================
+#
+# Nota: il docstring di from_xml dichiara env var substitution {GNR_*}
+# ma nel codice di _parse.py non c'e' logica di sostituzione.
+# Test non scritto: la feature e' documentata ma non implementata
+# (candidato bug/doc-mismatch).
+
+
+class TestXmlMixedContent:
+    def test_mixed_content_text_becomes_special_node(self):
+        """XML con testo e figli dentro lo stesso elemento emette un nodo '_' per il testo."""
+        xml = "<root>leading text<child>v</child></root>"
+        bag = Bag.from_xml(xml)
+        # 'root' ha un figlio 'child' e un nodo '_' per il testo misto
+        root = bag.get_item("root")
+        assert isinstance(root, Bag)
+        assert root.get_item("child") == "v"
+        assert root.get_item("_") == "leading text"
+
+
+class TestFromJsonListJoiner:
+    def test_string_list_with_joiner(self):
+        """from_json con list_joiner concatena liste di stringhe."""
+        bag = Bag.from_json({"items": ["a", "b", "c"]}, list_joiner=",")
+        assert bag.get_item("items") == "a,b,c"
