@@ -139,6 +139,25 @@ c: 3
 0
 ```
 
+`clear()` accepts a `trigger` flag (default `True`). When the Bag is nested
+and backref is active, `trigger=True` emits a single `upd_value` event on the
+parent node with an orphan Bag holding the removed content as `oldvalue`.
+Use `trigger=False` for bulk operations where no subscriber cares about the
+removed content: this skips the orphans allocation and the re-parenting of
+old nodes.
+
+```{doctest}
+>>> from genro_bag import Bag
+
+>>> root = Bag()
+>>> root['data.a'] = 1
+>>> root['data.b'] = 2
+>>> inner = root.get_item('data')
+>>> inner.clear(trigger=False)   # fast path, no event
+>>> len(inner)
+0
+```
+
 ## Positioning
 
 Control where new items are inserted:
@@ -170,10 +189,36 @@ Position syntax:
 | Syntax | Meaning |
 |--------|---------|
 | `<` | Prepend (beginning) |
-| `>` | Append (end, default) |
-| `<label` | Before node with label |
-| `>label` | After node with label |
-| `#n` | At numeric index |
+| `>` or `None` | Append (end, default) |
+| `int n` | Insert at index `n`. Negative values count from the end (Python-style: `-1` = before last). Out-of-range values are clamped to `[0, len]`. |
+| `'#n'` | Insert at non-negative index `n` |
+| `'<label'` | Before node with label |
+| `'>label'` | After node with label |
+| `'<#n'` | Before index `n` |
+| `'>#n'` | After index `n` |
+
+Malformed string syntax raises `ValueError`. Examples: `'#-1'` (negative in
+`#n` syntax), `'#abc'` (non-integer), `'<missing'` (label does not exist),
+`'@foo'` (unrecognized prefix). Silent fallback to append was removed to
+surface typos early.
+
+```{doctest}
+>>> from genro_bag import Bag
+
+>>> bag = Bag({'a': 1, 'b': 2, 'c': 3})
+
+>>> # Negative int counts from the end
+>>> bag.set_item('new', 99, node_position=-1)
+>>> list(bag.keys())
+['a', 'b', 'new', 'c']
+
+>>> # Malformed string raises
+>>> try:
+...     bag.set_item('x', 0, node_position='<nonexistent')
+... except ValueError as e:
+...     print('raised')
+raised
+```
 
 ## Nested Bags
 
