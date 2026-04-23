@@ -763,52 +763,90 @@ class BagNodeContainer:
             position: Position specification. Supported formats:
                 - None or '>': append at end
                 - '<': insert at beginning
-                - int: insert at this index (clamped to valid range)
-                - '#n': insert at index n
-                - '<label': insert before label
-                - '>label': insert after label
-                - '<#n': insert before index n
-                - '>#n': insert after index n
+                - int n: insert at index n. Negative values count from the end
+                  (Python-style: -1 = before last, -2 = before penultimate).
+                  Out-of-range values are clamped to [0, len].
+                - '#n': insert at non-negative index n (clamped to len)
+                - '<label': insert before node with given label
+                - '>label': insert after node with given label
+                - '<#n': insert before non-negative index n
+                - '>#n': insert after non-negative index n
 
         Returns:
             Index where to insert (always valid for list.insert).
-        """
-        if position is None or position == ">":
-            return len(self._list)
 
-        if isinstance(position, int):
-            return max(0, min(position, len(self._list)))
+        Raises:
+            ValueError: If the string position is malformed (e.g. '#-1',
+                '#abc', '@foo') or references a non-existent label
+                (e.g. '<missing_label').
+        """
+        n = len(self._list)
+
+        if position is None or position == ">":
+            return n
 
         if position == "<":
             return 0
 
+        if isinstance(position, int):
+            if position < 0:
+                position = n + position
+            return max(0, min(position, n))
+
         if position.startswith("#"):
-            try:
-                return max(0, min(int(position[1:]), len(self._list)))
-            except ValueError:
-                return len(self._list)
+            idx = self._parse_sharp_index(position[1:], position)
+            return min(idx, n)
 
         if position.startswith("<"):
             ref = position[1:]
             if ref.startswith("#"):
-                try:
-                    return max(0, min(int(ref[1:]), len(self._list)))
-                except ValueError:
-                    return len(self._list)
-            idx = self.index(ref)
-            return idx if idx >= 0 else len(self._list)
+                idx = self._parse_sharp_index(ref[1:], position)
+                return min(idx, n)
+            label_idx = self.index(ref)
+            if label_idx < 0:
+                raise ValueError(
+                    f"Invalid node_position {position!r}: label {ref!r} not found"
+                )
+            return label_idx
 
         if position.startswith(">"):
             ref = position[1:]
             if ref.startswith("#"):
-                try:
-                    return max(0, min(int(ref[1:]) + 1, len(self._list)))
-                except ValueError:
-                    return len(self._list)
-            idx = self.index(ref)
-            return idx + 1 if idx >= 0 else len(self._list)
+                idx = self._parse_sharp_index(ref[1:], position)
+                return min(idx + 1, n)
+            label_idx = self.index(ref)
+            if label_idx < 0:
+                raise ValueError(
+                    f"Invalid node_position {position!r}: label {ref!r} not found"
+                )
+            return label_idx + 1
 
-        return len(self._list)
+        raise ValueError(f"Invalid node_position {position!r}: unrecognized syntax")
+
+    def _parse_sharp_index(self, raw: str, original: str) -> int:
+        """Parse a non-negative integer from '#n' syntax.
+
+        Args:
+            raw: The part after '#' (e.g. '3' from '#3').
+            original: Full position string for error messages.
+
+        Returns:
+            The parsed non-negative integer.
+
+        Raises:
+            ValueError: If raw is not a non-negative integer.
+        """
+        try:
+            idx = int(raw)
+        except ValueError:
+            raise ValueError(
+                f"Invalid node_position {original!r}: {raw!r} is not an integer"
+            ) from None
+        if idx < 0:
+            raise ValueError(
+                f"Invalid node_position {original!r}: negative index not allowed in '#n' syntax"
+            )
+        return idx
 
     def __getitem__(self, key: str | int) -> BagNode | None:
         """Get item by label or index."""
@@ -1082,7 +1120,12 @@ class BagNodeContainer:
                 self._parent_bag._on_node_inserted(node, position)
 
     def clear(self) -> None:
-        """Remove all elements."""
+        """Remove all elements in place.
+
+        Low-level clear: empties the internal list and dict without firing
+        events. Used as fast path by Bag.clear(trigger=False) and by
+        Bag.clear() when the Bag has no parent or no backref.
+        """
         self._dict.clear()
         self._list.clear()
 

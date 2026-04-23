@@ -409,11 +409,14 @@ class Bag(BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer
                 attribute value. When using ?attr1&attr2 syntax, must be a tuple.
             _attributes: Optional dict of attributes to set on the node.
             node_position: Position for new nodes. Supports:
-                - '>': Append at end (default)
+                - '>' or None: Append at end (default)
                 - '<': Insert at beginning
-                - '#n': Insert at index n
-                - '<label': Insert before label
-                - '>label': Insert after label
+                - int n: Insert at index n. Negative values count from the
+                  end (Python-style: -1 = before last). Out-of-range values
+                  are clamped to [0, len].
+                - '#n': Insert at non-negative index n
+                - '<label' / '>label': Insert before/after node with given label
+                - '<#n' / '>#n': Insert before/after index n
             _updattr: If True, update attributes instead of replacing.
             _remove_null_attributes: If True, remove None attributes.
             _reason: Reason for the change (for events).
@@ -571,15 +574,24 @@ class Bag(BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer
 
     # -------------------- clear --------------------------------
 
-    def clear(self) -> None:
+    def clear(self, trigger: bool = True) -> None:
         """Remove all nodes from this Bag.
 
         Empties the Bag in place: self remains connected to its parent.
-        Semantically an atomic content replacement (not a sequence of deletes):
-        if nested under a parent and backref is enabled, emits a single 'upd'
-        event on self.parent_node. oldvalue is an orphan Bag holding the old
-        nodes (detached from the tree, navigable, garbage-collected when no
-        longer referenced).
+
+        When trigger is True (default) and the Bag is nested with backref,
+        emits a single 'upd_value' event on self.parent_node. oldvalue is
+        an orphan Bag holding the old nodes (detached from the tree,
+        navigable, garbage-collected when no longer referenced).
+
+        When trigger is False, clears in place without allocating an
+        orphans Bag or re-parenting old nodes. Use for bulk operations
+        where no subscriber cares about the cleared content.
+
+        Args:
+            trigger: If True (default), emit upd_value event with oldvalue
+                when nested with backref. If False, fast in-place clear
+                without event notification.
 
         Example:
             >>> bag = Bag()
@@ -593,22 +605,23 @@ class Bag(BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer
         """
         if not len(self._nodes):
             return
+        if not trigger or not (
+            self.backref and self.parent is not None and self.parent_node is not None
+        ):
+            self._nodes.clear()
+            return
         old_container = self._nodes
         self._nodes = self.container_class()
-        if self.backref and self.parent is not None and self.parent_node is not None:
-            orphans = self.__class__()
-            orphans._nodes = old_container
-            for node in old_container:
-                node._parent_bag = orphans
-            self.parent._on_node_changed(
-                self.parent_node,
-                [self.parent_node.label],
-                evt="upd_value",
-                oldvalue=orphans,
-            )
-        else:
-            for node in old_container:
-                node._parent_bag = None
+        orphans = self.__class__()
+        orphans._nodes = old_container
+        for node in old_container:
+            node._parent_bag = orphans
+        self.parent._on_node_changed(
+            self.parent_node,
+            [self.parent_node.label],
+            evt="upd_value",
+            oldvalue=orphans,
+        )
 
     def move(self, what: int | list[int], position: int, trigger: bool = True) -> None:
         """Move element(s) to a new position.
