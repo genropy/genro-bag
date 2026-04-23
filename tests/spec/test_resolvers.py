@@ -311,6 +311,49 @@ class TestFileResolver:
         bag["doc"] = FileResolver("doc.txt", base_path=str(tmp_path))
         assert bag["doc"] == "content"
 
+    def test_unknown_extension_falls_back_to_text(self, tmp_path):
+        """File con estensione non riconosciuta viene letto come testo."""
+        file = tmp_path / "note.xyz"
+        file.write_text("raw content", encoding="utf-8")
+        bag = Bag()
+        bag["doc"] = FileResolver(str(file))
+        assert bag["doc"] == "raw content"
+
+    def test_loads_bag_msgpack_file(self, tmp_path):
+        """FileResolver su .bag.mp carica tytx in formato binario msgpack."""
+        src = Bag({"a": 1, "b": "hello"})
+        src.to_tytx(filename=str(tmp_path / "out"), transport="msgpack")
+        bag = Bag()
+        bag["data"] = FileResolver(str(tmp_path / "out.bag.mp"))
+        data = bag["data"]
+        assert isinstance(data, Bag)
+        assert data.get_item("a") == 1
+        assert data.get_item("b") == "hello"
+
+    def test_csv_no_header_mode_uses_positional_columns(self, tmp_path):
+        """FileResolver CSV con csv_has_header=False usa c0,c1,... come attrs."""
+        file = tmp_path / "data.csv"
+        file.write_text("alice,30\nbob,25\n", encoding="utf-8")
+        bag = Bag()
+        bag["data"] = FileResolver(str(file), csv_has_header=False)
+        data = bag["data"]
+        assert isinstance(data, Bag)
+        assert len(data) == 2
+        first = data.get_node("r0")
+        assert first is not None
+        assert first.attr.get("c0") == "alice"
+        assert first.attr.get("c1") == "30"
+
+    def test_csv_empty_file_returns_empty_bag(self, tmp_path):
+        """FileResolver CSV su file vuoto ritorna Bag vuota (no header = no rows)."""
+        file = tmp_path / "empty.csv"
+        file.write_text("", encoding="utf-8")
+        bag = Bag()
+        bag["data"] = FileResolver(str(file))
+        data = bag["data"]
+        assert isinstance(data, Bag)
+        assert len(data) == 0
+
 
 # =============================================================================
 # 7. Priorita' node.attr vs resolver._kw
@@ -340,6 +383,32 @@ class TestParameterPriority:
         assert result == 21
         # il nuovo valore resta in node.attr
         assert bag.get_attr("x", "a") == 7
+
+    def test_set_attr_on_resolver_param_invalidates_cache(self):
+        """Su resolver con cache_time=False e NON-reactive, cambiare un attr
+        che e' parametro del resolver invalida la cache: il prossimo accesso
+        ricomputa. Differenza con 'reactive=True' dove il refresh e' eager.
+        """
+        calls = {"n": 0}
+
+        def cb(multiplier=1):
+            calls["n"] += 1
+            return calls["n"] * multiplier
+
+        bag = Bag()
+        bag["x"] = BagCbResolver(cb, cache_time=False, multiplier=5)
+        # primo accesso: calcola, cache hot
+        assert bag["x"] == 5
+        # secondo accesso: cache hit, non ricomputa
+        assert bag["x"] == 5
+        assert calls["n"] == 1
+        # modifico l'attr che e' parametro → cache invalidata
+        node = bag.get_node("x")
+        assert node is not None
+        node.set_attr(multiplier=10)
+        # prossimo accesso ricomputa con il nuovo parametro
+        assert bag["x"] == 20
+        assert calls["n"] == 2
 
 
 # =============================================================================
@@ -931,6 +1000,20 @@ class TestDirectoryResolverFilters:
         keys = bag["docs"].keys()
         assert "big_xml" in keys
         assert "small_xml" not in keys
+
+    def test_exclude_filter_applies_to_directories(self, tmp_path):
+        """exclude=pattern esclude anche le subdirectory che matchano.
+
+        Scenario: esclusione di __pycache__ o .git quando si monta un tree.
+        """
+        (tmp_path / "docs").mkdir()
+        (tmp_path / "__pycache__").mkdir()
+        (tmp_path / "top.txt").write_text("x", encoding="utf-8")
+        bag = Bag()
+        bag["root"] = DirectoryResolver(str(tmp_path), exclude="__pycache__")
+        keys = bag["root"].keys()
+        assert "docs" in keys
+        assert "__pycache__" not in keys
 
 
 class TestDirectoryResolverCaption:

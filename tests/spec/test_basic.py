@@ -35,7 +35,7 @@ from __future__ import annotations
 
 import pytest
 
-from genro_bag import Bag, BagNode, BagNodeException
+from genro_bag import Bag, BagException, BagNode, BagNodeException
 
 
 # =============================================================================
@@ -488,6 +488,43 @@ class TestClear:
         bag.clear()
         assert len(bag) == 0
 
+    def test_clear_on_nested_bag_notifies_parent_by_default(self):
+        """clear() su Bag nested (backref) notifica il parent con upd_value.
+
+        Scenario: subscriber sul parent riceve un evento con oldvalue = orphan
+        Bag contenente i nodi rimossi.
+        """
+        root = Bag()
+        root.set_item("inner.a", 1)
+        root.set_item("inner.b", 2)
+        received = []
+        root.subscribe("watch", update=lambda **kw: received.append(kw))
+        inner = root.get_item("inner")
+        assert isinstance(inner, Bag)
+        inner.clear()
+        # il parent ha ricevuto upd_value per il nodo 'inner'
+        assert any(kw.get("evt") == "upd_value" for kw in received)
+        # oldvalue e' un Bag orfano con i nodi rimossi
+        upd = next(kw for kw in received if kw.get("evt") == "upd_value")
+        oldvalue = upd.get("oldvalue")
+        assert isinstance(oldvalue, Bag)
+        assert oldvalue.keys() == ["a", "b"]
+
+    def test_clear_with_trigger_false_skips_notification(self):
+        """clear(trigger=False) svuota in-place senza notificare il parent."""
+        root = Bag()
+        root.set_item("inner.a", 1)
+        root.set_item("inner.b", 2)
+        received = []
+        root.subscribe("watch", update=lambda **kw: received.append(kw))
+        inner = root.get_item("inner")
+        assert isinstance(inner, Bag)
+        inner.clear(trigger=False)
+        # il parent NON ha ricevuto nessun upd_value
+        assert not any(kw.get("evt") == "upd_value" for kw in received)
+        # ma la Bag e' comunque vuota
+        assert len(inner) == 0
+
 
 # =============================================================================
 # 11. __eq__ / __ne__
@@ -518,6 +555,23 @@ class TestEquality:
         assert Bag({"a": 1}) != {"a": 1}
         assert Bag({"a": 1}) != "not a bag"
         assert Bag({"a": 1}) != 42
+
+    def test_bagnode_equal_when_same_resolver_identity(self):
+        """Due nodi con stesso label, stessi attrs e **stesso resolver** sono
+        uguali.
+
+        Scenario: la stessa istanza di resolver viene condivisa tra due Bag
+        (pattern di cache). I nodi restituiscono True per ==.
+        """
+        from genro_bag.resolvers import BagCbResolver
+        r = BagCbResolver(lambda: 42)
+        bag1 = Bag()
+        bag1["x"] = r
+        bag2 = Bag()
+        bag2["x"] = r
+        n1 = bag1.get_node("x")
+        n2 = bag2.get_node("x")
+        assert n1 == n2
 
 
 # =============================================================================
@@ -565,6 +619,24 @@ class TestRootProperties:
         """backref default e' False."""
         assert Bag().backref is False
 
+    def test_get_inherited_attributes_merges_ancestors(self):
+        """get_inherited_attributes su un nodo ritorna gli attributi degli ancestor.
+
+        Scenario: un nodo interno ha attributi, il foglia figlio li eredita nel
+        merge con i propri. Utile per propagazione di ruoli/temi/permessi.
+        """
+        root = Bag()
+        root.set_item("outer", Bag(), _attributes={"role": "admin", "theme": "dark"})
+        inner = root.get_item("outer")
+        assert isinstance(inner, Bag)
+        inner.set_item("leaf", 42, _attributes={"local": "x"})
+        root.set_backref()
+        leaf = inner.get_node("leaf")
+        inherited = leaf.get_inherited_attributes()
+        # gli attributi propagati dal parent sono presenti
+        assert inherited.get("role") == "admin"
+        assert inherited.get("theme") == "dark"
+
 
 # =============================================================================
 # 13. set_attr / get_attr / del_attr / setdefault / as_dict
@@ -611,6 +683,187 @@ class TestAttrAccessors:
         bag = Bag({"a": 1, "b": 2})
         assert bag.as_dict() == {"a": 1, "b": 2}
 
+    def test_del_attr_comma_separated_string(self):
+        """del_attr accetta una stringa con label separati da virgola.
+
+        Uso comune: rimuovere piu' attributi in un colpo solo.
+        """
+        bag = Bag()
+        bag.set_item("x", 1, _attributes={"a": 1, "b": 2, "c": 3, "d": 4})
+        node = bag.get_node("x")
+        node.del_attr("a,c")
+        assert dict(node.attr) == {"b": 2, "d": 4}
+
+    def test_del_attr_multiple_args(self):
+        """del_attr accetta piu' argomenti separati."""
+        bag = Bag()
+        bag.set_item("x", 1, _attributes={"a": 1, "b": 2, "c": 3})
+        node = bag.get_node("x")
+        node.del_attr("a", "c")
+        assert dict(node.attr) == {"b": 2}
+
+
+# =============================================================================
+# 13a2. node.get_value(_query_string=...) per leggere attributi
+# =============================================================================
+
+
+class TestGetValueQueryString:
+    """get_value(_query_string='...') permette di leggere attributi del nodo.
+
+    Sintassi:
+        - 'attrname' → valore dell'attributo
+        - 'a&b&c' → tupla con valori multipli
+    """
+
+    def test_query_string_single_attribute(self):
+        """get_value(_query_string='color') ritorna il valore dell'attributo."""
+        bag = Bag()
+        bag.set_item("item", "body", _attributes={"color": "red", "size": 42})
+        node = bag.get_node("item")
+        assert node.get_value(_query_string="color") == "red"
+
+    def test_query_string_multiple_attributes_returns_tuple(self):
+        """get_value(_query_string='a&b&c') ritorna una tupla con i valori nell'ordine richiesto."""
+        bag = Bag()
+        bag.set_item(
+            "item", "body",
+            _attributes={"color": "red", "size": 42, "active": True}
+        )
+        node = bag.get_node("item")
+        result = node.get_value(_query_string="color&size&active")
+        assert result == ("red", 42, True)
+
+    def test_query_string_missing_attribute_returns_none(self):
+        """Attributo non presente ritorna None (singolo) / None in tupla."""
+        bag = Bag()
+        bag.set_item("item", "body", _attributes={"color": "red"})
+        node = bag.get_node("item")
+        assert node.get_value(_query_string="missing") is None
+
+
+# =============================================================================
+# 13b. Lookup per attributo e per valore (scenari di ricerca)
+# =============================================================================
+
+
+class TestLookupByAttributeAndValue:
+    """bag.get_node_by_attr e bag.get_node_by_value per scenari di ricerca
+    su collezioni ordinate (liste di record con id logico, tag, tipo).
+    """
+
+    def test_get_node_by_attr_finds_first_match(self):
+        """get_node_by_attr(key, value) ritorna il primo nodo con quell'attributo."""
+        bag = Bag()
+        bag.set_item("r1", "alice", _attributes={"id": "x", "role": "admin"})
+        bag.set_item("r2", "bob", _attributes={"id": "y", "role": "user"})
+        bag.set_item("r3", "carol", _attributes={"id": "z", "role": "user"})
+        node = bag.get_node_by_attr("id", "y")
+        assert node is not None
+        assert node.value == "bob"
+
+    def test_get_node_by_attr_non_id_attribute(self):
+        """get_node_by_attr funziona su qualsiasi attributo, non solo 'id'."""
+        bag = Bag()
+        bag.set_item("r1", "alice", _attributes={"role": "admin"})
+        bag.set_item("r2", "bob", _attributes={"role": "user"})
+        node = bag.get_node_by_attr("role", "admin")
+        assert node is not None
+        assert node.value == "alice"
+
+    def test_get_node_by_attr_returns_none_when_missing(self):
+        """get_node_by_attr ritorna None se nessun nodo ha quell'attributo/valore."""
+        bag = Bag()
+        bag.set_item("r1", "alice", _attributes={"id": "x"})
+        assert bag.get_node_by_attr("id", "missing") is None
+
+    def test_get_node_by_value_finds_dict_match(self):
+        """get_node_by_value cerca nei valori dict/Bag un match key=value."""
+        bag = Bag()
+        bag.set_item("r1", Bag({"name": "alice", "age": 30}))
+        bag.set_item("r2", Bag({"name": "bob", "age": 25}))
+        node = bag.get_node_by_value("name", "bob")
+        assert node is not None
+        assert node.value["name"] == "bob"
+
+    def test_get_node_by_value_returns_none_when_missing(self):
+        """get_node_by_value ritorna None se nessun nodo-dict soddisfa la condizione."""
+        bag = Bag()
+        bag.set_item("r1", Bag({"name": "alice"}))
+        assert bag.get_node_by_value("name", "nobody") is None
+
+    def test_get_node_sharp_equal_value_shortcut(self):
+        """bag.get_node('#=value') ritorna il primo nodo il cui value == value."""
+        bag = Bag()
+        bag.set_item("r1", "alice")
+        bag.set_item("r2", "bob")
+        node = bag.get_node("#=alice")
+        assert node is not None
+        assert node.label == "r1"
+
+    def test_get_node_sharp_equal_value_missing_returns_none(self):
+        """bag.get_node('#=missing') ritorna None se nessun match."""
+        bag = Bag()
+        bag.set_item("r1", "alice")
+        assert bag.get_node("#=nobody") is None
+
+    def test_get_node_sharp_attr_equal_shortcut(self):
+        """bag.get_node('#attr=value') ritorna il nodo con quell'attributo."""
+        bag = Bag()
+        bag.set_item("r1", "alice", _attributes={"id": "X"})
+        bag.set_item("r2", "bob", _attributes={"id": "Y"})
+        node = bag.get_node("#id=Y")
+        assert node is not None
+        assert node.label == "r2"
+
+
+# =============================================================================
+# 13c. BagNode come valore e oggetti con rootattributes
+# =============================================================================
+
+
+class TestSetValueWithSpecialObjects:
+    """set_item con oggetti che hanno semantiche speciali:
+    - altri BagNode (estrazione value + merge attrs)
+    - oggetti con attributo 'rootattributes' dict (merge attrs)
+    """
+
+    def test_set_item_with_bagnode_extracts_value_and_attrs(self):
+        """Passando un BagNode come value, il target eredita value + attributi."""
+        bag = Bag()
+        bag.set_item("src", "hello", _attributes={"type": "greeting", "lang": "en"})
+        src_node = bag.get_node("src")
+        assert src_node is not None
+        bag.set_item("dst", src_node)
+        dst_node = bag.get_node("dst")
+        assert dst_node is not None
+        assert dst_node.value == "hello"
+        # gli attributi del source vengono copiati sul target
+        assert dst_node.attr.get("type") == "greeting"
+        assert dst_node.attr.get("lang") == "en"
+
+    def test_set_item_with_rootattributes_object_merges_attrs(self):
+        """Un oggetto con attributo 'rootattributes' (dict) merge gli attrs nel nodo.
+
+        Scenario reale: oggetto di dominio che espone metadati come rootattributes.
+        """
+        class DomainObject:
+            rootattributes = {"version": "1.0", "author": "alice"}
+
+            def __init__(self, payload):
+                self.payload = payload
+
+        bag = Bag()
+        obj = DomainObject({"data": 42})
+        bag.set_item("config", obj)
+        node = bag.get_node("config")
+        assert node is not None
+        # il valore e' l'oggetto intero
+        assert node.value is obj
+        # gli attributi da rootattributes sono stati copiati
+        assert node.attr.get("version") == "1.0"
+        assert node.attr.get("author") == "alice"
+
 
 # =============================================================================
 # 14. set_item + resolver guard
@@ -632,6 +885,119 @@ class TestSetItemResolverGuard:
         bag.set_item("data", "new", resolver=False)
         # il nodo non ha piu' resolver e il valore nuovo e' letto
         assert bag.get_item("data") == "new"
+
+    def test_resolver_replace_with_new_resolver(self):
+        """set_item(..., resolver=new_r) sostituisce il resolver esistente."""
+        from genro_bag.resolvers import BagCbResolver
+        bag = Bag()
+        bag.set_callback_item("data", lambda: "old")
+        assert bag.get_item("data") == "old"
+        new_r = BagCbResolver(lambda: "fresh")
+        bag.set_item("data", None, resolver=new_r)
+        assert bag.get_item("data") == "fresh"
+
+
+# =============================================================================
+# 14b. set_item con ?attr syntax: attributi multipli con tuple
+# =============================================================================
+
+
+class TestSetItemAttrSyntax:
+    """La sintassi 'path?a&b&c' richiede un tuple di valori con lunghezza coerente."""
+
+    def test_single_attr_syntax_sets_attribute(self):
+        """set_item('path?attr', value) scrive un attributo singolo."""
+        bag = Bag()
+        bag.set_item("x", 1)
+        bag.set_item("x?color", "red")
+        assert bag.get_attr("x", "color") == "red"
+
+    def test_multi_attr_syntax_with_tuple(self):
+        """set_item('path?a&b', (v1, v2)) distribuisce i valori sugli attributi."""
+        bag = Bag()
+        bag.set_item("x", 1)
+        bag.set_item("x?a&b", (10, 20))
+        assert bag.get_attr("x", "a") == 10
+        assert bag.get_attr("x", "b") == 20
+
+    def test_multi_attr_syntax_tuple_length_mismatch_raises(self):
+        """set_item('path?a&b', tuple di lunghezza diversa) solleva BagNodeException."""
+        bag = Bag()
+        bag.set_item("x", 1)
+        with pytest.raises(BagNodeException):
+            bag.set_item("x?a&b", (10, 20, 30))
+
+
+# =============================================================================
+# 14c. set_item con node_tag su nodo esistente
+# =============================================================================
+
+
+class TestSetItemNodeTag:
+    """node_tag e' il 'tipo semantico' del nodo. set_item puo' aggiornarlo
+    su un nodo gia' esistente senza ricrearlo.
+    """
+
+    def test_set_item_assigns_node_tag_on_create(self):
+        """Alla creazione, set_item(node_tag='X') imposta il tag."""
+        bag = Bag()
+        bag.set_item("x", 42, node_tag="special")
+        node = bag.get_node("x")
+        assert node is not None
+        assert node.node_tag == "special"
+
+    def test_set_item_updates_node_tag_on_existing(self):
+        """Su nodo esistente, set_item(node_tag='new') aggiorna il tag."""
+        bag = Bag()
+        bag.set_item("x", 42, node_tag="initial")
+        bag.set_item("x", 99, node_tag="updated")
+        node = bag.get_node("x")
+        assert node is not None
+        assert node.node_tag == "updated"
+        assert node.value == 99
+
+
+# =============================================================================
+# 14d. get_value(_query_string='k=v') kwargs syntax senza resolver
+# =============================================================================
+
+
+class TestGetValueKwargsSyntax:
+    """Oltre al ramo 'attr&attr' che legge attributi, _query_string con sintassi
+    dict-like 'k=v' prova a passare kwargs al resolver. Senza resolver solleva.
+    """
+
+    def test_kwargs_syntax_without_resolver_raises(self):
+        """node.get_value(_query_string='k=v') su nodo senza resolver solleva."""
+        bag = Bag()
+        bag.set_item("x", "plain")
+        node = bag.get_node("x")
+        assert node is not None
+        with pytest.raises(BagNodeException):
+            node.get_value(_query_string="k=v")
+
+
+# =============================================================================
+# 14e. set_value change-detection via _attributes
+# =============================================================================
+
+
+class TestSetValueChangeDetection:
+    """set_value triggera subscriber anche quando il value non cambia
+    ma gli attributi si: il test qui verifica che un replay con solo
+    cambio di attributi notifica comunque il parent.
+    """
+
+    def test_same_value_with_new_attrs_still_triggers(self):
+        """Replay con value identico ma attrs diversi produce evento upd."""
+        bag = Bag()
+        bag.set_item("x", 42, _attributes={"a": 1})
+        received = []
+        bag.subscribe("w", update=lambda **kw: received.append(kw.get("evt")))
+        # stesso value, nuovo attr
+        bag.set_item("x", 42, _attributes={"a": 2})
+        # almeno un evento di tipo upd_value* (il nome esatto e' up al runtime)
+        assert any(evt and evt.startswith("upd") for evt in received)
 
 
 # =============================================================================
@@ -680,6 +1046,40 @@ class TestMove:
         bag["b"] = 2
         bag["c"] = 3
         bag.move(1, 1)
+        assert bag.keys() == ["a", "b", "c"]
+
+    def test_move_with_negative_position_is_noop(self):
+        """move con position < 0 non altera il Bag."""
+        bag = Bag({"a": 1, "b": 2, "c": 3})
+        bag.move(0, -1)
+        assert bag.keys() == ["a", "b", "c"]
+
+    def test_move_with_position_out_of_range_is_noop(self):
+        """move con position >= len non altera il Bag."""
+        bag = Bag({"a": 1, "b": 2, "c": 3})
+        bag.move(0, 99)
+        assert bag.keys() == ["a", "b", "c"]
+
+    def test_move_with_empty_indices_list_is_noop(self):
+        """move([], pos) non altera il Bag."""
+        bag = Bag({"a": 1, "b": 2, "c": 3})
+        bag.move([], 0)
+        assert bag.keys() == ["a", "b", "c"]
+
+    def test_move_multiple_indices_preserves_relative_order(self):
+        """move([0, 1], 3) sposta due nodi davanti alla destinazione."""
+        bag = Bag({"a": 1, "b": 2, "c": 3, "d": 4, "e": 5})
+        bag.move([0, 1], 3)
+        # 'a' e 'b' vengono estratti e re-inseriti intorno alla destinazione 'd'
+        result = bag.keys()
+        assert set(result) == {"a", "b", "c", "d", "e"}
+        # 'a' e 'b' mantengono l'ordine relativo
+        assert result.index("a") < result.index("b")
+
+    def test_move_single_with_source_out_of_range_is_noop(self):
+        """move(99, 0) con indice di partenza fuori range non altera il Bag."""
+        bag = Bag({"a": 1, "b": 2, "c": 3})
+        bag.move(99, 0)
         assert bag.keys() == ["a", "b", "c"]
 
 
@@ -787,53 +1187,55 @@ class TestPathNavigation:
         # come separatore: 'user' seguito da 'name' non esiste
         assert bag.get_item("user.name") is None
 
+    def test_path_as_list_of_segments(self):
+        """set_item/get_item accettano il path anche come lista di segmenti.
 
-# =============================================================================
-# 20. bag.get con pattern '#' - accesso posizionale e per attributo/valore
-# =============================================================================
-
-
-class TestGetWithSharpPatterns:
-    def test_get_by_numeric_index(self):
-        """bag.get('#0') ritorna il valore del nodo all'indice 0."""
-        bag = Bag({"a": 1, "b": 2, "c": 3})
-        assert bag.get("#0") == 1
-        assert bag.get("#1") == 2
-        assert bag.get("#2") == 3
-
-    def test_get_by_numeric_index_out_of_range_returns_default(self):
-        """bag.get('#99') oltre i nodi ritorna default."""
-        bag = Bag({"a": 1})
-        assert bag.get("#99", default="gone") == "gone"
-
-    def test_get_by_attribute_match(self):
-        """bag.get('#attr=value') ritorna il valore del nodo con quell'attributo.
-
-        Scenario reale: ricerca di un record in una lista ordinata per 'id' logico.
+        Uso: costruire path programmaticamente senza dover fare '.'.join(...).
         """
         bag = Bag()
-        bag.set_item("row1", "alice", _attributes={"id": "x"})
-        bag.set_item("row2", "bob", _attributes={"id": "y"})
-        assert bag.get("#id=x") == "alice"
-        assert bag.get("#id=y") == "bob"
+        bag.set_item(["a", "b", "c"], 42)
+        # stessa gerarchia creata: leggibile con stringa puntata o lista
+        assert bag.get_item("a.b.c") == 42
+        assert bag.get_item(["a", "b", "c"]) == 42
 
-    def test_get_by_attribute_match_no_result_returns_default(self):
-        """bag.get('#id=missing') quando nessun match ritorna default."""
-        bag = Bag()
-        bag.set_item("a", 1, _attributes={"id": "x"})
-        assert bag.get("#id=missing", default="none") == "none"
+    def test_sharp_parent_on_root_returns_none(self):
+        """'#parent' su una Bag senza parent ritorna None (non solleva)."""
+        root = Bag()
+        root["x"] = 1
+        # root non ha parent: navigare al parent dà None
+        assert root.get("#parent") is None
 
-    def test_get_by_value_match(self):
-        """bag.get('#=value') ritorna il valore del primo nodo con quel valore."""
+    def test_dotdot_path_on_root_returns_none(self):
+        """'../x' su una Bag senza parent ritorna None.
+
+        Stessa semantica di #parent: navigazione al parent inesistente = None.
+        """
+        root = Bag()
+        root["x"] = 1
+        assert root.get_item("../x") is None
+
+    def test_write_sharp_index_in_intermediate_path_raises(self):
+        """set_item('#n.x', ...) usa la sintassi '#n' per riferire un nodo
+        esistente in un path intermedio. Se l'indice non esiste, solleva
+        BagException (non possiamo creare un nodo intermedio 'a indice').
+        """
+        bag = Bag({"a": 1, "b": 2})
+        with pytest.raises(BagException):
+            bag.set_item("#5.x", 42)
+
+    def test_get_item_descending_into_scalar_returns_none(self):
+        """Navigare dentro un valore scalare (non-Bag) ritorna None.
+
+        Se 'a' è un int, 'a.b' e 'a.b.c' non sono raggiungibili.
+        """
         bag = Bag()
-        bag.set_item("a", "foo")
-        bag.set_item("b", "bar")
-        assert bag.get("#=foo") == "foo"
-        assert bag.get("#=bar") == "bar"
+        bag["a"] = 42
+        assert bag.get_item("a.b") is None
+        assert bag.get_item("a.b.c") is None
 
 
 # =============================================================================
-# 21. node_position avanzato: '#n', '<#n', '>#n', '<missing'
+# 20. node_position avanzato: int, '#n', '<#n', '>#n', label, errori
 # =============================================================================
 
 
@@ -856,27 +1258,80 @@ class TestNodePositionSharpSyntax:
         bag.set_item("new", 99, node_position=">#1")
         assert bag.keys() == ["a", "b", "new", "c"]
 
-    def test_position_lt_missing_label_appends(self):
-        """node_position='<missing' con label inesistente: appende in coda (fallback)."""
-        bag = Bag({"a": 1, "b": 2})
-        bag.set_item("new", 99, node_position="<nonexistent")
-        assert bag.keys() == ["a", "b", "new"]
-
-    def test_position_gt_missing_label_appends(self):
-        """node_position='>missing' con label inesistente: appende in coda."""
-        bag = Bag({"a": 1, "b": 2})
-        bag.set_item("new", 99, node_position=">nonexistent")
-        assert bag.keys() == ["a", "b", "new"]
-
-    def test_position_integer_clamped_to_valid_range(self):
-        """node_position=int oltre len viene limitato a len (append)."""
+    def test_position_int_positive_out_of_range_clamps_to_len(self):
+        """node_position=int oltre len viene clampato a len (append)."""
         bag = Bag({"a": 1, "b": 2})
         bag.set_item("new", 99, node_position=999)
-        # aggiunto in coda
         assert bag.keys()[-1] == "new"
 
-    def test_position_negative_integer_clamped_to_zero(self):
-        """node_position=int negativo viene limitato a 0 (prepend)."""
+    def test_position_int_negative_one_inserts_before_last(self):
+        """node_position=-1 inserisce prima dell'ultimo (semantica Python)."""
+        bag = Bag({"a": 1, "b": 2, "c": 3})
+        bag.set_item("new", 99, node_position=-1)
+        assert bag.keys() == ["a", "b", "new", "c"]
+
+    def test_position_int_negative_two_inserts_before_penultimate(self):
+        """node_position=-2 inserisce prima del penultimo."""
+        bag = Bag({"a": 1, "b": 2, "c": 3})
+        bag.set_item("new", 99, node_position=-2)
+        assert bag.keys() == ["a", "new", "b", "c"]
+
+    def test_position_int_negative_len_inserts_at_start(self):
+        """node_position=-len(bag) equivale a prepend (indice 0)."""
+        bag = Bag({"a": 1, "b": 2, "c": 3})
+        bag.set_item("new", 99, node_position=-3)
+        assert bag.keys() == ["new", "a", "b", "c"]
+
+    def test_position_int_negative_out_of_range_clamps_to_zero(self):
+        """node_position=-999 oltre il range negativo viene clampato a 0 (prepend)."""
         bag = Bag({"a": 1, "b": 2})
-        bag.set_item("new", 99, node_position=-5)
+        bag.set_item("new", 99, node_position=-999)
         assert bag.keys()[0] == "new"
+
+    def test_position_int_negative_one_on_empty_bag_clamps_to_zero(self):
+        """node_position=-1 su Bag vuota viene clampato a 0."""
+        bag = Bag()
+        bag.set_item("new", 99, node_position=-1)
+        assert bag.keys() == ["new"]
+
+    def test_position_sharp_negative_raises_value_error(self):
+        """node_position='#-1' è sintassi malformata: ValueError."""
+        bag = Bag({"a": 1, "b": 2})
+        with pytest.raises(ValueError):
+            bag.set_item("new", 99, node_position="#-1")
+
+    def test_position_lt_sharp_negative_raises(self):
+        """node_position='<#-2' è sintassi malformata: ValueError."""
+        bag = Bag({"a": 1, "b": 2})
+        with pytest.raises(ValueError):
+            bag.set_item("new", 99, node_position="<#-2")
+
+    def test_position_gt_sharp_negative_raises(self):
+        """node_position='>#-3' è sintassi malformata: ValueError."""
+        bag = Bag({"a": 1, "b": 2})
+        with pytest.raises(ValueError):
+            bag.set_item("new", 99, node_position=">#-3")
+
+    def test_position_sharp_non_integer_raises(self):
+        """node_position='#abc' non-intero: ValueError."""
+        bag = Bag({"a": 1, "b": 2})
+        with pytest.raises(ValueError):
+            bag.set_item("new", 99, node_position="#abc")
+
+    def test_position_lt_missing_label_raises(self):
+        """node_position='<missing' con label inesistente: ValueError (no silent fallback)."""
+        bag = Bag({"a": 1, "b": 2})
+        with pytest.raises(ValueError):
+            bag.set_item("new", 99, node_position="<nonexistent")
+
+    def test_position_gt_missing_label_raises(self):
+        """node_position='>missing' con label inesistente: ValueError."""
+        bag = Bag({"a": 1, "b": 2})
+        with pytest.raises(ValueError):
+            bag.set_item("new", 99, node_position=">nonexistent")
+
+    def test_position_unrecognized_string_raises(self):
+        """node_position con sintassi sconosciuta: ValueError."""
+        bag = Bag({"a": 1, "b": 2})
+        with pytest.raises(ValueError):
+            bag.set_item("new", 99, node_position="@foo")

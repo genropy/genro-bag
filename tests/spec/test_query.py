@@ -155,6 +155,19 @@ class TestIsEmpty:
         assert bag.is_empty(blank_is_none=True) is True
         assert bag.is_empty() is False
 
+    def test_bag_with_resolver_node_is_not_empty(self):
+        """Un nodo con resolver conta come non vuoto anche senza valore statico.
+
+        Razionale: il resolver rappresenta contenuto potenziale. is_empty non
+        deve attivare il resolver per scoprirlo, ma la sua sola presenza basta
+        a marcare il Bag come non vuoto.
+        """
+        from genro_bag.resolvers import BagCbResolver
+        bag = Bag()
+        bag["data"] = BagCbResolver(lambda: "computed")
+        # is_empty non deve triggerare il resolver, ma comunque ritorna False
+        assert bag.is_empty() is False
+
 
 # =============================================================================
 # 6. get_nodes()
@@ -401,6 +414,54 @@ class TestQuery:
         bag = Bag({"a": 1})
         assert bag.query("#__v") == [1]
 
+    def test_query_where_colon_what_syntax(self):
+        """query('subpath:what') esegue la query su una sotto-Bag.
+
+        Scenario: utente vuole query solo un sottoramo senza navigarlo prima.
+        """
+        bag = Bag()
+        bag.set_item("users.alice", "a@x.com")
+        bag.set_item("users.bob", "b@x.com")
+        bag.set_item("other.skip", "ignore")
+        result = bag.query("users:#k,#v")
+        assert result == [("alice", "a@x.com"), ("bob", "b@x.com")]
+
+    def test_query_inner_value_path_on_bag_value(self):
+        """query('#v.key') estrae chiave specifica dal value quando e' dict-like.
+
+        Scenario: collezione di record, si vuole una sola colonna.
+        """
+        bag = Bag()
+        bag.set_item("r1", Bag({"name": "alice", "age": 30}))
+        bag.set_item("r2", Bag({"name": "bob", "age": 25}))
+        assert bag.query("#v.name") == ["alice", "bob"]
+
+    def test_query_custom_key_reads_from_value_dict(self):
+        """query('keyname') su value __getitem__-able estrae value[keyname].
+
+        Nota: sintassi senza '#' prefix → chiave diretta sul value.
+        """
+        bag = Bag()
+        bag.set_item("r1", {"name": "alice", "city": "Rome"})
+        bag.set_item("r2", {"name": "bob", "city": "Milan"})
+        assert bag.query("name") == ["alice", "bob"]
+        assert bag.query("city") == ["Rome", "Milan"]
+
+    def test_query_deep_limit_stops_across_branches(self):
+        """limit tronca il risultato anche se in mezzo a una ricorsione deep.
+
+        Scenario: bag con molti nodi, utente vuole solo i primi N in pre-order.
+        """
+        bag = Bag()
+        bag["a.b.c"] = 1
+        bag["a.b.d"] = 2
+        bag["a.e"] = 3
+        bag["f"] = 4
+        result = bag.query("#p", deep=True, limit=2)
+        # pre-order: 'a', 'a.b', ... fermato a 2
+        assert len(result) == 2
+        assert result == ["a", "a.b"]
+
 
 # =============================================================================
 # 12. digest() - alias retrocompat + as_columns
@@ -425,6 +486,16 @@ class TestDigest:
         """digest(as_columns=True) su Bag vuoto ritorna liste vuote per ogni col."""
         result = Bag().digest("#k,#v", as_columns=True)
         assert result == [[], []]
+
+    def test_digest_as_columns_single_column(self):
+        """digest(what='#k', as_columns=True) ritorna una singola lista wrappata.
+
+        Scenario: utente chiede una sola colonna con as_columns=True.
+        """
+        bag = Bag({"a": 1, "b": 2})
+        result = bag.digest("#k", as_columns=True)
+        # singola colonna: result[0] e' la lista di labels
+        assert result == [["a", "b"]]
 
 
 # =============================================================================
@@ -566,3 +637,15 @@ class TestSort:
         bag.sort("#a.g:a,#v:d")
         # dentro 'A' discendente per valore -> n2(3), n1(1); poi gruppo 'B' -> n3(2)
         assert bag.keys() == ["n2", "n1", "n3"]
+
+    def test_sort_by_field_inside_value_dict(self):
+        """sort('fieldname') ordina per valore di una chiave nel value dict.
+
+        Scenario: collezione di record (value = dict), sort per 'age'.
+        """
+        bag = Bag()
+        bag.set_item("r1", {"age": 30, "name": "alice"})
+        bag.set_item("r2", {"age": 25, "name": "bob"})
+        bag.set_item("r3", {"age": 40, "name": "carol"})
+        bag.sort("age")
+        assert bag.keys() == ["r2", "r1", "r3"]

@@ -336,3 +336,216 @@ class TestCoalescing:
         # solo un refresh eseguito in totale (coalescenza)
         assert counter["n"] == 1
         bag.get_resolver("d").parent_node = None
+
+
+# =============================================================================
+# 11. Path traversal con resolver: matrice sync/async 2x2
+# =============================================================================
+#
+# La Bag deve comportarsi in modo osservabile in tutte le combinazioni di:
+#   - contesto di esecuzione: sync (no loop) o async (loop running)
+#   - resolver: callback sync o async
+#
+# Inoltre il resolver puo' stare:
+#   - solo sul leaf
+#   - solo in posizione intermedia (restituisce una sotto-Bag)
+#   - in piu' posizioni lungo il path (catena di resolver)
+#
+# Regola di contratto osservabile:
+#   - In ctx sync: bag[path] restituisce sempre il valore finale (la Bag
+#     risolve internamente le coroutine quando serve).
+#   - In ctx async: bag[path] su path con resolver puo' restituire una
+#     coroutine che l'utente deve await. L'utente puo' sempre chiudere
+#     con `while iscoroutine(v): v = await v`.
+# =============================================================================
+
+
+def _sub_bag_sync():
+    """Callback sync che restituisce una sotto-Bag."""
+    sub = Bag()
+    sub["leaf"] = "deep_value"
+    return sub
+
+
+async def _sub_bag_async():
+    """Callback async che restituisce una sotto-Bag."""
+    await asyncio.sleep(0)
+    sub = Bag()
+    sub["leaf"] = "deep_value"
+    return sub
+
+
+def _scalar_sync():
+    """Callback sync che restituisce uno scalare (caso leaf)."""
+    return "leaf_sync"
+
+
+async def _scalar_async():
+    """Callback async che restituisce uno scalare (caso leaf)."""
+    await asyncio.sleep(0)
+    return "leaf_async"
+
+
+async def _drain(value):
+    """Utility: await ripetuto finche' il risultato non e' piu' una coroutine."""
+    while asyncio.iscoroutine(value):
+        value = await value
+    return value
+
+
+class TestPathTraversalIntermediateResolver:
+    """Resolver in posizione intermedia: path 'middle.leaf' dove 'middle' ha
+    un resolver che restituisce una sotto-Bag con dentro 'leaf'.
+    """
+
+    def test_ctx_sync_resolver_sync_returns_value(self):
+        """ctx sync + resolver intermedio sync → valore finale diretto."""
+        root = Bag()
+        root["middle"] = BagCbResolver(_sub_bag_sync)
+        assert root["middle.leaf"] == "deep_value"
+
+    def test_ctx_sync_resolver_async_returns_value(self):
+        """ctx sync + resolver intermedio async → la Bag risolve internamente."""
+        root = Bag()
+        root["middle"] = BagCbResolver(_sub_bag_async)
+        # In sync context, la coroutine interna viene risolta in modo trasparente
+        assert root["middle.leaf"] == "deep_value"
+
+    @pytest.mark.asyncio
+    async def test_ctx_async_resolver_sync_returns_value_after_await(self):
+        """ctx async + resolver intermedio sync → bag[path] e' awaitable."""
+        root = Bag()
+        root["middle"] = BagCbResolver(_sub_bag_sync)
+        v = await _drain(root["middle.leaf"])
+        assert v == "deep_value"
+
+    @pytest.mark.asyncio
+    async def test_ctx_async_resolver_async_returns_value_after_await(self):
+        """ctx async + resolver intermedio async → bag[path] e' awaitable."""
+        root = Bag()
+        root["middle"] = BagCbResolver(_sub_bag_async)
+        v = await _drain(root["middle.leaf"])
+        assert v == "deep_value"
+
+
+class TestPathTraversalLeafResolver:
+    """Resolver in posizione finale (leaf): path diretto a un nodo con resolver.
+
+    Questo e' il caso gia' coperto dalla suite, replicato qui per la
+    matrice completa.
+    """
+
+    def test_ctx_sync_leaf_sync(self):
+        """ctx sync + resolver leaf sync."""
+        root = Bag()
+        root["leaf"] = BagCbResolver(_scalar_sync)
+        assert root["leaf"] == "leaf_sync"
+
+    def test_ctx_sync_leaf_async(self):
+        """ctx sync + resolver leaf async → risolve internamente."""
+        root = Bag()
+        root["leaf"] = BagCbResolver(_scalar_async)
+        assert root["leaf"] == "leaf_async"
+
+    @pytest.mark.asyncio
+    async def test_ctx_async_leaf_sync(self):
+        """ctx async + resolver leaf sync → valore diretto (non awaitable)."""
+        root = Bag()
+        root["leaf"] = BagCbResolver(_scalar_sync)
+        v = await _drain(root["leaf"])
+        assert v == "leaf_sync"
+
+    @pytest.mark.asyncio
+    async def test_ctx_async_leaf_async(self):
+        """ctx async + resolver leaf async → awaitable."""
+        root = Bag()
+        root["leaf"] = BagCbResolver(_scalar_async)
+        v = await _drain(root["leaf"])
+        assert v == "leaf_async"
+
+
+class TestPathTraversalChainedResolvers:
+    """Piu' resolver in catena lungo il path. Ogni resolver intermedio
+    restituisce una Bag che contiene il prossimo resolver.
+    """
+
+    def test_two_resolvers_sync_then_sync_on_leaf(self):
+        """path 'mid.leaf': resolver intermedio sync + resolver leaf sync."""
+        def intermediate():
+            inner = Bag()
+            inner["leaf"] = BagCbResolver(_scalar_sync)
+            return inner
+
+        root = Bag()
+        root["mid"] = BagCbResolver(intermediate)
+        assert root["mid.leaf"] == "leaf_sync"
+
+    def test_two_resolvers_async_then_sync_on_leaf_sync_ctx(self):
+        """path 'mid.leaf': resolver intermedio async + resolver leaf sync, ctx sync."""
+        async def intermediate():
+            await asyncio.sleep(0)
+            inner = Bag()
+            inner["leaf"] = BagCbResolver(_scalar_sync)
+            return inner
+
+        root = Bag()
+        root["mid"] = BagCbResolver(intermediate)
+        assert root["mid.leaf"] == "leaf_sync"
+
+    @pytest.mark.asyncio
+    async def test_two_resolvers_mixed_async_ctx(self):
+        """ctx async + due resolver misti (async intermedio + async leaf)."""
+        async def intermediate():
+            await asyncio.sleep(0)
+            inner = Bag()
+            inner["leaf"] = BagCbResolver(_scalar_async)
+            return inner
+
+        root = Bag()
+        root["mid"] = BagCbResolver(intermediate)
+        v = await _drain(root["mid.leaf"])
+        assert v == "leaf_async"
+
+    def test_three_resolvers_chain_all_sync_ctx(self):
+        """path 'a.b.c' con 3 resolver in catena (tipi misti), ctx sync."""
+        def leaf_cb():
+            return "FINAL"
+
+        def second_cb():
+            b = Bag()
+            b["c"] = BagCbResolver(leaf_cb)
+            return b
+
+        async def first_cb():
+            await asyncio.sleep(0)
+            b = Bag()
+            b["b"] = BagCbResolver(second_cb)
+            return b
+
+        root = Bag()
+        root["a"] = BagCbResolver(first_cb)
+        # path: a (async) -> b (sync, ritorna Bag) -> c (sync leaf)
+        assert root["a.b.c"] == "FINAL"
+
+    @pytest.mark.asyncio
+    async def test_three_resolvers_chain_all_async_ctx(self):
+        """path 'a.b.c' con 3 resolver in catena (tipi misti), ctx async."""
+        async def leaf_cb():
+            await asyncio.sleep(0)
+            return "FINAL_ASYNC"
+
+        async def second_cb():
+            await asyncio.sleep(0)
+            b = Bag()
+            b["c"] = BagCbResolver(leaf_cb)
+            return b
+
+        def first_cb():
+            b = Bag()
+            b["b"] = BagCbResolver(second_cb)
+            return b
+
+        root = Bag()
+        root["a"] = BagCbResolver(first_cb)
+        v = await _drain(root["a.b.c"])
+        assert v == "FINAL_ASYNC"

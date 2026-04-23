@@ -100,6 +100,48 @@ class TestToXmlOptions:
         xml = bag.to_xml(self_closed_tags=["empty_tag"])
         assert "<empty_tag/>" in (xml or "")
 
+    def test_self_closed_tags_excludes_others(self):
+        """Tag NON presenti in self_closed_tags usano la forma <tag></tag> se vuoti.
+
+        Scenario: utente specifica solo 'br' come self-closed; un altro tag
+        vuoto non deve essere self-closed.
+        """
+        bag = Bag()
+        bag.set_item("empty_scalar", None)
+        xml = bag.to_xml(self_closed_tags=["br"]) or ""
+        # empty_scalar non e' in self_closed_tags → forma estesa
+        assert "<empty_scalar></empty_scalar>" in xml
+        assert "<empty_scalar/>" not in xml
+
+    def test_self_closed_tags_empty_sub_bag_included(self):
+        """Sub-Bag vuota con tag in self_closed_tags si auto-chiude."""
+        bag = Bag()
+        bag.set_item("container", Bag())
+        xml = bag.to_xml(self_closed_tags=["container"]) or ""
+        assert "<container/>" in xml
+
+    def test_self_closed_tags_empty_sub_bag_excluded(self):
+        """Sub-Bag vuota con tag NON in self_closed_tags usa <tag></tag>."""
+        bag = Bag()
+        bag.set_item("container", Bag())
+        xml = bag.to_xml(self_closed_tags=["other"]) or ""
+        assert "<container></container>" in xml
+        assert "<container/>" not in xml
+
+    def test_self_closed_tags_default_all_empty_are_self_closed(self):
+        """Senza self_closed_tags (default) ogni tag vuoto si auto-chiude.
+
+        Questo e' il comportamento standard XML.
+        """
+        bag = Bag()
+        bag.set_item("a", None)
+        bag.set_item("b", "")
+        bag.set_item("c", Bag())
+        xml = bag.to_xml() or ""
+        assert "<a/>" in xml
+        assert "<b/>" in xml
+        assert "<c/>" in xml
+
 
 # =============================================================================
 # 3. to_xml - filename

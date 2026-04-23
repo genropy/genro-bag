@@ -433,6 +433,32 @@ class TestPickle:
         restored = pickle.loads(pickle.dumps(src))
         assert restored.get_item("outer.inner") == 42
 
+    def test_roundtrip_preserves_backref_state(self):
+        """Pickle di una Bag con backref attivo restituisce una Bag con backref.
+
+        Scenario: salviamo una Bag "vivente" (pronta a notificare) e dobbiamo
+        ricostruirla nello stesso stato dopo l'unpickle.
+        """
+        src = Bag()
+        src["outer.inner"] = 42
+        src.set_backref()
+        assert src.backref is True
+        data = pickle.dumps(src)
+        restored = pickle.loads(data)
+        assert restored.backref is True
+        # la sub-Bag annidata deve avere backref attivato anche lei
+        inner = restored.get_item("outer")
+        assert isinstance(inner, Bag)
+        assert inner.backref is True
+
+    def test_roundtrip_without_backref_stays_without_backref(self):
+        """Pickle di una Bag senza backref resta senza backref dopo il restore."""
+        src = Bag()
+        src["outer.inner"] = 42
+        assert src.backref is False
+        restored = pickle.loads(pickle.dumps(src))
+        assert restored.backref is False
+
 
 # =============================================================================
 # 18. from_url (marker network - smoke test)
