@@ -82,7 +82,7 @@ Issues = "https://github.com/genropy/genro-bag/issues"
 packages = ["src/genro_bag"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests/spec"]
 addopts = "-v --cov=genro_bag --cov-report=term-missing --cov-report=html --cov-report=xml"
 markers = [
     "network: marks tests as requiring network access (deselect with '-m \"not network\"')",
