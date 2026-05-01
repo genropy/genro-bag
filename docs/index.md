@@ -102,6 +102,7 @@ bag/basic-usage
 bag/paths-and-access
 bag/attributes
 bag/serialization
+bag/extending
 bag/examples
 bag/faq
 bag/architecture

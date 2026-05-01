@@ -90,6 +90,7 @@ bag2 = Bag.from_tytx(tytx)
 - [Paths and Access](paths-and-access.md) — Query syntax, traversal
 - [Attributes](attributes.md) — Metadata patterns
 - [Serialization](serialization.md) — XML, JSON, TYTX formats
+- [Extending Bag and BagNode](extending.md) — Subclassing, mixins, custom node types
 - [Examples](examples.md) — Practical patterns
 - [FAQ](faq.md) — Common questions
 
