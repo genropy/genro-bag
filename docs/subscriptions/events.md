@@ -72,6 +72,58 @@ Triggered when an existing node's value changes.
 | `pathlist` | Path from subscription root |
 | `info` | May contain `oldvalue` |
 
+## Attribute Update Events (`upd_attrs`)
+
+Triggered when one or more node attributes are added, modified, or removed
+via `BagNode.set_attr`. The payload carries a **diff dict** describing
+exactly what changed:
+
+```python
+{
+    "<attr_name>": {"old": <previous_value>, "new": <current_value>},
+    ...
+}
+```
+
+Only attributes whose effective value actually changed appear in the diff:
+
+- **added**: `{"old": None, "new": <value>}`
+- **modified**: `{"old": <prev>, "new": <curr>}`
+- **removed**: `{"old": <value>, "new": None}` (e.g. set to `None` with the
+  default `_remove_null_attributes=True`)
+
+If `set_attr` does not change any effective value (no-op), no event is
+emitted.
+
+```python
+from genro_bag import Bag
+
+bag = Bag()
+bag.set_item('x', 'value', color='red')
+
+events = []
+bag.subscribe('w', update=lambda **kw: events.append(kw['oldvalue']))
+
+bag.get_node('x').set_attr(color='blue', size=42)
+
+# events == [{
+#     "color": {"old": "red",  "new": "blue"},
+#     "size":  {"old": None,   "new": 42},
+# }]
+```
+
+### Callback Data
+
+| Key | Description |
+|-----|-------------|
+| `node` | The BagNode whose attributes changed |
+| `evt` | Always `'upd_attrs'` |
+| `pathlist` | Path from subscription root |
+| `oldvalue` | Diff dict (see above). At node-level subscribers it arrives as `info` |
+
+The payload is self-contained: a consumer can react to attribute changes
+without having to snapshot `node.attr` independently.
+
 ## Delete Events (`del`)
 
 Triggered when a node is removed.

@@ -492,18 +492,23 @@ class BagNode:
         if _remove_null_attributes:
             self._attr = {k: v for k, v in self._attr.items() if v is not None}
 
-        if trigger:
-            upd_attrs = [k for k, _ in self._attr.items() - oldattr.items()] if oldattr is not None else None
+        if trigger and oldattr is not None:
+            diff: dict[str, dict[str, Any]] = {}
+            for key in set(oldattr) | set(self._attr):
+                old_val = oldattr.get(key)
+                new_val = self._attr.get(key)
+                if old_val != new_val:
+                    diff[key] = {"old": old_val, "new": new_val}
 
-            if upd_attrs is not None and self._node_subscribers:
+            if diff and self._node_subscribers:
                 for subscriber in self._node_subscribers.values():
-                    subscriber(node=self, info=upd_attrs, evt="upd_attrs")
+                    subscriber(node=self, info=diff, evt="upd_attrs")
 
-            if self._parent_bag is not None and self._parent_bag.backref:
+            if diff and self._parent_bag is not None and self._parent_bag.backref:
                 reason = str(trigger) if trigger is True else trigger
                 self._parent_bag._on_node_changed(
                     self, [self.label], evt="upd_attrs",
-                    oldvalue=upd_attrs,
+                    oldvalue=diff,
                     reason=reason
                 )
 
