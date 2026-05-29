@@ -1036,7 +1036,7 @@ class BagNodeContainer:
             # New node
             if parent_bag is None:
                 raise BagNodeException("Cannot create a new node without a parent Bag")
-            node = parent_bag.node_class(
+            node = parent_bag._node_class(
                 parent_bag,
                 label=label,
                 value=value,

@@ -82,11 +82,13 @@ class Bag(BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer
         _del_subscribers: Callbacks for delete events.
         _tmr_subscribers: Timer subscriptions (interval-based callbacks).
         _root_attributes: Attributes for the root bag.
-        node_class: Factory class for creating BagNode instances. Subclasses
-            can override this to use custom node types.
+        _node_class: Factory class for creating BagNode instances. Subclasses
+            can override this to use custom node types. Internal infrastructure
+            attribute (underscore prefix); subclasses set it explicitly while
+            user code never reads it.
     """
 
-    node_class: type[BagNode] = BagNode
+    _node_class: type[BagNode] = BagNode
     container_class: type[BagNodeContainer] = BagNodeContainer
 
     def __init__(self, source: dict[str, Any] | None = None):

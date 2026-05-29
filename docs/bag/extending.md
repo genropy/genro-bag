@@ -20,7 +20,7 @@ The core never instantiates `Bag()` or `BagNode()` directly when replicating str
 
 - Instance methods that need a new bag use `self.__class__()` (e.g. when `bag['a.b.c'] = v` creates intermediate nodes, or during `deepcopy`).
 - `@classmethod` deserializers (`from_xml`, `from_json`, `from_tytx`) use `cls()`.
-- Nodes are instantiated via `parent_bag.node_class(...)`, where `node_class` is a class attribute on `Bag` (default: `BagNode`).
+- Nodes are instantiated via `parent_bag._node_class(...)`, where `_node_class` is a class attribute on `Bag` (default: `BagNode`). The leading underscore marks it as internal infrastructure: subclasses set it explicitly to inject a custom node factory, but user code never reads or writes it.
 
 This means subclassing alone is enough to make your custom type propagate everywhere. You just need to respect two constraints:
 
@@ -54,7 +54,7 @@ class TaggedBagNode(BagNode, _TaggedNodeMixin):
 
 
 class ConfigBag(Bag, _ConfigMixin):
-    node_class = TaggedBagNode
+    _node_class = TaggedBagNode
 ```
 
 Use it normally:
@@ -65,7 +65,7 @@ cfg['db.host'] = 'localhost'
 
 assert isinstance(cfg, ConfigBag)
 assert isinstance(cfg['db'], ConfigBag)            # intermediate sub-bag
-assert type(cfg.getNode('db')) is TaggedBagNode    # node uses class attribute
+assert type(cfg.get_node('db')) is TaggedBagNode    # node uses class attribute
 cfg.apply_defaults({'db.port': 5432})              # mixin method available
 ```
 
@@ -92,7 +92,7 @@ class ConfigBag(_ConfigMixin, Bag):    # mixin first, Bag second
 ```
 
 - The mixin **can** override methods and attributes of `Bag`.
-- Use this only when the override is a deliberate design choice — for example, a reusable mixin that carries a default `node_class` you want to apply across multiple subclasses.
+- Use this only when the override is a deliberate design choice — for example, a reusable mixin that carries a default `_node_class` you want to apply across multiple subclasses.
 - Risk: any name clash, even unintentional, will silently shadow `Bag` behavior.
 
 ### Quick comparison
@@ -102,27 +102,27 @@ class ConfigBag(_ConfigMixin, Bag):    # mixin first, Bag second
 | Can override `Bag` methods | No | Yes |
 | Safe against accidental name clashes | Yes | No |
 | Right choice for "add helpers" | ✓ | ✗ |
-| Right choice for "the mixin owns a default like `node_class`" | ✗ | ✓ |
+| Right choice for "the mixin owns a default like `_node_class`" | ✗ | ✓ |
 
 ## When you only need a custom node factory
 
-If the only thing you want to change is the node type — no extra methods on the bag, no mixins — declare `node_class` directly on the subclass:
+If the only thing you want to change is the node type — no extra methods on the bag, no mixins — declare `_node_class` directly on the subclass:
 
 ```python
 class TaggedBag(Bag):
-    node_class = TaggedBagNode
+    _node_class = TaggedBagNode
 ```
 
-That's it. No mixins, no MRO concerns. `TaggedBag.node_class` resolves to `TaggedBagNode` because the subclass itself is always before `Bag` in the MRO, regardless of any other parents.
+That's it. No mixins, no MRO concerns. `TaggedBag._node_class` resolves to `TaggedBagNode` because the subclass itself is always before `Bag` in the MRO, regardless of any other parents.
 
 The same applies when you combine a "right-side" mixin with a node override:
 
 ```python
 class ConfigBag(Bag, _ConfigMixin):
-    node_class = TaggedBagNode      # explicit, single line
+    _node_class = TaggedBagNode      # explicit, single line
 ```
 
-The override is visible at a glance when reading `ConfigBag`, and the mixin stays harmless because it cannot reach the `node_class` slot ahead of the subclass itself.
+The override is visible at a glance when reading `ConfigBag`, and the mixin stays harmless because it cannot reach the `_node_class` slot ahead of the subclass itself.
 
 ## Mixins with `__init__`
 
@@ -145,10 +145,10 @@ class CachedBag(Bag, _CachingMixin):
 
 | What you want | What to do |
 |---|---|
-| Only add helper methods to the bag | Mixin on the right, no `node_class` override |
-| Only change the node type | `node_class = MyNode` directly on the subclass |
-| Add helpers **and** custom nodes | Mixin on the right + `node_class` override on the subclass |
-| Mixin must impose a shared default (e.g. its own `node_class`) | Mixin on the left, deliberately |
+| Only add helper methods to the bag | Mixin on the right, no `_node_class` override |
+| Only change the node type | `_node_class = MyNode` directly on the subclass |
+| Add helpers **and** custom nodes | Mixin on the right + `_node_class` override on the subclass |
+| Mixin must impose a shared default (e.g. its own `_node_class`) | Mixin on the left, deliberately |
 | Per-instance state | Mixin with `__init__` calling `super().__init__(*args, **kwargs)` |
 
 ## Full verification example
@@ -175,7 +175,7 @@ class TaggedBagNode(BagNode, _TaggedNodeMixin):
 
 
 class ConfigBag(Bag, _ConfigMixin):
-    node_class = TaggedBagNode
+    _node_class = TaggedBagNode
 
 
 cfg = ConfigBag()
@@ -186,15 +186,15 @@ cfg['db.port'] = 5432
 assert isinstance(cfg['db'], ConfigBag)
 
 # Custom node class is used for every node
-assert type(cfg.getNode('db')) is TaggedBagNode
-assert type(cfg['db'].getNode('host')) is TaggedBagNode
+assert type(cfg.get_node('db')) is TaggedBagNode
+assert type(cfg['db'].get_node('host')) is TaggedBagNode
 
 # Mixin methods are available on bag and node
 cfg.apply_defaults({'db.timeout': 30})
-assert cfg.getNode('db').is_tagged('config') is False
+assert cfg.get_node('db').is_tagged('config') is False
 
 # Deepcopy preserves the custom types
 cfg2 = copy.deepcopy(cfg)
 assert isinstance(cfg2, ConfigBag)
-assert type(cfg2.getNode('db')) is TaggedBagNode
+assert type(cfg2.get_node('db')) is TaggedBagNode
 ```
