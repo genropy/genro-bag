@@ -63,14 +63,30 @@ Triggered when an existing node's value changes.
 
 **Note:** The first assignment triggers `ins`, not `upd_value`.
 
-### Callback Data
+### `upd_value` — Bag-level callback data
 
 | Key | Description |
 |-----|-------------|
 | `node` | The modified BagNode |
 | `evt` | Always `'upd_value'` |
 | `pathlist` | Path from subscription root |
-| `info` | May contain `oldvalue` |
+| `oldvalue` | The previous scalar/Bag value |
+| `attrs_diff` | Always `None` for `upd_value` (only set for `upd_attrs` / `upd_value_attr`) |
+| `reason` | Optional reason string |
+
+### `upd_value` — Node-level subscribers
+
+A subscriber registered directly on a `BagNode` via `node.subscribe()`
+receives a single `info` argument that is a **dict** whose keys depend
+on the event:
+
+```python
+def callback(**kw):
+    info = kw['info']        # {'oldvalue': <previous_value>}
+    evt  = kw['evt']         # 'upd_value'
+```
+
+For `upd_value`, `info` always contains the single key `'oldvalue'`.
 
 ## Attribute Update Events (`upd_attrs`)
 
@@ -102,7 +118,7 @@ bag = Bag()
 bag.set_item('x', 'value', color='red')
 
 events = []
-bag.subscribe('w', update=lambda **kw: events.append(kw['oldvalue']))
+bag.subscribe('w', update=lambda **kw: events.append(kw['attrs_diff']))
 
 bag.get_node('x').set_attr(color='blue', size=42)
 
@@ -112,17 +128,91 @@ bag.get_node('x').set_attr(color='blue', size=42)
 # }]
 ```
 
-### Callback Data
+### `upd_attrs` — Bag-level callback data
 
 | Key | Description |
 |-----|-------------|
 | `node` | The BagNode whose attributes changed |
 | `evt` | Always `'upd_attrs'` |
 | `pathlist` | Path from subscription root |
-| `oldvalue` | Diff dict (see above). At node-level subscribers it arrives as `info` |
+| `oldvalue` | Always `None` for `upd_attrs` (no value change) |
+| `attrs_diff` | The diff dict (see above) |
+| `reason` | Optional reason string |
+
+### `upd_attrs` — Node-level subscribers
+
+```python
+def callback(**kw):
+    info = kw['info']        # {'attrs_diff': {<key>: {'old': ..., 'new': ...}, ...}}
+    evt  = kw['evt']         # 'upd_attrs'
+```
+
+For `upd_attrs`, `info` always contains the single key `'attrs_diff'`.
 
 The payload is self-contained: a consumer can react to attribute changes
 without having to snapshot `node.attr` independently.
+
+## Combined Value+Attribute Updates (`upd_value_attr`)
+
+Triggered when a single mutation changes **both** the node's value and one
+or more of its attributes. This happens when `set_item` (or
+`BagNode.set_value`) is called with the `_attributes` argument, which
+carries the new attributes alongside the new value.
+
+The payload merges both pieces of information:
+
+- `oldvalue` carries the previous scalar/Bag value (same semantics as
+  `upd_value`);
+- `attrs_diff` carries the attribute diff dict (same shape as
+  `upd_attrs`).
+
+```python
+from genro_bag import Bag
+
+bag = Bag()
+bag.set_item('x', 'v0', color='red')
+
+events = []
+bag.subscribe('w', update=lambda **kw: events.append({
+    'evt': kw['evt'],
+    'oldvalue': kw['oldvalue'],
+    'attrs_diff': kw['attrs_diff'],
+}))
+
+bag.set_item('x', 'v1', color='blue')
+
+# events == [{
+#     'evt': 'upd_value_attr',
+#     'oldvalue': 'v0',
+#     'attrs_diff': {'color': {'old': 'red', 'new': 'blue'}},
+# }]
+```
+
+Note: `set_item` uses `_updattr=False` by default (full replacement of
+attributes). Attributes present before the call but not passed in the new
+call appear as **removed** in the diff (`new=None`).
+
+### `upd_value_attr` — Bag-level callback data
+
+| Key | Description |
+|-----|-------------|
+| `node` | The modified BagNode |
+| `evt` | Always `'upd_value_attr'` |
+| `pathlist` | Path from subscription root |
+| `oldvalue` | The previous scalar/Bag value |
+| `attrs_diff` | Attribute diff dict (or `None` if no attribute actually changed) |
+| `reason` | Optional reason string |
+
+### `upd_value_attr` — Node-level subscribers
+
+```python
+def callback(**kw):
+    info = kw['info']        # {'oldvalue': <prev>, 'attrs_diff': {<key>: {'old': ..., 'new': ...}, ...}}
+    evt  = kw['evt']         # 'upd_value_attr'
+```
+
+For `upd_value_attr`, `info` contains **both** `'oldvalue'` and
+`'attrs_diff'`.
 
 ## Delete Events (`del`)
 

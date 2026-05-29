@@ -49,6 +49,7 @@ class BagEvents:
         pathlist: list,
         evt: str,
         oldvalue: Any = None,
+        attrs_diff: dict[str, dict[str, Any]] | None = None,
         reason: str | None = None,
     ) -> None:
         """Trigger for node change events.
@@ -60,14 +61,19 @@ class BagEvents:
         """
         txn = _current_transaction.get()
         if txn is not None:
-            txn.append(("upd", node, pathlist, evt, oldvalue, reason))
+            txn.append(("upd", node, pathlist, evt, oldvalue, attrs_diff, reason))
             return
         for s in list(self._upd_subscribers.values()):
-            if s(node=node, pathlist=pathlist, oldvalue=oldvalue, evt=evt, reason=reason) is False:
+            if s(
+                node=node, pathlist=pathlist,
+                oldvalue=oldvalue, attrs_diff=attrs_diff,
+                evt=evt, reason=reason,
+            ) is False:
                 return
         if self.parent and self.parent_node:
             self.parent._on_node_changed(
-                node, [self.parent_node.label] + pathlist, evt, oldvalue, reason=reason
+                node, [self.parent_node.label] + pathlist,
+                evt, oldvalue=oldvalue, attrs_diff=attrs_diff, reason=reason,
             )
 
     def _on_node_inserted(

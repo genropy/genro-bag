@@ -324,33 +324,41 @@ class BagNode:
 
         trigger = trigger and changed
 
-        # Event type: 'upd_value' for value-only, 'upd_value_attr' for combined
-        # Note: evt is used ONLY for parent notification, not for node subscribers
+        # Event type: 'upd_value' for value-only, 'upd_value_attr' for combined.
         evt = "upd_value"
+        attrs_diff: dict[str, dict[str, Any]] | None = None
 
         if _attributes is not None:
             evt = "upd_value_attr"
-            # Call set_attr with trigger=False: node subscribers receive only
-            # 'upd_value' from here, not a separate 'upd_attrs' event
+            oldattr_snapshot = dict(self._attr)
+            # Call set_attr with trigger=False: it must not emit its own
+            # 'upd_attrs' event, the combined 'upd_value_attr' covers both.
             self.set_attr(
                 _attributes,
                 trigger=False,
                 _updattr=_updattr,
                 _remove_null_attributes=_remove_null_attributes,
             )
+            attrs_diff = self._build_attr_diff(oldattr_snapshot, self._attr) or None
 
-        # Node subscribers always receive 'upd_value' (not 'upd_value_attr')
-        # They don't need to know if attributes also changed
         if trigger:
+            if attrs_diff is not None:
+                info = {"oldvalue": oldvalue, "attrs_diff": attrs_diff}
+            else:
+                info = {"oldvalue": oldvalue}
             for subscriber in self._node_subscribers.values():
-                subscriber(node=self, info=oldvalue, evt="upd_value")
+                subscriber(node=self, info=info, evt=evt)
 
         if self._parent_bag is not None and self._parent_bag.backref:
             if hasattr(value, "_htraverse"):
                 value.set_backref(node=self, parent=self._parent_bag)
             if trigger:
                 self._parent_bag._on_node_changed(
-                    self, [self.label], oldvalue=oldvalue, evt=evt, reason=_reason
+                    self, [self.label],
+                    evt=evt,
+                    oldvalue=oldvalue,
+                    attrs_diff=attrs_diff,
+                    reason=_reason,
                 )
 
     @property
@@ -436,6 +444,25 @@ class BagNode:
             return self._attr
         return self._attr.get(label, default)
 
+    def _build_attr_diff(
+        self,
+        oldattr: dict[str, Any],
+        newattr: dict[str, Any],
+    ) -> dict[str, dict[str, Any]]:
+        """Compute the symmetric diff between two attribute snapshots.
+
+        Returns a dict mapping each changed key to {"old": <prev>, "new": <curr>},
+        covering added (old=None), removed (new=None) and modified entries.
+        Keys whose value did not change are omitted.
+        """
+        diff: dict[str, dict[str, Any]] = {}
+        for key in set(oldattr) | set(newattr):
+            old_val = oldattr.get(key)
+            new_val = newattr.get(key)
+            if old_val != new_val:
+                diff[key] = {"old": old_val, "new": new_val}
+        return diff
+
     def set_attr(
         self,
         attr: dict[str, Any] | None = None,
@@ -493,22 +520,18 @@ class BagNode:
             self._attr = {k: v for k, v in self._attr.items() if v is not None}
 
         if trigger and oldattr is not None:
-            diff: dict[str, dict[str, Any]] = {}
-            for key in set(oldattr) | set(self._attr):
-                old_val = oldattr.get(key)
-                new_val = self._attr.get(key)
-                if old_val != new_val:
-                    diff[key] = {"old": old_val, "new": new_val}
+            diff = self._build_attr_diff(oldattr, self._attr)
 
             if diff and self._node_subscribers:
+                info = {"attrs_diff": diff}
                 for subscriber in self._node_subscribers.values():
-                    subscriber(node=self, info=diff, evt="upd_attrs")
+                    subscriber(node=self, info=info, evt="upd_attrs")
 
             if diff and self._parent_bag is not None and self._parent_bag.backref:
                 reason = str(trigger) if trigger is True else trigger
                 self._parent_bag._on_node_changed(
                     self, [self.label], evt="upd_attrs",
-                    oldvalue=diff,
+                    attrs_diff=diff,
                     reason=reason
                 )
 

@@ -16,8 +16,10 @@ Regole:
 - ``trigger=False`` -> nessun evento.
 
 Il payload arriva:
-- ai subscriber node-level come ``info=<diff>``;
-- ai subscriber bag-level (via _on_node_changed) come ``oldvalue=<diff>``.
+- ai subscriber node-level come ``info={"attrs_diff": <diff>}``;
+- ai subscriber bag-level (via _on_node_changed) come kwarg
+  ``attrs_diff=<diff>``; ``oldvalue`` resta None (e' riservato al valore
+  vecchio scalare di upd_value / upd_value_attr).
 
 ## Scala
 
@@ -28,8 +30,8 @@ Il payload arriva:
 5. no-op                                    nessun evento
 6. trigger=False                            nessun evento
 7. _updattr=False (replace totale)          attributi non passati = removed
-8. node subscriber                          riceve info=<diff>
-9. bag subscriber                           riceve oldvalue=<diff>
+8. node subscriber                          riceve info={"attrs_diff": <diff>}
+9. bag subscriber                           riceve attrs_diff=<diff>, oldvalue=None
 """
 
 from __future__ import annotations
@@ -47,7 +49,10 @@ class TestUpdAttrsAdded:
         events = []
         bag = Bag()
         bag.set_item("x", "value")
-        bag.subscribe("s1", update=lambda **kw: events.append((kw["evt"], kw["oldvalue"])))
+        bag.subscribe(
+            "s1",
+            update=lambda **kw: events.append((kw["evt"], kw["attrs_diff"])),
+        )
         bag.get_node("x").set_attr(color="red")
         assert events == [("upd_attrs", {"color": {"old": None, "new": "red"}})]
 
@@ -63,7 +68,10 @@ class TestUpdAttrsModified:
         events = []
         bag = Bag()
         bag.set_item("x", "value", color="red")
-        bag.subscribe("s1", update=lambda **kw: events.append((kw["evt"], kw["oldvalue"])))
+        bag.subscribe(
+            "s1",
+            update=lambda **kw: events.append((kw["evt"], kw["attrs_diff"])),
+        )
         bag.get_node("x").set_attr(color="blue")
         assert events == [("upd_attrs", {"color": {"old": "red", "new": "blue"}})]
 
@@ -80,7 +88,10 @@ class TestUpdAttrsRemoved:
         events = []
         bag = Bag()
         bag.set_item("x", "value", color="red")
-        bag.subscribe("s1", update=lambda **kw: events.append((kw["evt"], kw["oldvalue"])))
+        bag.subscribe(
+            "s1",
+            update=lambda **kw: events.append((kw["evt"], kw["attrs_diff"])),
+        )
         bag.get_node("x").set_attr(color=None)
         assert events == [("upd_attrs", {"color": {"old": "red", "new": None}})]
 
@@ -97,7 +108,10 @@ class TestUpdAttrsMultiple:
         events = []
         bag = Bag()
         bag.set_item("x", "value", color="red")
-        bag.subscribe("s1", update=lambda **kw: events.append((kw["evt"], kw["oldvalue"])))
+        bag.subscribe(
+            "s1",
+            update=lambda **kw: events.append((kw["evt"], kw["attrs_diff"])),
+        )
         bag.get_node("x").set_attr(color="blue", size=42)
         assert len(events) == 1
         evt, diff = events[0]
@@ -153,7 +167,10 @@ class TestUpdAttrsReplaceMode:
         events = []
         bag = Bag()
         bag.set_item("x", "value", color="red", size=10)
-        bag.subscribe("s1", update=lambda **kw: events.append((kw["evt"], kw["oldvalue"])))
+        bag.subscribe(
+            "s1",
+            update=lambda **kw: events.append((kw["evt"], kw["attrs_diff"])),
+        )
         bag.get_node("x").set_attr(attr={"shape": "circle"}, _updattr=False)
         assert len(events) == 1
         evt, diff = events[0]
@@ -171,16 +188,24 @@ class TestUpdAttrsReplaceMode:
 
 
 class TestUpdAttrsNodeSubscriber:
-    def test_node_level_subscriber_receives_diff_as_info(self):
+    def test_node_level_subscriber_receives_diff_as_info_attrs_diff(self):
         """Un subscriber registrato direttamente sul nodo riceve il diff dict
-        come argomento ``info``."""
+        come argomento ``info["attrs_diff"]``."""
         events = []
         bag = Bag()
         bag.set_item("x", "value", color="red")
         node = bag.get_node("x")
-        node.subscribe("ns1", lambda **kw: events.append((kw["evt"], kw["info"])))
+        node.subscribe(
+            "ns1",
+            lambda **kw: events.append((kw["evt"], kw["info"])),
+        )
         node.set_attr(color="blue")
-        assert events == [("upd_attrs", {"color": {"old": "red", "new": "blue"}})]
+        assert events == [
+            (
+                "upd_attrs",
+                {"attrs_diff": {"color": {"old": "red", "new": "blue"}}},
+            )
+        ]
 
 
 # =============================================================================
@@ -189,20 +214,26 @@ class TestUpdAttrsNodeSubscriber:
 
 
 class TestUpdAttrsBagSubscriber:
-    def test_bag_level_subscriber_receives_diff_as_oldvalue(self):
+    def test_bag_level_subscriber_receives_diff_as_attrs_diff_kwarg(self):
         """Un subscriber registrato sul parent bag riceve il diff dict come
-        argomento ``oldvalue`` (propagato via _on_node_changed)."""
+        kwarg ``attrs_diff`` (propagato via _on_node_changed). ``oldvalue``
+        resta None per gli eventi puramente di attributi."""
         events = []
         bag = Bag()
         bag.set_item("x", "value", color="red")
-        bag.subscribe("s1", update=lambda **kw: events.append({
-            "evt": kw["evt"],
-            "oldvalue": kw["oldvalue"],
-            "pathlist": kw["pathlist"],
-        }))
+        bag.subscribe(
+            "s1",
+            update=lambda **kw: events.append({
+                "evt": kw["evt"],
+                "oldvalue": kw["oldvalue"],
+                "attrs_diff": kw["attrs_diff"],
+                "pathlist": kw["pathlist"],
+            }),
+        )
         bag.get_node("x").set_attr(color="blue")
         assert events == [{
             "evt": "upd_attrs",
-            "oldvalue": {"color": {"old": "red", "new": "blue"}},
+            "oldvalue": None,
+            "attrs_diff": {"color": {"old": "red", "new": "blue"}},
             "pathlist": ["x"],
         }]
