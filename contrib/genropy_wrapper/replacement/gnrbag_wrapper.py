@@ -564,8 +564,8 @@ class Bag(_CamelDeprecationMixin, genro_bag.Bag):
     wrp_* methods for camelCase methods needing parameter adaptation.
     """
 
-    node_class = BagNode
-    container_class = WrapperBagNodeContainer
+    _node_class = BagNode
+    _container_class = WrapperBagNodeContainer
 
     def __init__(self, source: Any = None, **kwargs: Any) -> None:
         """Create a new Bag from various source types."""
@@ -652,7 +652,7 @@ class Bag(_CamelDeprecationMixin, genro_bag.Bag):
 
     def _import_nodes_with_duplicates(self, source_bag: Any) -> None:
         """Import nodes from a parsed Bag, converting renamed duplicates."""
-        node_cls = self.node_class
+        node_cls = self._node_class
         for node in source_bag:
             xml_tag = node.xml_tag
             label = node.label
@@ -888,7 +888,7 @@ class Bag(_CamelDeprecationMixin, genro_bag.Bag):
         result, label = self._htraverse(item_path, write_mode=True)
         obj = cast("Bag", result)
 
-        node = obj.node_class(
+        node = obj._node_class(
             obj, label=label, value=item_value, attr=_attributes,
             _remove_null_attributes=True,
         )

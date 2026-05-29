@@ -86,10 +86,13 @@ class Bag(BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer
             can override this to use custom node types. Internal infrastructure
             attribute (underscore prefix); subclasses set it explicitly while
             user code never reads it.
+        _container_class: Factory class for creating the internal
+            BagNodeContainer. Same convention as _node_class: subclasses may
+            override to inject a custom container, user code does not touch it.
     """
 
     _node_class: type[BagNode] = BagNode
-    container_class: type[BagNodeContainer] = BagNodeContainer
+    _container_class: type[BagNodeContainer] = BagNodeContainer
 
     def __init__(self, source: dict[str, Any] | None = None):
         """Create a new Bag.
@@ -103,7 +106,7 @@ class Bag(BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer
             >>> bag['a']
             1
         """
-        self._nodes: BagNodeContainer = self.container_class()
+        self._nodes: BagNodeContainer = self._container_class()
         self._backref: bool | str = False
         self._parent: Bag | None = None
         self._parent_node: BagNode | None = None
@@ -613,7 +616,7 @@ class Bag(BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer
             self._nodes.clear()
             return
         old_container = self._nodes
-        self._nodes = self.container_class()
+        self._nodes = self._container_class()
         orphans = self.__class__()
         orphans._nodes = old_container
         for node in old_container:

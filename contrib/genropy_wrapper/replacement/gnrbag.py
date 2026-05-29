@@ -559,8 +559,8 @@ class Bag(genro_bag.Bag):
     supports duplicate labels via WrapperBagNodeContainer.
     """
 
-    node_class = BagNode
-    container_class = WrapperBagNodeContainer
+    _node_class = BagNode
+    _container_class = WrapperBagNodeContainer
 
     def __init__(self, source=None, **kwargs):
         """Create a new Bag from various source types.
@@ -737,7 +737,7 @@ class Bag(genro_bag.Bag):
         result, label = self._htraverse(item_path, write_mode=True)
         obj = cast("Bag", result)
 
-        node = obj.node_class(
+        node = obj._node_class(
             obj,
             label=label,
             value=item_value,
@@ -1352,7 +1352,7 @@ class Bag(genro_bag.Bag):
 
         Used by fill_from, _fill_from_file_with_duplicates, and _copy_nodes_from.
         """
-        node_cls = self.node_class
+        node_cls = self._node_class
         for node in source_bag:
             xml_tag = node.xml_tag
             label = node.label
