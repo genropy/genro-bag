@@ -1003,11 +1003,15 @@ class BagNodeContainer:
             if node_tag is not None:
                 node.node_tag = node_tag
             if _query_string:
-                # Only set_attr, don't touch value
+                # ?attr syntax is an alias of set_attr(): merge semantics so
+                # that only the named attribute(s) change. set_item defaults
+                # _updattr=False (total replacement), which is the right
+                # default for the value-write branch but not here — forcing
+                # True keeps the other attributes intact.
                 node.set_attr(
                     attr,
                     trigger=do_trigger,
-                    _updattr=_updattr,
+                    _updattr=True,
                     _remove_null_attributes=_remove_null_attributes,
                 )
             else:
