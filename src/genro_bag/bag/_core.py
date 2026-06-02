@@ -867,13 +867,19 @@ class Bag(BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer
         """Check if a path or node exists in the Bag.
 
         The "in" operator can be used to test the existence of a key in a
-        bag. Also nested keys are allowed.
+        bag. Also nested keys are allowed. With the ``?attr`` query syntax
+        it checks the existence of the named attribute on the target node;
+        ``?a&b`` requires every named attribute to be present.
+
+        Static check: ``in`` does not trigger resolvers along the path.
 
         Args:
-            what: Path to check, or a BagNode to check if it's in this Bag.
+            what: Path to check, optionally with ``?attr`` or ``?a&b`` suffix,
+                or a BagNode to check if it's in this Bag.
 
         Returns:
-            True if the path/node exists, False otherwise.
+            True if the path/node (and named attributes if provided) exists,
+            False otherwise.
 
         Example:
             >>> bag = Bag()
@@ -884,7 +890,15 @@ class Bag(BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer
             False
         """
         if isinstance(what, str):
-            return bool(self.get_node(what))
+            _query_string = None
+            if "?" in what:
+                what, _query_string = what.split("?", 1)
+            node = self.get_node(what, static=True)
+            if node is None:
+                return False
+            if _query_string is None:
+                return True
+            return all(a in node._attr for a in _query_string.split("&"))
         elif isinstance(what, BagNode):
             return what in list(self._nodes)
         else:
