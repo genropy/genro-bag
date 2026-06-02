@@ -377,6 +377,62 @@ bag.unsubscribe('poller', timer=True)  # Stop the timer
 - `unsubscribe(..., any=True)` cancels timers too
 - Timer events propagate to parent bags like other events
 
+## The `reason` Field
+
+Every change event carries an optional `reason` string that lets subscribers
+distinguish **why** the event was emitted. Today the field uses two values:
+
+| Value | Meaning |
+| --- | --- |
+| `None` | Default — the event comes from an explicit user-driven write (`bag[k] = v`, `set_item`, `set_attr`, …). |
+| `'autocreate'` | The event was emitted by **structural autocreation** of an intermediate container while traversing a missing path in write mode. See below. |
+
+Any other string is whatever the caller passed via the `_reason` kwarg on
+`set_item` / `set_value` / `set_attr`. The framework propagates it verbatim.
+
+### Filtering structural autocreate
+
+When `bag["a.b.c"] = value` is called and `a` or `b` do not exist yet,
+`Bag` creates them as empty intermediate containers. These structural
+births fire `ins` events that look identical to a real leaf insert. The
+`reason` field disambiguates them:
+
+```{doctest}
+>>> from genro_bag import Bag
+
+>>> bag = Bag()
+>>> events = []
+
+>>> def watch(**kw):
+...     events.append((kw['evt'], kw['node'].label, kw.get('reason')))
+
+>>> bag.subscribe('w', any=watch)
+>>> bag['a.b.c'] = 1
+
+>>> events
+[('ins', 'a', 'autocreate'), ('ins', 'b', 'autocreate'), ('ins', 'c', None)]
+```
+
+A reactive subscriber that only cares about real data can filter the
+structural noise with a single guard:
+
+```python
+def react(**kw):
+    if kw.get('reason') == 'autocreate':
+        return            # ignore intermediate container births
+    # ... actual reaction logic ...
+
+bag.subscribe('reactor', any=react)
+```
+
+The same marker is applied when an existing scalar node is **promoted** to
+a container by an incoming write (e.g. `bag['x'] = 'scalar'` followed by
+`bag['x.y'] = 1`): the `upd_value` event of the promotion carries
+`reason='autocreate'`.
+
+The final leaf write (the actual datum) is **never** marked: it stays a
+genuine insert/update with `reason=None`.
+
 ## Stop Propagation
 
 Any callback (ins, upd, del, tmr) can return `False` to stop event

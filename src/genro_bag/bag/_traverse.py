@@ -107,7 +107,7 @@ class BagTraverse:
                 if label.startswith("#"):
                     raise BagException("Not existing index in #n syntax")
                 new_bag = curr.__class__()
-                curr._nodes.set(label, new_bag, parent_bag=curr)
+                curr._nodes.set(label, new_bag, parent_bag=curr, _reason="autocreate")
                 curr = new_bag
             return curr, pathlist[0]
 
@@ -124,7 +124,7 @@ class BagTraverse:
             return value  # type: ignore[no-any-return, return-value]
         if write_mode:
             new_bag = self.__class__()
-            node.set_value(new_bag)
+            node.set_value(new_bag, _reason="autocreate")
             return new_bag  # type: ignore[return-value]
         return None
 
