@@ -144,6 +144,19 @@ class BagTraverse:
         """
         while len(pathlist) > 1 and hasattr(curr, "_nodes"):
             segment = pathlist[0]  # read without removing
+
+            # Inner #parent: walk up to parent Bag, same behaviour as
+            # _htraverse_before applies for leading segments. Without this
+            # branch the lookup below would fail (no node named "#parent")
+            # and the traversal would break, regressing vs the legacy
+            # gnr/core/gnrbag.py recursive _htraverse.
+            if segment == "#parent":
+                if curr.parent is None:
+                    break
+                pathlist.pop(0)
+                curr = curr.parent
+                continue
+
             node = curr._nodes.get(segment)
             if not node:
                 break
