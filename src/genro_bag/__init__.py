@@ -21,7 +21,7 @@ from genro_bag.bag import Bag, BagException
 from genro_bag.bagnode import BagNode, BagNodeContainer, BagNodeException
 from genro_bag.resolver import BagResolver, BagSyncResolver
 
-__version__ = "0.18.9"
+__version__ = "0.18.10"
 
 __all__ = [
     "Bag",
