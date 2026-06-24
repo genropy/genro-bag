@@ -109,10 +109,10 @@ class TestMissingVariable:
 class TestUnparsableValue:
     def test_unparsable_value_raises(self, monkeypatch):
         """Una stringa non convertibile per il dtype richiesto solleva
-        eccezione: il chiamante che dichiara il tipo si assume la
+        ValueError: il chiamante che dichiara il tipo si assume la
         responsabilita' della forma del valore."""
         monkeypatch.setenv("X_BAD", "not_a_number")
         bag = Bag()
         bag["x"] = EnvResolver("X_BAD", dtype="L")
-        with pytest.raises(Exception):
+        with pytest.raises(ValueError):
             _ = bag["x"]
