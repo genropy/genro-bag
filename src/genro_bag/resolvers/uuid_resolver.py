@@ -19,10 +19,10 @@ import uuid
 from collections.abc import Callable
 from typing import Any
 
-from ..resolver import BagResolver
+from ..resolver import BagSyncResolver
 
 
-class UuidResolver(BagResolver):
+class UuidResolver(BagSyncResolver):
     """Resolver that generates a UUID string."""
 
     class_kwargs: dict[str, Any] = {

@@ -39,6 +39,7 @@ Async Usage with Resolvers:
 
 from __future__ import annotations
 
+import inspect
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from typing import Any
@@ -54,7 +55,7 @@ from genro_bag.bag._repr import BagRepr
 from genro_bag.bag._serialize import BagSerializer
 from genro_bag.bag._traverse import BagTraverse
 from genro_bag.bagnode import BagNode, BagNodeContainer
-from genro_bag.resolver import BagCbResolver
+from genro_bag.resolver import BagAsyncCbResolver, BagCbResolver
 
 
 class Bag(BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer, BagQuery):
@@ -793,13 +794,17 @@ class Bag(BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer
     def set_callback_item(self, path: str, callback: Callable, **kwargs) -> None:
         """Set a callback resolver at the given path.
 
-        Shortcut for creating a BagCbResolver and setting it on a node.
+        Shortcut for creating a callback-based resolver and setting it on a
+        node. Picks :class:`BagCbResolver` for sync callbacks and
+        :class:`BagAsyncCbResolver` for coroutine functions.
 
         Args:
             path: Path to the node.
-            callback: Callable that returns the value. Can be sync or async.
-            **kwargs: Arguments passed to BagCbResolver constructor.
-                Common kwargs:
+            callback: Callable that returns the value. Can be sync or async;
+                the appropriate resolver class is chosen automatically.
+            **kwargs: Arguments passed to the resolver constructor. Common
+                kwargs:
+
                 - cache_time: Cache duration in seconds (default 0, no cache).
                 - read_only: If True, value not saved in node (default False).
 
@@ -807,7 +812,12 @@ class Bag(BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer
             The resolver is passed directly to set_item, which handles it
             via the resolver parameter (not as value).
         """
-        resolver = BagCbResolver(callback, **kwargs)
+        resolver_cls = (
+            BagAsyncCbResolver
+            if inspect.iscoroutinefunction(callback)
+            else BagCbResolver
+        )
+        resolver = resolver_cls(callback, **kwargs)
         self.set_item(path, resolver)
 
     # -------------------- __iter__, __len__, __contains__, __call__ --------------------------------

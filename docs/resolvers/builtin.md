@@ -1,8 +1,9 @@
 # Built-in Resolvers
 
-## BagCbResolver (Callback)
+## BagCbResolver (Sync Callback)
 
-Execute a Python callable on demand.
+Execute a **sync** Python callable on demand. For coroutine callbacks
+use :class:`BagAsyncCbResolver` (see below).
 
 ```{doctest}
 >>> from genro_bag import Bag
@@ -16,6 +17,9 @@ Execute a Python callable on demand.
 >>> bag['result']
 84
 ```
+
+Passing a coroutine function raises `TypeError` at construction — the
+error message points at `BagAsyncCbResolver`.
 
 ### With Arguments
 
@@ -42,16 +46,33 @@ bag['data']  # {'result': 42, 'calls': 1}
 bag['data']  # {'result': 42, 'calls': 1} - cached
 ```
 
-### Async Callbacks
+## BagAsyncCbResolver (Async Callback)
+
+Execute an **async** (coroutine) callable on demand. The resolver
+returns a coroutine that the caller awaits.
 
 ```python
+from genro_bag import Bag
+from genro_bag.resolvers import BagAsyncCbResolver
+
 async def fetch_async():
     async with aiohttp.ClientSession() as session:
         async with session.get('https://api.example.com') as resp:
             return await resp.json()
 
-bag['api'] = BagCbResolver(fetch_async)
+bag = Bag()
+bag['api'] = BagAsyncCbResolver(fetch_async)
+
+# Inside an event loop:
+data = await bag['api']
 ```
+
+Passing a plain (non-coroutine) function raises `TypeError` at
+construction — the error message points at `BagCbResolver`.
+
+The `Bag.set_callback_item(path, callback, **kwargs)` shortcut picks the
+right class automatically based on whether the callback is a coroutine
+function.
 
 ## UrlResolver
 

@@ -28,10 +28,10 @@ from typing import Any
 
 from genro_tytx import from_tytx as tytx_decode
 
-from ..resolver import BagResolver
+from ..resolver import BagSyncResolver
 
 
-class EnvResolver(BagResolver):
+class EnvResolver(BagSyncResolver):
     """Resolver that reads an environment variable."""
 
     class_kwargs: dict[str, Any] = {

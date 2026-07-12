@@ -48,6 +48,7 @@ import pytest
 
 from genro_bag import Bag, BagResolver
 from genro_bag.resolvers import (
+    BagAsyncCbResolver,
     BagCbResolver,
     DirectoryResolver,
     EnvResolver,
@@ -55,7 +56,6 @@ from genro_bag.resolvers import (
     UrlResolver,
     UuidResolver,
 )
-
 
 # =============================================================================
 # 1. UuidResolver
@@ -192,20 +192,21 @@ class TestBagCbResolverCache:
 
 
 # =============================================================================
-# 5. BagCbResolver async
+# 5. BagAsyncCbResolver
 # =============================================================================
 
 
-class TestBagCbResolverAsync:
+class TestBagAsyncCbResolverAsync:
     @pytest.mark.asyncio
     async def test_async_callback_awaited_in_async_context(self):
-        """Callback async: bag[path] ritorna una coroutine in contesto async."""
+        """Callback async via BagAsyncCbResolver: bag[path] restituisce una
+        coroutine da awaitare in contesto async."""
 
         async def async_cb():
             return "async-value"
 
         bag = Bag()
-        bag["a"] = BagCbResolver(async_cb)
+        bag["a"] = BagAsyncCbResolver(async_cb)
         result = bag["a"]
         if asyncio.iscoroutine(result):
             result = await result
@@ -219,11 +220,27 @@ class TestBagCbResolverAsync:
             return x + y
 
         bag = Bag()
-        bag["s"] = BagCbResolver(async_add, x=10, y=32)
+        bag["s"] = BagAsyncCbResolver(async_add, x=10, y=32)
         result = bag["s"]
         if asyncio.iscoroutine(result):
             result = await result
         assert result == 42
+
+    def test_sync_callback_rejected(self):
+        """BagAsyncCbResolver rifiuta un callback sync con TypeError."""
+        with pytest.raises(TypeError, match="requires an async"):
+            BagAsyncCbResolver(lambda: 42)
+
+
+class TestBagCbResolverRejectsAsync:
+    def test_async_callback_rejected(self):
+        """BagCbResolver rifiuta un callback coroutine con TypeError."""
+
+        async def async_cb():
+            return 1
+
+        with pytest.raises(TypeError, match="requires a sync"):
+            BagCbResolver(async_cb)
 
 
 # =============================================================================
@@ -688,13 +705,13 @@ class TestResolverInPlaceProperties:
         assert resolver.is_async is False
 
     def test_is_async_true_for_async_callback(self):
-        """is_async e' True se il callback e' una coroutine function."""
+        """is_async e' True per BagAsyncCbResolver."""
 
         async def async_cb():
             return 1
 
         bag = Bag()
-        bag["c"] = BagCbResolver(async_cb)
+        bag["c"] = BagAsyncCbResolver(async_cb)
         resolver = bag.get_resolver("c")
         assert resolver is not None
         assert resolver.is_async is True

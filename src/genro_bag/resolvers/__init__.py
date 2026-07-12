@@ -7,7 +7,8 @@ This module provides ready-to-use resolver implementations:
 - EnvResolver: Reads an environment variable (with optional caching)
 - FileResolver: Lazily loads file content with format detection
 - TxtDocResolver: Lazily loads text file content
-- BagCbResolver: Calls a callback function (sync or async)
+- BagCbResolver: Calls a sync callback function
+- BagAsyncCbResolver: Calls an async (coroutine) callback function
 - UuidResolver: Generates a UUID string (cached by default)
 - UrlResolver: Loads content from HTTP URL (requires httpx)
 - OpenApiResolver: Loads OpenAPI spec and organizes by tags (requires httpx)
@@ -35,7 +36,7 @@ Example:
     bag['api'] = OpenApiResolver('https://petstore3.swagger.io/api/v3/openapi.json')
 """
 
-from ..resolver import BagCbResolver
+from ..resolver import BagAsyncCbResolver, BagCbResolver
 from .directory_resolver import DirectoryResolver, SerializedBagResolver, TxtDocResolver
 from .env_resolver import EnvResolver
 from .file_resolver import FileResolver
@@ -44,6 +45,7 @@ from .url_resolver import UrlResolver
 from .uuid_resolver import UuidResolver
 
 __all__ = [
+    "BagAsyncCbResolver",
     "BagCbResolver",
     "DirectoryResolver",
     "EnvResolver",

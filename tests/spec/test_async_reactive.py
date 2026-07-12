@@ -36,8 +36,7 @@ import asyncio
 import pytest
 
 from genro_bag import Bag
-from genro_bag.resolvers import BagCbResolver
-
+from genro_bag.resolvers import BagAsyncCbResolver, BagCbResolver
 
 # =============================================================================
 # 1. Resolver async in contesto async
@@ -53,7 +52,7 @@ class TestAsyncResolverInAsyncContext:
             return "async-result"
 
         bag = Bag()
-        bag["v"] = BagCbResolver(async_value)
+        bag["v"] = BagAsyncCbResolver(async_value)
         result = bag["v"]
         assert asyncio.iscoroutine(result)
         assert await result == "async-result"
@@ -66,7 +65,7 @@ class TestAsyncResolverInAsyncContext:
             return x + y
 
         bag = Bag()
-        bag["s"] = BagCbResolver(async_add, x=7, y=3)
+        bag["s"] = BagAsyncCbResolver(async_add, x=7, y=3)
         assert await bag["s"] == 10
 
 
@@ -151,7 +150,7 @@ class TestResetRefreshTrue:
             return counter["n"]
 
         bag = Bag()
-        bag["d"] = BagCbResolver(cb, cache_time=False)
+        bag["d"] = BagAsyncCbResolver(cb, cache_time=False)
         assert await bag["d"] == 1
 
         bag.get_resolver("d").reset(refresh=True)
@@ -312,7 +311,13 @@ class TestTimerSubscription:
 class TestCoalescing:
     @pytest.mark.asyncio
     async def test_multiple_resets_in_same_tick_run_one_refresh(self):
-        """Tre reset(refresh=True) nello stesso tick eseguono un solo refresh."""
+        """Tre reset(refresh=True) nello stesso tick eseguono un solo refresh.
+
+        Il primo accesso a bag["d"] esegue il callback sync (contatore=1),
+        poi i tre reset coalescono in un unico refresh (contatore=2). Il
+        test verifica quindi il conteggio finale = 2, e che l'insieme dei
+        tre reset abbia prodotto un solo delta rispetto al prime.
+        """
         counter = {"n": 0}
 
         def cb():
@@ -322,7 +327,8 @@ class TestCoalescing:
         bag = Bag()
         bag.set_backref()
         bag["d"] = BagCbResolver(cb, cache_time=False)
-        _ = bag["d"]  # prime (non-awaited, vedi test sopra)
+        _ = bag["d"]  # prime: esegue il callback sync una volta
+        assert counter["n"] == 1
 
         r = bag.get_resolver("d")
         # tre trigger concentrati nello stesso tick sincrono
@@ -333,8 +339,8 @@ class TestCoalescing:
         for _ in range(4):
             await asyncio.sleep(0)
 
-        # solo un refresh eseguito in totale (coalescenza)
-        assert counter["n"] == 1
+        # prime (1) + un unico refresh coalescato (1) = 2 esecuzioni totali
+        assert counter["n"] == 2
         bag.get_resolver("d").parent_node = None
 
 
@@ -407,7 +413,7 @@ class TestPathTraversalIntermediateResolver:
     def test_ctx_sync_resolver_async_returns_value(self):
         """ctx sync + resolver intermedio async → la Bag risolve internamente."""
         root = Bag()
-        root["middle"] = BagCbResolver(_sub_bag_async)
+        root["middle"] = BagAsyncCbResolver(_sub_bag_async)
         # In sync context, la coroutine interna viene risolta in modo trasparente
         assert root["middle.leaf"] == "deep_value"
 
@@ -423,7 +429,7 @@ class TestPathTraversalIntermediateResolver:
     async def test_ctx_async_resolver_async_returns_value_after_await(self):
         """ctx async + resolver intermedio async → bag[path] e' awaitable."""
         root = Bag()
-        root["middle"] = BagCbResolver(_sub_bag_async)
+        root["middle"] = BagAsyncCbResolver(_sub_bag_async)
         v = await _drain(root["middle.leaf"])
         assert v == "deep_value"
 
@@ -444,7 +450,7 @@ class TestPathTraversalLeafResolver:
     def test_ctx_sync_leaf_async(self):
         """ctx sync + resolver leaf async → risolve internamente."""
         root = Bag()
-        root["leaf"] = BagCbResolver(_scalar_async)
+        root["leaf"] = BagAsyncCbResolver(_scalar_async)
         assert root["leaf"] == "leaf_async"
 
     @pytest.mark.asyncio
@@ -459,7 +465,7 @@ class TestPathTraversalLeafResolver:
     async def test_ctx_async_leaf_async(self):
         """ctx async + resolver leaf async → awaitable."""
         root = Bag()
-        root["leaf"] = BagCbResolver(_scalar_async)
+        root["leaf"] = BagAsyncCbResolver(_scalar_async)
         v = await _drain(root["leaf"])
         assert v == "leaf_async"
 
@@ -489,7 +495,7 @@ class TestPathTraversalChainedResolvers:
             return inner
 
         root = Bag()
-        root["mid"] = BagCbResolver(intermediate)
+        root["mid"] = BagAsyncCbResolver(intermediate)
         assert root["mid.leaf"] == "leaf_sync"
 
     @pytest.mark.asyncio
@@ -498,11 +504,11 @@ class TestPathTraversalChainedResolvers:
         async def intermediate():
             await asyncio.sleep(0)
             inner = Bag()
-            inner["leaf"] = BagCbResolver(_scalar_async)
+            inner["leaf"] = BagAsyncCbResolver(_scalar_async)
             return inner
 
         root = Bag()
-        root["mid"] = BagCbResolver(intermediate)
+        root["mid"] = BagAsyncCbResolver(intermediate)
         v = await _drain(root["mid.leaf"])
         assert v == "leaf_async"
 
@@ -523,7 +529,7 @@ class TestPathTraversalChainedResolvers:
             return b
 
         root = Bag()
-        root["a"] = BagCbResolver(first_cb)
+        root["a"] = BagAsyncCbResolver(first_cb)
         # path: a (async) -> b (sync, ritorna Bag) -> c (sync leaf)
         assert root["a.b.c"] == "FINAL"
 
@@ -537,12 +543,12 @@ class TestPathTraversalChainedResolvers:
         async def second_cb():
             await asyncio.sleep(0)
             b = Bag()
-            b["c"] = BagCbResolver(leaf_cb)
+            b["c"] = BagAsyncCbResolver(leaf_cb)
             return b
 
         def first_cb():
             b = Bag()
-            b["b"] = BagCbResolver(second_cb)
+            b["b"] = BagAsyncCbResolver(second_cb)
             return b
 
         root = Bag()

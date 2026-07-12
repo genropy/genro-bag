@@ -33,6 +33,7 @@ import asyncio
 import contextlib
 import functools
 import importlib
+import inspect
 from collections.abc import Callable
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
@@ -911,18 +912,22 @@ class BagSyncResolver(BagResolver):
         return self._sync_sync_load()
 
 
-class BagCbResolver(BagResolver):
-    """Resolver that calls a callback function to get the value.
+class BagCbResolver(BagSyncResolver):
+    """Resolver that calls a **sync** callback function to get the value.
 
-    The callback can be sync or async - handled automatically.
-    Extra kwargs are passed to the callback when load() is called.
+    Extra kwargs are passed to the callback when load() is called. The
+    callback must be a plain (non-coroutine) function; use
+    :class:`BagAsyncCbResolver` for async callbacks.
 
     Parameters (class_args):
-        callback: Callable that returns the value. Can be sync or async.
+        callback: Sync callable that returns the value.
 
     Parameters (class_kwargs):
         cache_time: Cache duration in seconds. Default 0 (no cache).
         read_only: If True, value is not stored in node._value. Default False.
+
+    Raises:
+        TypeError: If ``callback`` is a coroutine function.
 
     Example:
         >>> def somma(a, b):
@@ -930,21 +935,48 @@ class BagCbResolver(BagResolver):
         >>> resolver = BagCbResolver(somma, a=3, b=5)
         >>> resolver()  # returns 8
         8
+    """
 
-        >>> # Parameters are stored in node attributes when attached
-        >>> bag = Bag()
-        >>> bag.set_item('calc', resolver)
-        >>> bag['calc']  # returns 8
-        8
-        >>> bag.set_attr('calc', a=10)  # changes parameter, invalidates cache
-        >>> bag['calc']  # returns 15
-        15
+    class_kwargs = {"cache_time": 0, "interval": None, "read_only": False, "as_bag": False}
+    class_args = ["callback"]
+    internal_params = BagResolver.internal_params | {"callback"}
 
-        >>> # With async callback
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        cb = self._kw.get("callback")
+        if inspect.iscoroutinefunction(cb):
+            raise TypeError(
+                "BagCbResolver requires a sync callback. "
+                "Use BagAsyncCbResolver for coroutine functions."
+            )
+
+    def load(self) -> Any:
+        """Call sync callback with parameters from kw."""
+        params = {k: v for k, v in self.kw.items() if k not in self.internal_params}
+        return self.kw["callback"](**params)
+
+
+class BagAsyncCbResolver(BagResolver):
+    """Resolver that calls an **async** (coroutine) callback function.
+
+    The callback must be a coroutine function; use :class:`BagCbResolver`
+    for sync callbacks.
+
+    Parameters (class_args):
+        callback: Coroutine function that returns the value.
+
+    Parameters (class_kwargs):
+        cache_time: Cache duration in seconds. Default 0 (no cache).
+        read_only: If True, value is not stored in node._value. Default False.
+
+    Raises:
+        TypeError: If ``callback`` is not a coroutine function.
+
+    Example:
         >>> async def fetch_data(url, timeout=30):
         ...     async with httpx.AsyncClient() as client:
         ...         return await client.get(url, timeout=timeout)
-        >>> resolver = BagCbResolver(fetch_data, url='http://...', timeout=10)
+        >>> resolver = BagAsyncCbResolver(fetch_data, url="http://...", timeout=10)
         >>> await resolver()  # works in async context
     """
 
@@ -952,15 +984,18 @@ class BagCbResolver(BagResolver):
     class_args = ["callback"]
     internal_params = BagResolver.internal_params | {"callback"}
 
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        cb = self._kw.get("callback")
+        if not inspect.iscoroutinefunction(cb):
+            raise TypeError(
+                "BagAsyncCbResolver requires an async (coroutine) callback. "
+                "Use BagCbResolver for sync callbacks."
+            )
+
     @property
     def is_async(self) -> bool:
-        """Check if callback is async."""
-        return asyncio.iscoroutinefunction(self._kw["callback"])
-
-    def load(self) -> Any:
-        """Call sync callback with parameters from kw."""
-        params = {k: v for k, v in self.kw.items() if k not in self.internal_params}
-        return self.kw["callback"](**params)
+        return True
 
     async def async_load(self) -> Any:
         """Call async callback with parameters from kw."""
