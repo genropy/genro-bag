@@ -466,10 +466,8 @@ class TestPickle:
 
 
 class TestFromUrl:
-    @pytest.mark.network
-    def test_from_url_json_endpoint(self):
-        """from_url fetcha un JSON endpoint pubblico e lo parsa."""
-        # httpbin e' un endpoint di test comune; se down, il test skip per rete
-        bag = Bag.from_url("https://httpbin.org/json")
-        # httpbin.org/json ritorna un oggetto {"slideshow": {...}}
+    def test_from_url_json_endpoint(self, http_server):
+        """from_url fetcha un JSON endpoint e lo parsa."""
+        bag = Bag.from_url(f"{http_server}/json")
         assert "slideshow" in bag
+        assert bag["slideshow.title"] == "Sample Slide Show"

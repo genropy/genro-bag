@@ -593,14 +593,17 @@ class TestResolverAccessors:
 
 
 class TestUrlResolver:
-    @pytest.mark.network
-    def test_fetches_url_content(self):
-        """UrlResolver su endpoint pubblico ritorna il contenuto."""
+    def test_fetches_url_content(self, http_server):
+        """UrlResolver esegue la richiesta e ritorna il contenuto."""
         bag = Bag()
-        bag["remote"] = UrlResolver("https://httpbin.org/json")
-        value = bag["remote"]
-        # httpbin.org/json ritorna un oggetto; as_bag default converte a Bag se non read_only
-        assert value is not None
+        bag["remote"] = UrlResolver(f"{http_server}/json")
+        assert b"slideshow" in bag["remote"]
+
+    def test_fetches_url_as_bag(self, http_server):
+        """as_bag=True converte la risposta JSON in Bag navigabile."""
+        bag = Bag()
+        bag["remote"] = UrlResolver(f"{http_server}/json", as_bag=True)
+        assert bag["remote.slideshow.title"] == "Sample Slide Show"
 
 
 # =============================================================================
