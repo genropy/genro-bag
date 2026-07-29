@@ -11,7 +11,7 @@ version = "0.20.0"
 description = "Modernized bag system for the Genropy framework - hierarchical data container with XML serialization"
 readme = "README.md"
 license = "Apache-2.0"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 authors = [
     {name = "Genropy Team"}
 ]
@@ -28,10 +28,8 @@ classifiers = [
     "Intended Audience :: Developers",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
-    "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
-    "Programming Language :: Python :: 3.13",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Typing :: Typed",
 ]
@@ -84,16 +82,13 @@ packages = ["src/genro_bag"]
 [tool.pytest.ini_options]
 testpaths = ["tests/spec"]
 addopts = "-v --cov=genro_bag --cov-report=term-missing --cov-report=html --cov-report=xml"
-markers = [
-    "network: marks tests as requiring network access (deselect with '-m \"not network\"')",
-]
 
 [tool.black]
 line-length = 100
-target-version = ["py310"]
+target-version = ["py311"]
 
 [tool.ruff]
-target-version = "py310"
+target-version = "py311"
 line-length = 100
 src = ["src"]
 
@@ -117,7 +112,7 @@ ignore = [
 known-first-party = ["genro_bag"]
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.11"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = false

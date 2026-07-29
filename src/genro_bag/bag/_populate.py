@@ -10,10 +10,9 @@ import asyncio
 import os
 from collections.abc import Iterator
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Self
 
 from genro_toolbox import safe_is_instance
-from typing_extensions import Self
 
 from genro_bag._resolver_wire import is_resolver
 
