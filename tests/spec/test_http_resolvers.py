@@ -1,46 +1,41 @@
-"""Spec test: UrlResolver e OpenApiResolver.
+"""Spec test: UrlResolver and OpenApiResolver.
 
-Test end-to-end che usano un server HTTP locale (aiohttp) come finto
-endpoint. Nessuna dipendenza da rete esterna: il server gira su
-127.0.0.1 con porta effimera, viene avviato per ogni test e smontato
-alla fine.
+End-to-end tests against a local HTTP server standing in for a real
+endpoint. Nothing reaches the outside world: the server listens on
+127.0.0.1 on an ephemeral port, started per test and torn down after.
 
-Filosofia:
-- test spec (non test di implementazione): verifichiamo il contratto
-  osservabile via API pubblica (Bag + resolver instance)
-- niente mock di httpx/aiohttp: la richiesta HTTP avviene davvero,
-  attraverso il loopback locale
-- i resolver sono async nel core, quindi i test sono marcati
-  @pytest.mark.asyncio e il risultato di bag[path] viene awaited
+Approach:
+- spec tests, not implementation tests: the observable contract through
+  the public API (Bag plus the resolver instance)
+- httpx is not mocked — the request really happens, over loopback
+- the server is stdlib only (http.server on a thread): one less test
+  dependency to declare, and one less to forget
+- the resolvers are async at the core, so the tests carry
+  @pytest.mark.asyncio and the result of bag[path] is awaited
 
-Scala:
-1.  UrlResolver GET base + as_bag=True
-2.  UrlResolver query string da costruttore, da kwargs e da Bag
+Scale:
+1.  UrlResolver GET plus as_bag=True
+2.  UrlResolver query string from constructor, kwargs and Bag
 3.  UrlResolver path substitution ({id} -> arg_0)
-4.  UrlResolver POST con body Bag -> json
-5.  UrlResolver headers da prepare_headers() (subclass hook)
+4.  UrlResolver POST with a Bag body -> json
+5.  UrlResolver headers from prepare_headers() (subclass hook)
 6.  UrlResolver process_response override (subclass hook)
-7.  UrlResolver 4xx solleva HTTPStatusError
-8.  UrlResolver qs con valori None viene filtrato
-9.  OpenApiResolver carica una spec minimale e la struttura per tag
+7.  UrlResolver 4xx raises HTTPStatusError
+8.  UrlResolver qs drops None values
+9.  OpenApiResolver loads a minimal spec and groups it by tag
 10. OpenApiResolver info/servers/components
-11. OpenApiResolver operation bag contiene path, method, value (UrlResolver)
+11. OpenApiResolver operation bag holds path, method, value (UrlResolver)
 """
 
 from __future__ import annotations
 
 import asyncio
-from collections.abc import AsyncIterator
 
 import httpx
 import pytest
-import pytest_asyncio
-from aiohttp import web
-from aiohttp.test_utils import TestServer
 
 from genro_bag import Bag
 from genro_bag.resolvers import OpenApiResolver, UrlResolver
-
 
 # =============================================================================
 # Fixtures
@@ -48,144 +43,10 @@ from genro_bag.resolvers import OpenApiResolver, UrlResolver
 
 
 async def _drain(value):
-    """Utility: await ripetuto finche' il risultato non e' piu' una coroutine."""
+    """Await repeatedly until the result is no longer a coroutine."""
     while asyncio.iscoroutine(value):
         value = await value
     return value
-
-
-# A minimal OpenAPI 3.0 spec used for the OpenApiResolver tests.
-MINIMAL_OPENAPI_SPEC = {
-    "openapi": "3.0.0",
-    "info": {
-        "title": "Test API",
-        "version": "1.0.0",
-        "description": "Spec used for spec tests",
-    },
-    "servers": [{"url": "http://127.0.0.1:0", "description": "local"}],
-    "paths": {
-        "/pets": {
-            "get": {
-                "tags": ["pet"],
-                "operationId": "listPets",
-                "summary": "List all pets",
-                "parameters": [
-                    {"name": "limit", "in": "query", "schema": {"type": "integer"}},
-                ],
-                "responses": {"200": {"description": "OK"}},
-            },
-            "post": {
-                "tags": ["pet"],
-                "operationId": "createPet",
-                "summary": "Create a pet",
-                "requestBody": {
-                    "content": {
-                        "application/json": {
-                            "schema": {"type": "object"},
-                        },
-                    },
-                },
-                "responses": {"201": {"description": "Created"}},
-            },
-        },
-        "/pets/{id}": {
-            "get": {
-                "tags": ["pet"],
-                "operationId": "getPet",
-                "summary": "Get pet by id",
-                "parameters": [
-                    {"name": "id", "in": "path", "required": True,
-                     "schema": {"type": "integer"}},
-                ],
-                "responses": {"200": {"description": "OK"}},
-            },
-        },
-        "/users": {
-            "get": {
-                "tags": ["user"],
-                "operationId": "listUsers",
-                "summary": "List all users",
-                "responses": {"200": {"description": "OK"}},
-            },
-        },
-    },
-    "components": {
-        "schemas": {
-            "Pet": {
-                "type": "object",
-                "properties": {"id": {"type": "integer"}, "name": {"type": "string"}},
-            },
-        },
-    },
-}
-
-
-def _build_app() -> web.Application:
-    """Create the aiohttp application with endpoints needed by the tests."""
-
-    async def hello(request):
-        return web.json_response({"hello": "world"})
-
-    async def echo(request):
-        return web.json_response({
-            "method": request.method,
-            "query": dict(request.query),
-            "headers": dict(request.headers),
-        })
-
-    async def echo_body(request):
-        try:
-            body = await request.json()
-        except Exception:
-            body = None
-        return web.json_response({"received": body})
-
-    async def pet_by_id(request):
-        pet_id = request.match_info["id"]
-        return web.json_response({"id": pet_id, "name": f"pet-{pet_id}"})
-
-    async def boom(request):
-        return web.Response(status=404, text="not found")
-
-    async def raw_bytes(request):
-        return web.Response(
-            body=b"plain-bytes",
-            content_type="application/octet-stream",
-        )
-
-    async def openapi_spec(request):
-        return web.json_response(MINIMAL_OPENAPI_SPEC)
-
-    app = web.Application()
-    app.router.add_get("/hello", hello)
-    app.router.add_get("/echo", echo)
-    app.router.add_post("/echo_body", echo_body)
-    app.router.add_get("/pets/{id}", pet_by_id)
-    app.router.add_get("/boom", boom)
-    app.router.add_get("/raw", raw_bytes)
-    app.router.add_get("/openapi.json", openapi_spec)
-    return app
-
-
-@pytest_asyncio.fixture
-async def http_server() -> AsyncIterator[TestServer]:
-    """Spin up a local aiohttp TestServer for the test duration.
-
-    Exposes the following endpoints:
-        GET  /hello        -> {"hello": "world"}
-        GET  /echo         -> echoes method, query, headers
-        POST /echo_body    -> echoes posted JSON body
-        GET  /pets/{id}    -> {"id": "<id>", "name": "pet-<id>"}
-        GET  /boom         -> 404
-        GET  /raw          -> binary bytes
-        GET  /openapi.json -> OpenAPI 3.0 spec (MINIMAL_OPENAPI_SPEC)
-    """
-    server = TestServer(_build_app())
-    await server.start_server()
-    try:
-        yield server
-    finally:
-        await server.close()
 
 
 # =============================================================================
@@ -196,8 +57,8 @@ async def http_server() -> AsyncIterator[TestServer]:
 class TestUrlResolverGet:
     @pytest.mark.asyncio
     async def test_get_as_bag_parses_json_response(self, http_server):
-        """UrlResolver(..., as_bag=True) su un JSON endpoint produce una Bag
-        navigabile per chiavi."""
+        """UrlResolver(..., as_bag=True) on a JSON endpoint yields a Bag
+        navigable by key."""
         url = str(http_server.make_url("/hello"))
         bag = Bag()
         bag["data"] = UrlResolver(url, as_bag=True)
@@ -207,7 +68,7 @@ class TestUrlResolverGet:
 
     @pytest.mark.asyncio
     async def test_get_without_as_bag_returns_raw_bytes(self, http_server):
-        """Senza as_bag=True il resolver ritorna il contenuto grezzo (bytes)."""
+        """Without as_bag=True the resolver returns the raw content (bytes)."""
         url = str(http_server.make_url("/raw"))
         bag = Bag()
         bag["data"] = UrlResolver(url)
@@ -223,7 +84,7 @@ class TestUrlResolverGet:
 class TestUrlResolverQueryString:
     @pytest.mark.asyncio
     async def test_query_string_from_constructor(self, http_server):
-        """qs={...} nel costruttore viene passato come query string."""
+        """qs={...} on the constructor is sent as the query string."""
         url = str(http_server.make_url("/echo"))
         bag = Bag()
         bag["echo"] = UrlResolver(url, qs={"page": 1, "limit": 10}, as_bag=True)
@@ -233,8 +94,8 @@ class TestUrlResolverQueryString:
 
     @pytest.mark.asyncio
     async def test_query_string_from_extra_constructor_kwargs(self, http_server):
-        """kwargs extra passati al costruttore (fuori da class_kwargs) vengono
-        usati come query string dinamica."""
+        """Extra kwargs on the constructor (outside class_kwargs) become the
+        dynamic query string."""
         url = str(http_server.make_url("/echo"))
         bag = Bag()
         bag["echo"] = UrlResolver(url, as_bag=True, cache_time=0, foo="bar")
@@ -243,10 +104,10 @@ class TestUrlResolverQueryString:
 
     @pytest.mark.asyncio
     async def test_query_string_from_set_attr(self, http_server):
-        """set_attr su un parametro dinamico aggiorna la query string."""
+        """set_attr on a dynamic parameter updates the query string."""
         url = str(http_server.make_url("/echo"))
         bag = Bag()
-        # foo dichiarato come attributo dinamico con valore iniziale None
+        # foo declared as a dynamic attribute, initially None
         bag["echo"] = UrlResolver(url, as_bag=True, cache_time=0, foo=None)
         bag.set_attr("echo", foo="changed")
         result = await _drain(bag["echo"])
@@ -254,7 +115,7 @@ class TestUrlResolverQueryString:
 
     @pytest.mark.asyncio
     async def test_query_string_none_values_are_filtered(self, http_server):
-        """qs con valori None viene filtrato: la chiave non compare nell'URL."""
+        """None values in qs are dropped: the key never reaches the URL."""
         url = str(http_server.make_url("/echo"))
         bag = Bag()
         bag["echo"] = UrlResolver(
@@ -262,11 +123,11 @@ class TestUrlResolverQueryString:
         )
         result = await _drain(bag["echo"])
         assert result["query.keep"] == "yes"
-        assert "drop" not in result["query"].keys()
+        assert "drop" not in result["query"]
 
     @pytest.mark.asyncio
     async def test_query_string_from_bag(self, http_server):
-        """qs accetta anche una Bag: chiavi/valori vengono serializzati."""
+        """qs also takes a Bag: keys and values are serialized."""
         url = str(http_server.make_url("/echo"))
         qs_bag = Bag({"a": "1", "b": "2"})
         bag = Bag()
@@ -284,8 +145,8 @@ class TestUrlResolverQueryString:
 class TestUrlResolverPathSubstitution:
     @pytest.mark.asyncio
     async def test_path_placeholder_substituted_via_arg_0(self, http_server):
-        """URL con '{id}' viene sostituito usando arg_0 come parametro dinamico."""
-        # Costruisco l'URL senza URL-encoding di '{id}' (aiohttp lo encodifica)
+        """A URL holding '{id}' is filled from arg_0 as a dynamic parameter."""
+        # Build the URL without URL-encoding '{id}' — the resolver fills it in
         url = f"http://{http_server.host}:{http_server.port}/pets/{{id}}"
         bag = Bag()
         bag["pet"] = UrlResolver(url, as_bag=True, cache_time=0, arg_0=42)
@@ -302,7 +163,7 @@ class TestUrlResolverPathSubstitution:
 class TestUrlResolverPost:
     @pytest.mark.asyncio
     async def test_post_with_bag_body(self, http_server):
-        """method='post' + body=Bag: il body viene serializzato come json."""
+        """method='post' with body=Bag: the body is serialized as json."""
         url = str(http_server.make_url("/echo_body"))
         body = Bag({"name": "alice", "age": 30})
         bag = Bag()
@@ -320,7 +181,7 @@ class TestUrlResolverPost:
         """
         url = str(http_server.make_url("/echo_body"))
         bag = Bag()
-        # dichiaro _body come parametro dinamico del nodo
+        # declare _body as a dynamic parameter of the node
         bag["out"] = UrlResolver(
             url, method="post", body={"orig": 1}, as_bag=True,
             cache_time=0, _body=None,
@@ -328,7 +189,7 @@ class TestUrlResolverPost:
         bag.set_attr("out", _body={"override": True})
         result = await _drain(bag["out"])
         assert result["received.override"] is True
-        assert "orig" not in result["received"].keys()
+        assert "orig" not in result["received"]
 
 
 # =============================================================================
@@ -339,7 +200,7 @@ class TestUrlResolverPost:
 class TestUrlResolverHeaders:
     @pytest.mark.asyncio
     async def test_static_headers_sent_on_request(self, http_server):
-        """headers={} nel costruttore vengono inviati con la richiesta."""
+        """headers={} on the constructor travel with the request."""
         url = str(http_server.make_url("/echo"))
         bag = Bag()
         bag["echo"] = UrlResolver(
@@ -350,7 +211,7 @@ class TestUrlResolverHeaders:
 
     @pytest.mark.asyncio
     async def test_prepare_headers_hook_adds_dynamic_headers(self, http_server):
-        """Override di prepare_headers aggiunge headers dinamici."""
+        """Overriding prepare_headers adds dynamic headers."""
 
         class AuthUrlResolver(UrlResolver):
             def prepare_headers(self) -> dict[str, str]:
@@ -371,8 +232,8 @@ class TestUrlResolverHeaders:
 class TestUrlResolverProcessResponse:
     @pytest.mark.asyncio
     async def test_process_response_override_transforms_output(self, http_server):
-        """Una subclass puo' trasformare la response; il valore restituito
-        dal resolver riflette la trasformazione."""
+        """A subclass can transform the response; the resolver returns the
+        transformed value."""
 
         class CountResolver(UrlResolver):
             def process_response(self, response: httpx.Response):
@@ -395,8 +256,8 @@ class TestUrlResolverProcessResponse:
 class TestUrlResolverHttpErrors:
     @pytest.mark.asyncio
     async def test_404_raises_http_status_error(self, http_server):
-        """Una risposta 4xx solleva httpx.HTTPStatusError dal process_response
-        di default (response.raise_for_status())."""
+        """A 4xx response raises httpx.HTTPStatusError from the default
+        process_response (response.raise_for_status())."""
         url = str(http_server.make_url("/boom"))
         bag = Bag()
         bag["bad"] = UrlResolver(url)
@@ -405,14 +266,14 @@ class TestUrlResolverHttpErrors:
 
 
 # =============================================================================
-# 8. OpenApiResolver: carica spec e organizza per tag
+# 8. OpenApiResolver: loads the spec and organizes it by tag
 # =============================================================================
 
 
 class TestOpenApiResolverStructure:
     @pytest.mark.asyncio
     async def test_loads_spec_and_exposes_info_block(self, http_server):
-        """result['info'] presenta description come value e title/version come attr."""
+        """result['info'] holds description as value, title/version as attrs."""
         url = str(http_server.make_url("/openapi.json"))
         bag = Bag()
         bag["api"] = OpenApiResolver(url)
@@ -425,8 +286,8 @@ class TestOpenApiResolverStructure:
 
     @pytest.mark.asyncio
     async def test_paths_grouped_by_tag(self, http_server):
-        """result['api'] contiene un nodo per ogni tag; ogni tag raggruppa
-        le operazioni per operationId."""
+        """result['api'] holds one node per tag; each tag groups its
+        operations by operationId."""
         url = str(http_server.make_url("/openapi.json"))
         bag = Bag()
         bag["api"] = OpenApiResolver(url)
@@ -440,7 +301,7 @@ class TestOpenApiResolverStructure:
 
     @pytest.mark.asyncio
     async def test_operation_bag_has_expected_fields(self, http_server):
-        """L'operation bag contiene path, method e altri metadati."""
+        """The operation bag holds path, method and the other metadata."""
         url = str(http_server.make_url("/openapi.json"))
         bag = Bag()
         bag["api"] = OpenApiResolver(url)
@@ -452,22 +313,22 @@ class TestOpenApiResolverStructure:
 
     @pytest.mark.asyncio
     async def test_operation_value_is_invocable_url_resolver(self, http_server):
-        """L'operation bag contiene un nodo 'value' che ha come resolver
-        un UrlResolver pronto all'uso per invocare l'endpoint."""
+        """The operation bag holds a 'value' node whose resolver is a
+        ready-to-call UrlResolver for that endpoint."""
         url = str(http_server.make_url("/openapi.json"))
         bag = Bag()
         bag["api"] = OpenApiResolver(url)
         result = await _drain(bag["api"])
         op = result.get_item("api.pet.getPet")
         assert isinstance(op, Bag)
-        # il nodo 'value' dentro l'op ha un UrlResolver come resolver
+        # the 'value' node inside the op carries a UrlResolver
         value_node = op.get_node("value")
         assert value_node is not None
         assert isinstance(value_node.resolver, UrlResolver)
 
     @pytest.mark.asyncio
     async def test_servers_block_exposed(self, http_server):
-        """result['servers'] contiene la lista dei server definiti nella spec."""
+        """result['servers'] lists the servers declared in the spec."""
         url = str(http_server.make_url("/openapi.json"))
         bag = Bag()
         bag["api"] = OpenApiResolver(url)
@@ -479,7 +340,7 @@ class TestOpenApiResolverStructure:
 
     @pytest.mark.asyncio
     async def test_components_block_exposed(self, http_server):
-        """result['components'] riporta gli schemi dalla spec."""
+        """result['components'] carries the schemas from the spec."""
         url = str(http_server.make_url("/openapi.json"))
         bag = Bag()
         bag["api"] = OpenApiResolver(url)

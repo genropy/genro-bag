@@ -594,15 +594,15 @@ class TestResolverAccessors:
 
 class TestUrlResolver:
     def test_fetches_url_content(self, http_server):
-        """UrlResolver esegue la richiesta e ritorna il contenuto."""
+        """UrlResolver performs the request and returns the content."""
         bag = Bag()
-        bag["remote"] = UrlResolver(f"{http_server}/json")
+        bag["remote"] = UrlResolver(http_server.make_url("/json"))
         assert b"slideshow" in bag["remote"]
 
     def test_fetches_url_as_bag(self, http_server):
-        """as_bag=True converte la risposta JSON in Bag navigabile."""
+        """as_bag=True turns the JSON response into a navigable Bag."""
         bag = Bag()
-        bag["remote"] = UrlResolver(f"{http_server}/json", as_bag=True)
+        bag["remote"] = UrlResolver(http_server.make_url("/json"), as_bag=True)
         assert bag["remote.slideshow.title"] == "Sample Slide Show"
 
 

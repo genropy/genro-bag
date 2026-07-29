@@ -467,7 +467,7 @@ class TestPickle:
 
 class TestFromUrl:
     def test_from_url_json_endpoint(self, http_server):
-        """from_url fetcha un JSON endpoint e lo parsa."""
-        bag = Bag.from_url(f"{http_server}/json")
+        """from_url fetches a JSON endpoint and parses it."""
+        bag = Bag.from_url(http_server.make_url("/json"))
         assert "slideshow" in bag
         assert bag["slideshow.title"] == "Sample Slide Show"
