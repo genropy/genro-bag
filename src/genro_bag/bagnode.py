@@ -224,23 +224,40 @@ class BagNode:
         """Return the value of the BagNode.
 
         Args:
-            static: If True, return cached value without triggering resolver.
+            static: If True, do not trigger any resolver — the node's own
+                resolver is skipped and attribute-held BagResolvers are
+                returned raw (as objects) in the ?attr / ? forms.
             _query_string: Optional query string from path suffix (after '?').
                 - None: return node value (possibly via resolver)
-                - 'attr': return single attribute value
-                - 'attr1&attr2': return tuple of attribute values
-                - 'key=val&key2=val2': pass as kwargs to resolver (requires resolver)
-                Values can include type suffix: 'price=34::F' for float conversion.
-            **kwargs: Parameters passed to the resolver. These have the highest
-                priority in the parameter merge chain.
+                - 'attr': return single attribute value; if it is a
+                  BagResolver, it is called and its result is returned
+                  (unless static=True).
+                - 'attr1&attr2': return tuple of attribute values, with
+                  the same resolver-resolution rule applied element-wise.
+                - '' (bare '?'): return a dict of ALL attributes,
+                  {name: value}, with BagResolvers resolved (unless
+                  static=True). No filtering — every attribute in
+                  ``node.attr`` is included.
+                - 'key=val&key2=val2': pass as kwargs to the node's own
+                  resolver (requires ``self._resolver``).
+                Values can include type suffix: 'price=34::F' for float
+                conversion.
+            **kwargs: Parameters passed to the node's own resolver. These
+                have the highest priority in the parameter merge chain.
 
         Returns:
             The node's value, possibly resolved via resolver.
 
-        Parameter Priority (when resolver is present):
+        Parameter Priority (when the node has ``self._resolver``):
             1. kwargs passed here (highest priority)
             2. node.attr (attributes set on this node)
             3. resolver._kw (resolver's default parameters)
+
+        Note:
+            The parameter-merge chain above applies **only** to the
+            node's own value-side resolver. A BagResolver held as an
+            attribute (e.g. ``set_attr(key=EnvResolver(...))``) is called
+            bare, with no kwargs and no context — its own defaults win.
 
         Example:
             # Resolver with default multiplier=2
@@ -254,9 +271,21 @@ class BagNode:
         if _query_string is not None:
             parsed_qs = from_tytx(f"{_query_string}::QS")
             if isinstance(parsed_qs, list):
-                # Attributes: ?color or ?color&size
-                attrs = [self._attr.get(k) for k in parsed_qs]
-                return attrs[0] if len(attrs) == 1 else tuple(attrs)
+                # ?a or ?a&b (named keys) or ? (bare, empty list -> all attrs)
+                keys = parsed_qs if parsed_qs else list(self._attr.keys())
+                resolved: dict[str, Any] = {}
+                for k in keys:
+                    v = self._attr.get(k)
+                    if not static and safe_is_instance(
+                        v, "genro_bag.resolver.BagResolver"
+                    ):
+                        v = v()
+                    resolved[k] = v
+                if not parsed_qs:
+                    return resolved                             # bare '?' -> dict
+                if len(keys) == 1:
+                    return resolved[keys[0]]                    # ?a -> scalar
+                return tuple(resolved[k] for k in keys)         # ?a&b -> tuple
             else:
                 # Dict → kwargs for resolver
                 if not self._resolver:
