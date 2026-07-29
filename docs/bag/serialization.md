@@ -241,6 +241,29 @@ signature, so a substituted or unsigned payload raises `SignatureError`,
 and an expired one `SignatureExpired`. All three writers take `sign_key`
 and `expires_in`, all three readers take `sign_key`.
 
+### Signing hides nothing
+
+A signature proves a payload was not altered. It does not conceal it: the
+encoding is base64, not encryption, and whoever holds the payload reads
+every parameter — a path, a URL, an API key.
+
+So keep secrets out of the parameters in the first place. Where a resolver
+needs a credential at request time, compute it in a hook rather than store
+it: `UrlResolver.prepare_headers()` runs when the request is made and is
+never serialized.
+
+```python
+class ApiResolver(UrlResolver):
+    def prepare_headers(self):
+        return {'Authorization': f'Bearer {os.environ["API_TOKEN"]}'}
+
+bag['api'] = ApiResolver('https://api.example.com/data')
+bag.to_json()   # no token in the payload
+```
+
+Written the obvious way instead — `UrlResolver(url, headers={'Authorization': ...})`
+— the token is a plain parameter, and it travels.
+
 ## File Operations
 
 ### Save to File

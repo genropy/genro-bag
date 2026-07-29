@@ -178,6 +178,25 @@ an expired token from a forged one.
 
 For Bags that never leave your control the key is unnecessary.
 
+### Does signing keep the parameters secret?
+
+No. A signature proves the payload was not altered; it does not hide it.
+The encoding is base64, not encryption, so whoever receives the payload
+reads every parameter — including a server path or an API key.
+
+Keep secrets out of the parameters. Where a resolver needs a credential,
+compute it at request time in a hook instead of storing it:
+
+```python
+class ApiResolver(UrlResolver):
+    def prepare_headers(self):
+        return {'Authorization': f'Bearer {os.environ["API_TOKEN"]}'}
+```
+
+`prepare_headers()` is never serialized, so the token stays on the server.
+Passing it as a parameter — `UrlResolver(url, headers={'Authorization': ...})`
+— puts it on the wire.
+
 ## Modifying Nodes with Resolvers
 
 ### Why can't I overwrite a resolver node?

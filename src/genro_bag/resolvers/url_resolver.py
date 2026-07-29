@@ -43,13 +43,26 @@ class UrlResolver(BagResolver):
         method: HTTP method (get, post, put, delete, patch). Default 'get'.
         qs: Query string parameters as Bag or dict. None values are filtered out.
         body: Request body as Bag (for POST/PUT/PATCH). Converted via as_dict().
-        headers: Static headers as dict. Default None.
+        headers: Static headers as dict. Default None. Serialized with the
+            resolver — never put credentials here if the Bag may leave the
+            process. Override prepare_headers() instead.
         timeout: Request timeout in seconds. Default 5.
         as_bag: If True, parse response as Bag based on content-type. Default False.
 
     Example:
         >>> resolver = UrlResolver('https://api.example.com/users',
         ...                        qs={'page': 1, 'limit': 10}, as_bag=True)
+
+    Keeping credentials out of the wire:
+        Every parameter is serialized in plain sight — signing protects a
+        payload from being altered, not from being read. prepare_headers()
+        runs at request time and never travels, so a token fetched there
+        stays on the server:
+
+        >>> import os
+        >>> class ApiResolver(UrlResolver):
+        ...     def prepare_headers(self):
+        ...         return {'Authorization': f'Bearer {os.environ["API_TOKEN"]}'}
     """
 
     class_kwargs = {
