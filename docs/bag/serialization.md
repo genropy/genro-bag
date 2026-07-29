@@ -114,9 +114,13 @@ XML doesn't preserve Python types — everything becomes a string:
 
 ### Limitations
 
-Standard JSON doesn't preserve:
-- Node attributes
-- Complex types (datetime, Decimal, bytes)
+`to_json` writes node attributes, resolvers and tags — a Bag round-trips
+through it. With the default `typed=True` the complex types (datetime,
+Decimal) go through TYTX encoding and survive; `typed=False` produces
+plain JSON and raises on a value it cannot represent.
+
+Reading arbitrary JSON from elsewhere is a different matter: without the
+`label`/`value`/`attr` shape there are no attributes to restore.
 
 ## TYTX (Typed Exchange)
 
@@ -198,6 +202,45 @@ Decimal('19.99')
 | `time` | `time(12, 30)` |
 | `list/tuple` | `[1, 2, 3]` |
 
+## Resolvers
+
+A `BagResolver` survives every format, whether it is the node's value or
+sits in an attribute. It travels as a `::RSLV:` marked string carrying its
+class and parameters — an XML `_resolver` attribute, a JSON `resolver`
+key, the TYTX value slot:
+
+```python
+bag['api'] = UrlResolver('https://api.example.com/data')
+bag.set_item('doc', 'text', author=EnvResolver('USER'))
+
+restored = Bag.from_json(bag.to_json())
+restored.get_resolver('api')   # rebuilt, an equivalent instance
+restored['doc?author']         # resolves as before
+```
+
+Nothing is ever called during serialization or parsing: the resolver is
+written from its definition and rebuilt inert, and the effect happens when
+your code reads the value. A resolver whose parameters do not fit JSON —
+a callback, most often — raises `BagSerializationError` naming the node
+and the attribute.
+
+### Signing
+
+When the Bag leaves the process and may come back — handed to a browser,
+carried in a URL, put on a queue — sign it. A resolver's arguments say
+what it will act on, so an unsigned payload lets whoever holds it rewrite
+a path or a URL before returning it:
+
+```python
+payload = bag.to_json(sign_key=SECRET, expires_in=300)   # on the way out
+bag = Bag.from_json(payload, sign_key=SECRET)            # on the way in
+```
+
+The key never leaves the server. Reading with `sign_key` demands a valid
+signature, so a substituted or unsigned payload raises `SignatureError`,
+and an expired one `SignatureExpired`. All three writers take `sign_key`
+and `expires_in`, all three readers take `sign_key`.
+
 ## File Operations
 
 ### Save to File
@@ -228,7 +271,9 @@ bag.fill_from('/path/to/data.bag.mp')
 |---------|-----|------|------|
 | Human readable | ✓ | ✓ | JSON: ✓ |
 | Type preservation | ✗ | Partial | ✓ |
-| Attributes | ✓ | ✗ | ✓ |
+| Attributes | ✓ | ✓ | ✓ |
+| Attribute types | ✗ | Partial | ✓ |
+| Resolvers | ✓ | ✓ | ✓ |
 | Binary data | ✗ | ✗ | ✓ |
 | File size | Large | Medium | Small (MP) |
 

@@ -2,9 +2,9 @@
 """Bag package - hierarchical data container.
 
 This package assembles the Bag class from its mixin modules.
-Public API: Bag, BagException.
+Public API: Bag, BagException, BagSerializationError.
 """
 
-from genro_bag.bag._core import Bag, BagException
+from genro_bag.bag._core import Bag, BagException, BagSerializationError
 
-__all__ = ["Bag", "BagException"]
+__all__ = ["Bag", "BagException", "BagSerializationError"]

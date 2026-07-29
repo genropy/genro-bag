@@ -11,7 +11,16 @@ from urllib.parse import urlencode
 import httpx
 
 from ..bag import Bag
-from ..resolver import BagResolver
+from ..resolver import RETRY_POLICIES, BagResolver
+
+# The bundled "network" preset cannot mention httpx: genro-toolbox has no
+# dependencies. Register the HTTP variant here, where httpx is already a
+# given, so resolvers can name the policy instead of inlining it — a name
+# survives serialization, the expanded dict does not (it holds classes).
+RETRY_POLICIES["http"] = {
+    **RETRY_POLICIES["network"],
+    "on": (*RETRY_POLICIES["network"]["on"], httpx.TimeoutException),
+}
 
 
 class UrlResolver(BagResolver):
@@ -46,13 +55,7 @@ class UrlResolver(BagResolver):
     class_kwargs = {
         "cache_time": 300,
         "read_only": True,
-        "retry_policy": {
-            "max_attempts": 3,
-            "delay": 1.0,
-            "backoff": 2.0,
-            "jitter": True,
-            "on": (ConnectionError, TimeoutError, OSError, httpx.TimeoutException),
-        },
+        "retry_policy": "http",
         "url": None,
         "method": "get",
         "qs": None,

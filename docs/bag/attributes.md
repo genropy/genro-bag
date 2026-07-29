@@ -199,7 +199,7 @@ True
 
 ## Serialization
 
-Attributes are preserved in all serialization formats:
+Every format carries attributes:
 
 ```{doctest}
 >>> from genro_bag import Bag
@@ -217,6 +217,46 @@ True
 >>> bag2['item?meta']
 'data'
 ```
+
+### Types survive TYTX, not XML
+
+An XML attribute is a string, and `to_xml` writes no type marker, so a
+round-trip flattens anything that is not text. TYTX keeps the type:
+
+```{doctest}
+>>> from decimal import Decimal
+>>> from genro_bag import Bag
+
+>>> bag = Bag()
+>>> node = bag.set_item('price', 'x', amount=Decimal('1.5'))
+
+>>> Bag.from_xml(bag.to_xml())['price?amount']       # became a float
+1.5
+>>> Bag.from_tytx(bag.to_tytx())['price?amount']     # still a Decimal
+Decimal('1.5')
+```
+
+Use TYTX when the attribute types matter — on a monetary amount the XML
+round-trip is a silent loss of precision.
+
+### Resolvers in attributes
+
+A `BagResolver` held in an attribute round-trips in every format, as a
+`::RSLV:` marked string carrying its class and parameters:
+
+```python
+bag.set_item('doc', 'text', author=EnvResolver('USER'))
+Bag.from_json(bag.to_json())['doc?author']   # resolves as before
+```
+
+Sign the payload when the Bag may come back from somewhere you do not
+control — see [the resolver FAQ](../resolvers/faq.md#serialization).
+
+### Anything else must be JSON-serializable
+
+An attribute can hold any Python value in memory, but only what fits JSON
+can be written out. Anything else raises `BagSerializationError` naming
+the node and the key.
 
 ## Common Patterns
 

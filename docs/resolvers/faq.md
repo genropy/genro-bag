@@ -116,30 +116,67 @@ Yes, they work automatically. The `@smartasync` decorator handles it.
 
 ### Are resolvers preserved when serializing?
 
-With TYTX, yes:
-
-```python
-tytx = bag.to_tytx()
-restored = Bag.from_tytx(tytx)
-# Resolver is preserved!
-```
-
-With XML/JSON, no — only the cached value is preserved.
-
-### Can I serialize a Bag with unresolved resolvers?
-
-Yes, but the resolver definition is stored, not the value:
+Yes, in XML, JSON and TYTX alike, whether the resolver is the node's value
+or sits in an attribute:
 
 ```python
 bag['api'] = UrlResolver('https://...')
-# Never accessed, so no cached value
+bag.set_item('doc', 'text', author=EnvResolver('USER'))
 
-tytx = bag.to_tytx()
-restored = Bag.from_tytx(tytx)
-
-# The resolver is there, will fetch when accessed
-data = restored['api']  # HTTP request happens now
+restored = Bag.from_json(bag.to_json())
+restored.get_resolver('api')   # UrlResolver, rebuilt
+restored['doc?author']         # resolves as before
 ```
+
+The resolver travels as a `::RSLV:` marked string carrying its class and
+parameters. You get back an equivalent resolver, not the same object.
+
+### Can I serialize a Bag with unresolved resolvers?
+
+Yes — that is the normal case. Serializing stores the definition and never
+runs the resolver, so no HTTP request, no file read, nothing:
+
+```python
+bag['api'] = UrlResolver('https://...')   # never accessed
+
+restored = Bag.from_json(bag.to_json())   # still nothing happens
+data = restored['api']                    # the request happens here
+```
+
+Reading back is inert too: the resolver is rebuilt but not called. The
+effect only happens when your code reads the value.
+
+### What if a resolver cannot be serialized?
+
+You get a `BagSerializationError` naming the node and the attribute.
+Callback-based resolvers are the usual case — a function cannot travel:
+
+```python
+bag['cb'] = BagCbResolver(lambda: compute())
+bag.to_json()   # BagSerializationError: node 'cb' holds a BagCbResolver...
+```
+
+### Do I need to sign anything?
+
+Whenever the Bag leaves the process and may come back — handed to a
+browser, stored in a URL, put on a queue. A resolver's arguments say what
+it will act on, so an unsigned payload lets whoever holds it rewrite a path
+or a URL before returning it.
+
+```python
+# server, on the way out
+payload = bag.to_json(sign_key=SECRET, expires_in=300)
+
+# server, on the way in
+bag = Bag.from_json(payload, sign_key=SECRET)   # SignatureError if altered
+```
+
+The key stays server-side: you sign and verify, the client only carries.
+Reading with `sign_key` demands a valid signature, so an unsigned payload
+is refused too. `SignatureExpired` (a subclass of `SignatureError`) tells
+an expired token from a forged one.
+
+For Bags that never leave your control the key is unnecessary.
 
 ## Modifying Nodes with Resolvers
 

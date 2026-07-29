@@ -47,7 +47,10 @@ from typing import Any
 from genro_toolbox import smartcontinuation
 
 from genro_bag.bag._events import BagEvents, _current_transaction
-from genro_bag.bag._exceptions import BagException  # noqa: F401 — re-export
+from genro_bag.bag._exceptions import (  # noqa: F401 — re-export
+    BagException,
+    BagSerializationError,
+)
 from genro_bag.bag._parse import BagParser
 from genro_bag.bag._populate import BagPopulate
 from genro_bag.bag._query import BagQuery

@@ -22,7 +22,7 @@ from xml.sax.handler import ContentHandler
 
 from genro_tytx import from_tytx as tytx_decode
 
-from genro_bag.resolver import BagResolver
+from genro_bag._resolver_wire import decode_attrs, decode_resolver
 
 if TYPE_CHECKING:
     from genro_bag.bag._core import Bag
@@ -47,6 +47,7 @@ class BagParser:
         empty: Callable[[], Any] | None = None,
         raise_on_error: bool = False,
         tag_attribute: str | None = None,
+        sign_key: str | None = None,
     ) -> Bag:
         """Deserialize from XML format.
 
@@ -58,6 +59,10 @@ class BagParser:
         For plain XML without type markers, values remain as strings.
         Supports environment variable substitution for {GNR_*} placeholders.
 
+        A ``_resolver`` attribute rebuilds the node's own resolver, and any
+        attribute holding a ``::RSLV:`` string becomes a resolver again.
+        Both are inert: nothing is called until the caller reads the value.
+
         Args:
             source: XML string or bytes to parse.
             empty: Factory function for empty element values. Called when an
@@ -67,9 +72,16 @@ class BagParser:
             tag_attribute: If specified, use this attribute's value as the node
                 label instead of the XML tag name. Dotted values create nested
                 structure (e.g., 'section.elem' becomes section/elem path).
+            sign_key: Secret key. When given, every resolver payload must
+                carry a valid signature — required for XML of untrusted
+                origin, since a resolver's arguments say what it will act on.
 
         Returns:
             Bag: Reconstructed Bag hierarchy.
+
+        Raises:
+            SignatureError: Signature missing, forged or expired, when
+                sign_key was given.
 
         Example:
             >>> # Plain XML - each element becomes a node
@@ -91,7 +103,11 @@ class BagParser:
             True
         """
         handler = _BagXmlHandler(
-            cls, empty=empty, raise_on_error=raise_on_error, tag_attribute=tag_attribute
+            cls,
+            empty=empty,
+            raise_on_error=raise_on_error,
+            tag_attribute=tag_attribute,
+            sign_key=sign_key,
         )
         if isinstance(source, bytes):
             source = source.decode()
@@ -119,22 +135,30 @@ class BagParser:
         cls,
         data: str | bytes,
         transport: Literal["json", "msgpack"] = "json",
+        sign_key: str | None = None,
     ) -> Bag:
         """Deserialize Bag from TYTX format.
 
         Reconstructs a complete Bag hierarchy from TYTX-encoded data.
+        Rebuilt resolvers are inert: nothing is called until the caller
+        reads the value.
 
         Args:
             data: Serialized data from to_tytx().
             transport: Input format matching how data was serialized:
                 - 'json': JSON string
                 - 'msgpack': Binary bytes
+            sign_key: Secret key. When given, every resolver payload must
+                carry a valid signature — required for data of untrusted
+                origin, since a resolver's arguments say what it will act on.
 
         Returns:
             Reconstructed Bag with all nodes, values, and attributes.
 
         Raises:
             ImportError: If genro-tytx package is not installed.
+            SignatureError: Signature missing, forged or expired, when
+                sign_key was given.
         """
         parsed = tytx_decode(data, transport=transport if transport != "json" else None)
         rows = parsed["rows"]
@@ -157,6 +181,7 @@ class BagParser:
 
             parent_bag = path_to_bag.get(parent_path, bag)
             full_path = f"{parent_path}.{label}" if parent_path else label
+            attr = decode_attrs(attr, sign_key)
 
             # Decode value
             if value == "::X":
@@ -166,7 +191,11 @@ class BagParser:
             elif value == "::NN":
                 parent_bag.set_item(label, None, _attributes=attr)
             else:
-                parent_bag.set_item(label, value, _attributes=attr)
+                resolver = decode_resolver(value, sign_key)
+                if resolver is not None:
+                    parent_bag.set_item(label, None, _attributes=attr, resolver=resolver)
+                else:
+                    parent_bag.set_item(label, value, _attributes=attr)
 
             # Set tag if present
             if tag:
@@ -183,18 +212,29 @@ class BagParser:
         cls,
         source: str | dict | list,
         list_joiner: str | None = None,
+        sign_key: str | None = None,
     ) -> Bag:
         """Deserialize JSON to Bag.
 
         Accepts JSON string, dict, or list. Recursively converts nested
         structures to Bag hierarchy. Uses TYTX for parsing (orjson + type decoding).
 
+        Rebuilt resolvers are inert: nothing is called until the caller
+        reads the value.
+
         Args:
             source: JSON string, dict or list to parse.
             list_joiner: If provided, join string lists with this separator.
+            sign_key: Secret key. When given, every resolver payload must
+                carry a valid signature — required for data of untrusted
+                origin, since a resolver's arguments say what it will act on.
 
         Returns:
             Deserialized Bag.
+
+        Raises:
+            SignatureError: Signature missing, forged or expired, when
+                sign_key was given.
         """
         if isinstance(source, str):
             source = tytx_decode(source)
@@ -203,7 +243,7 @@ class BagParser:
             # Wrap scalar in a dict
             source = {"value": source}
 
-        return cls._from_json_recursive(source, list_joiner)  # type: ignore[no-any-return]
+        return cls._from_json_recursive(source, list_joiner, sign_key=sign_key)  # type: ignore[no-any-return]
 
     @classmethod
     def _from_json_recursive(
@@ -211,6 +251,7 @@ class BagParser:
         data: dict | list | Any,
         list_joiner: str | None = None,
         parent_key: str | None = None,
+        sign_key: str | None = None,
     ) -> Any:
         """Recursively convert JSON data to Bag."""
         if isinstance(data, list):
@@ -222,11 +263,13 @@ class BagParser:
                 result = cls()
                 for item in data:
                     label = item.get("label")
-                    value = cls._from_json_recursive(item.get("value"), list_joiner)
-                    attr = item.get("attr", {})
+                    value = cls._from_json_recursive(
+                        item.get("value"), list_joiner, sign_key=sign_key
+                    )
+                    attr = decode_attrs(item.get("attr", {}), sign_key)
                     resolver = None
                     if "resolver" in item:
-                        resolver = BagResolver.deserialize(item["resolver"])
+                        resolver = decode_resolver(item["resolver"], sign_key)
                     node_tag = item.get("tag")
                     result.set_item(
                         label, value, _attributes=attr,
@@ -285,12 +328,14 @@ class _BagXmlHandler(ContentHandler):
         empty: Callable[[], Any] | None = None,
         raise_on_error: bool = False,
         tag_attribute: str | None = None,
+        sign_key: str | None = None,
     ):
         super().__init__()
         self.bag_class = bag_class
         self.empty = empty
         self.raise_on_error = raise_on_error
         self.tag_attribute = tag_attribute
+        self.sign_key = sign_key
 
     def startDocument(self) -> None:
         """Initialize parsing state with root Bag on stack."""
@@ -381,6 +426,10 @@ class _BagXmlHandler(ContentHandler):
         original_xml_tag = tag_label
         tag_label = attrs.pop("_tag", tag_label)
 
+        # _resolver carries the node's own resolver, the rest may hold theirs
+        resolver = decode_resolver(attrs.pop("_resolver", None), self.sign_key)
+        attrs = decode_attrs(attrs, self.sign_key)
+
         # Use tag_attribute value as label if specified (creates nested structure with dots)
         if self.tag_attribute and self.tag_attribute in attrs:
             tag_label = attrs.pop(self.tag_attribute)
@@ -395,7 +444,9 @@ class _BagXmlHandler(ContentHandler):
         if cnt:
             tag_label = f"{tag_label}_{cnt}"
 
-        if attrs:
+        if resolver is not None:
+            node = dest.set_item(tag_label, None, _attributes=attrs or None, resolver=resolver)
+        elif attrs:
             node = dest.set_item(tag_label, curr, _attributes=attrs)
         else:
             node = dest.set_item(tag_label, curr)

@@ -75,7 +75,7 @@ class OpenApiResolver(BagResolver):
     class_kwargs = {
         "cache_time": False,
         "read_only": True,
-        "retry_policy": "network",
+        "retry_policy": "http",
         "timeout": 30,
     }
     class_args = ["url"]

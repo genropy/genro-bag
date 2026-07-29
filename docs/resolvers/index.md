@@ -83,13 +83,26 @@ result = await smartawait(bag.get_item('data'))
 
 ### Serialization
 
-Resolvers survive serialization with TYTX:
+Resolvers survive XML, JSON and TYTX alike, as a node's value or in an
+attribute:
 
 ```python
-tytx = bag.to_tytx()
-restored = Bag.from_tytx(tytx)
-# Resolver is preserved!
+restored = Bag.from_json(bag.to_json())
+restored.get_resolver('data')   # rebuilt, not yet called
 ```
+
+Serializing never runs the resolver, and reading back rebuilds it inert:
+the effect happens when your code reads the value.
+
+If the Bag leaves the process and may come back, sign it — a resolver's
+arguments say what it will act on:
+
+```python
+payload = bag.to_json(sign_key=SECRET, expires_in=300)
+bag = Bag.from_json(payload, sign_key=SECRET)   # SignatureError if altered
+```
+
+→ [FAQ: serialization](faq.md#serialization)
 
 ## Built-in Resolvers
 

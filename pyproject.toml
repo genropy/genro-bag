@@ -7,7 +7,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "genro-bag"
-version = "0.19.1"
+version = "0.20.0"
 description = "Modernized bag system for the Genropy framework - hierarchical data container with XML serialization"
 readme = "README.md"
 license = "Apache-2.0"
@@ -36,7 +36,7 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "genro-toolbox>=0.6.1",
+    "genro-toolbox>=0.14.0",
     "genro-tytx>=0.1.0",
 ]
 

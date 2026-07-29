@@ -15,6 +15,8 @@ from typing import TYPE_CHECKING, Any
 from genro_toolbox import safe_is_instance
 from typing_extensions import Self
 
+from genro_bag._resolver_wire import is_resolver
+
 if TYPE_CHECKING:
     from genro_bag.bag._core import Bag
 
@@ -300,6 +302,10 @@ class BagPopulate:
         recursively deep copied. Values are copied by reference unless
         they are Bags. Node attributes are copied as a new dict.
 
+        Resolvers are rebuilt rather than shared, both a node's own and
+        those held in attributes: a copy that shared them would let a
+        parameter change on one Bag reach the other.
+
         Returns:
             A new Bag with copied nodes.
 
@@ -315,8 +321,20 @@ class BagPopulate:
             value = node.static_value
             if safe_is_instance(value, _IS_BAG):
                 value = value.deepcopy()
-            result.set_item(node.label, value, _attributes=dict(node.attr))
+            attr = {k: self._copy_resolver(v) if is_resolver(v) else v
+                    for k, v in node.attr.items()}
+            resolver = self._copy_resolver(node.resolver) if node.resolver is not None else None
+            result.set_item(node.label, value, _attributes=attr, resolver=resolver)
         return result
+
+    def _copy_resolver(self, resolver: Any) -> Any:
+        """Rebuild a resolver from its own parameters.
+
+        Reuses the serialize/deserialize pair rather than copy.deepcopy:
+        a resolver holds a back-reference to its node and, for the active
+        ones, a live timer — neither should be duplicated.
+        """
+        return resolver.deserialize(resolver.serialize())
 
     # -------------------- pickle support --------------------------------
 

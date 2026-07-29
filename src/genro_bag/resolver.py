@@ -851,14 +851,30 @@ class BagResolver:
     def deserialize(cls, data: dict[str, Any]) -> BagResolver:
         """Recreate resolver from serialized data.
 
+        The named class must be a BagResolver subclass: the payload chooses
+        the class name, never its ancestry, so this check cannot be forged.
+        Without it any importable callable would be instantiated with
+        payload-supplied arguments.
+
+        The returned resolver is inert — it is built, never called. Any I/O
+        happens later, when the caller reads the value.
+
         Args:
             data: Dict from serialize()
 
         Returns:
             New Resolver instance with same parameters.
+
+        Raises:
+            ValueError: If the named class is not a BagResolver subclass.
         """
         module = importlib.import_module(data["resolver_module"])
         resolver_cls = getattr(module, data["resolver_class"])
+        if not (isinstance(resolver_cls, type) and issubclass(resolver_cls, BagResolver)):
+            raise ValueError(
+                f"{data['resolver_module']}.{data['resolver_class']} is not a "
+                f"BagResolver subclass: refusing to instantiate it."
+            )
         return resolver_cls(*data.get("args", ()), **data.get("kwargs", {}))  # type: ignore[no-any-return]
 
     # =========================================================================

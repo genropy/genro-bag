@@ -17,6 +17,8 @@ from xml.sax import saxutils
 
 from genro_tytx import to_tytx as tytx_encode
 
+from genro_bag._resolver_wire import encode_attrs, encode_resolver
+
 if TYPE_CHECKING:
     from genro_bag.bagnode import BagNode
 
@@ -44,11 +46,17 @@ class BagSerializer:
         doc_header: bool | str | None = None,
         pretty: bool = False,
         self_closed_tags: list[str] | None = None,
+        sign_key: str | None = None,
+        expires_in: int | None = None,
     ) -> str | None:
         """Serialize to XML format.
 
         All values are converted to strings without type information.
         For type-preserving serialization, use to_tytx() instead.
+
+        Resolvers travel as ``::RSLV:`` marked strings: a node's own resolver
+        becomes a ``_resolver`` attribute, one held in an attribute replaces
+        that attribute's value.
 
         Args:
             filename: If provided, write to file. If None, return XML string.
@@ -56,9 +64,15 @@ class BagSerializer:
             doc_header: XML declaration (True for auto, False/None for none, str for custom).
             pretty: If True, format with indentation.
             self_closed_tags: List of tags to self-close when empty.
+            sign_key: Secret key. When given, resolver payloads are signed —
+                use it whenever the XML may come back from an untrusted party.
+            expires_in: Lifetime in seconds for the signatures.
 
         Returns:
             XML string if filename is None, else None.
+
+        Raises:
+            BagSerializationError: If a resolver cannot be written as JSON.
 
         Example:
             >>> bag = Bag()
@@ -67,7 +81,12 @@ class BagSerializer:
             >>> bag.to_xml()
             '<name>test</name><count>42</count>'
         """
-        content = self._bag_to_xml(namespaces=[], self_closed_tags=self_closed_tags)
+        content = self._bag_to_xml(
+            namespaces=[],
+            self_closed_tags=self_closed_tags,
+            sign_key=sign_key,
+            expires_in=expires_in,
+        )
 
         # Pretty print (before adding header)
         if pretty:
@@ -104,15 +123,28 @@ class BagSerializer:
             end = pretty_xml.rfind("</_root_>")
             return pretty_xml[start:end].strip()
 
-    def _bag_to_xml(self, namespaces: list[str], self_closed_tags: list[str] | None = None) -> str:
+    def _bag_to_xml(
+        self,
+        namespaces: list[str],
+        self_closed_tags: list[str] | None = None,
+        sign_key: str | None = None,
+        expires_in: int | None = None,
+    ) -> str:
         """Convert Bag to XML string."""
         parts = []
         for node in self:
-            parts.append(self._node_to_xml(node, namespaces, self_closed_tags))
+            parts.append(
+                self._node_to_xml(node, namespaces, self_closed_tags, sign_key, expires_in)
+            )
         return "".join(parts)
 
     def _node_to_xml(
-        self, node: Any, namespaces: list[str], self_closed_tags: list[str] | None = None
+        self,
+        node: Any,
+        namespaces: list[str],
+        self_closed_tags: list[str] | None = None,
+        sign_key: str | None = None,
+        expires_in: int | None = None,
     ) -> str:
         """Convert a BagNode to XML string."""
         # Extract local namespaces from this node's attributes
@@ -128,10 +160,14 @@ class BagSerializer:
         if original_tag is not None:
             attrs_parts.append(f"_tag={saxutils.quoteattr(original_tag)}")
 
-        if node.attr:
-            for k, v in node.attr.items():
-                if v is not None:
-                    attrs_parts.append(f"{k}={saxutils.quoteattr(str(v))}")
+        where = f"node {node.label!r}"
+        if node.resolver is not None:
+            payload = encode_resolver(node.resolver, sign_key, expires_in, where)
+            attrs_parts.append(f"_resolver={saxutils.quoteattr(payload)}")
+
+        for k, v in encode_attrs(node.attr, sign_key, expires_in, where).items():
+            if v is not None:
+                attrs_parts.append(f"{k}={saxutils.quoteattr(str(v))}")
 
         attrs_str = " " + " ".join(attrs_parts) if attrs_parts else ""
 
@@ -140,7 +176,7 @@ class BagSerializer:
 
         # Check if value is a Bag (using duck typing to avoid import)
         if hasattr(value, "_bag_to_xml"):
-            inner = value._bag_to_xml(current_namespaces, self_closed_tags)
+            inner = value._bag_to_xml(current_namespaces, self_closed_tags, sign_key, expires_in)
             if inner:
                 return f"<{tag}{attrs_str}>{inner}</{tag}>"
             # Empty Bag
@@ -201,12 +237,18 @@ class BagSerializer:
         transport: Literal["json", "msgpack"] = "json",
         filename: str | None = None,
         compact: bool = False,
+        sign_key: str | None = None,
+        expires_in: int | None = None,
     ) -> str | bytes | None:
         """Serialize a Bag to TYTX format.
 
         Converts the entire Bag hierarchy into a flat list of row tuples,
         then encodes it using TYTX which preserves Python types (Decimal,
         date, datetime, time) in the wire format.
+
+        Resolvers travel as ``::RSLV:`` marked strings, in the value slot
+        for a node's own resolver, in place of the attribute value for one
+        held in an attribute.
 
         Args:
             transport: Output format:
@@ -218,6 +260,9 @@ class BagSerializer:
             compact: Serialization mode:
                 - False (default): Parent paths as full strings ('a.b.c').
                 - True: Parent paths as numeric codes (0, 1, 2...).
+            sign_key: Secret key. When given, resolver payloads are signed —
+                use it whenever the data may come back from an untrusted party.
+            expires_in: Lifetime in seconds for the signatures.
 
         Returns:
             If filename is None: serialized data (str or bytes).
@@ -225,14 +270,19 @@ class BagSerializer:
 
         Raises:
             ImportError: If genro-tytx package is not installed.
+            BagSerializationError: If a resolver cannot be written as JSON.
         """
         if compact:
             paths: dict[int, str] = {}
-            rows = list(self._node_flattener(path_registry=paths))
+            rows = list(
+                self._node_flattener(
+                    path_registry=paths, sign_key=sign_key, expires_in=expires_in
+                )
+            )
             paths_str = {str(k): v for k, v in paths.items()}
             data = {"rows": rows, "paths": paths_str}
         else:
-            rows = list(self._node_flattener())
+            rows = list(self._node_flattener(sign_key=sign_key, expires_in=expires_in))
             data = {"rows": rows}
 
         # genro_tytx uses transport=None for JSON
@@ -259,6 +309,8 @@ class BagSerializer:
     def _node_flattener(
         self,
         path_registry: dict[int, str] | None = None,
+        sign_key: str | None = None,
+        expires_in: int | None = None,
     ) -> Iterator[tuple[str | int | None, str, str | None, Any, dict]]:
         """Expand each node into (parent, label, tag, value, attr) tuples.
 
@@ -269,20 +321,24 @@ class BagSerializer:
         Special value markers:
             - "::X" for Bag (branch nodes)
             - "::NN" for None values
+            - "::RSLV:<payload>" for a node's own resolver
 
         Args:
             path_registry: Optional dict to enable compact mode.
                 - If None: parent is path string (normal mode)
                 - If dict: parent is numeric code, dict populated with
                   {code: full_path} mappings for branches
+            sign_key: Secret key for signing resolver payloads.
+            expires_in: Lifetime in seconds for the signatures.
 
         Yields:
             tuple: (parent, label, tag, value, attr) where:
                 - parent: path string or int code (None for root-level)
                 - label: node's label
                 - tag: node's tag or None
-                - value: "::X" for Bag, "::NN" for None, else raw value
-                - attr: dict of node attributes (copy)
+                - value: "::X" for Bag, "::NN" for None, "::RSLV:..." for a
+                  resolver, else raw value
+                - attr: dict of node attributes, resolvers encoded
         """
         compact = path_registry is not None
         if compact:
@@ -291,19 +347,24 @@ class BagSerializer:
 
         for path, node in self.walk():
             parent_path = path.rsplit(".", 1)[0] if "." in path else ""
+            where = f"node {path!r}"
 
             # Use static=True to avoid triggering resolvers during serialization
             node_value = node.get_value(static=True)
 
-            # Value encoding - use duck typing to check for Bag
-            if hasattr(node_value, "walk") and hasattr(node_value, "_nodes"):
+            # Value encoding - use duck typing to check for Bag.
+            # The resolver wins: with one in place the static value is None,
+            # which would otherwise be written as "::NN" and lose it.
+            if node.resolver is not None:
+                value = encode_resolver(node.resolver, sign_key, expires_in, where)
+            elif hasattr(node_value, "walk") and hasattr(node_value, "_nodes"):
                 value = "::X"
             elif node_value is None:
                 value = "::NN"
             else:
                 value = node_value
 
-            attr = dict(node.attr) if node.attr else {}
+            attr = encode_attrs(node.attr, sign_key, expires_in, where)
 
             if compact:
                 parent_ref = path_to_code.get(parent_path) if parent_path else None
@@ -322,39 +383,55 @@ class BagSerializer:
     def to_json(
         self,
         typed: bool = True,
+        sign_key: str | None = None,
+        expires_in: int | None = None,
     ) -> str:
         """Serialize Bag to JSON string.
 
         Each node becomes {"label": ..., "value": ..., "attr": {...}}.
-        Nested Bags have value as a list of child nodes.
+        Nested Bags have value as a list of child nodes. A node's own
+        resolver goes in a "resolver" key; one held in an attribute
+        replaces that attribute's value. Both as ``::RSLV:`` strings.
 
         Args:
             typed: If True, encode types for date/datetime/Decimal (TYTX).
+            sign_key: Secret key. When given, resolver payloads are signed —
+                use it whenever the JSON may come back from an untrusted party.
+            expires_in: Lifetime in seconds for the signatures.
 
         Returns:
             JSON string representation.
+
+        Raises:
+            BagSerializationError: If a resolver cannot be written as JSON.
         """
-        result = [self._node_to_json_dict(node, typed) for node in self]
+        result = [self._node_to_json_dict(node, typed, sign_key, expires_in) for node in self]
 
         if typed:
             return tytx_encode(result)  # type: ignore[return-value]
         return json.dumps(result)
 
-    def _node_to_json_dict(self, node: Any, typed: bool) -> dict:
+    def _node_to_json_dict(
+        self,
+        node: Any,
+        typed: bool,
+        sign_key: str | None = None,
+        expires_in: int | None = None,
+    ) -> dict:
         """Convert a BagNode to JSON-serializable dict."""
         # Use static=True to avoid triggering resolvers during serialization
         value = node.get_value(static=True)
         # Check if value is a Bag using duck typing
         if hasattr(value, "_nodes") and hasattr(value, "walk"):
-            value = [value._node_to_json_dict(n, typed) for n in value]
-        result = {"label": node.label, "value": value, "attr": dict(node.attr) if node.attr else {}}
+            value = [value._node_to_json_dict(n, typed, sign_key, expires_in) for n in value]
+        where = f"node {node.label!r}"
+        result = {
+            "label": node.label,
+            "value": value,
+            "attr": encode_attrs(node.attr, sign_key, expires_in, where),
+        }
         if node.resolver is not None:
-            try:
-                resolver_data = node.resolver.serialize()
-                json.dumps(resolver_data)  # verify JSON-serializable
-                result["resolver"] = resolver_data
-            except (TypeError, ValueError):
-                pass  # non-serializable resolver (e.g. callback-based)
+            result["resolver"] = encode_resolver(node.resolver, sign_key, expires_in, where)
         if node.node_tag is not None:
             result["tag"] = node.node_tag
         return result
