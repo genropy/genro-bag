@@ -1,28 +1,28 @@
-"""Spec test: il segmento ``#parent`` (alias ``../``) deve essere
-risolto sia in testa al path sia come segmento interno, coerentemente
-col legacy gnr/core/gnrbag.py.
+"""Spec test: ``#parent`` segment (alias ``../``) must be resolved
+both at path start and as inner segment, consistent with legacy
+gnr/core/gnrbag.py.
 
-Dipende da test_basic.py (set_item, get_item).
+Depends on test_basic.py (set_item, get_item).
 
-Contratto:
-- ``r.get_item("a.x.#parent.c")`` torna al livello del padre di ``x``
-  (cioe' ``a``) e legge ``c``.
-- ``r.get_item("a.x.../c")`` e' alias di ``a.x.#parent.c`` (l'alias
-  ``../`` consuma il punto-separatore davanti, quindi servono tre punti
-  fra il segmento e la c finale: ``x`` + ``.`` + ``../``  -> ``...``).
-- ``#parent`` consecutivi camminano piu' livelli verso l'alto.
-- Da root, un ``#parent`` ulteriore non rompe ma rende il path
-  irrisolvibile (``None``).
-- ``set_item`` con ``#parent`` interno crea i nodi al livello giusto.
+Contract:
+- ``r.get_item("a.x.#parent.c")`` goes up to parent level of ``x``
+  (i.e. ``a``) and reads ``c``.
+- ``r.get_item("a.x.../c")`` is alias of ``a.x.#parent.c`` (alias
+  ``../`` consumes preceding dot-separator, so three dots needed
+  between segment and final c: ``x`` + ``.`` + ``../`` -> ``...``).
+- Consecutive ``#parent`` walk multiple levels up.
+- From root, further ``#parent`` does not crash but makes path
+  unresolvable (``None``).
+- ``set_item`` with inner ``#parent`` creates nodes at right level.
 
-## Scala
+## Scale
 
-1. inner #parent legge fratello                       a.x.#parent.c -> 'C'
+1. inner #parent reads sibling                        a.x.#parent.c -> 'C'
 2. ../ alias                                          a.x../c       -> 'C'
-3. multipli #parent consecutivi                       a.b.x.#parent.#parent.z -> 'Z'
-4. #parent da root -> None (no crash)
-5. set_item con inner #parent crea al livello giusto
-6. #parent in testa continua a funzionare             regressione
+3. multiple consecutive #parent                       a.b.x.#parent.#parent.z -> 'Z'
+4. #parent from root -> None (no crash)
+5. set_item with inner #parent creates at right level
+6. #parent at start still works                       regression
 """
 
 from __future__ import annotations
@@ -30,13 +30,13 @@ from __future__ import annotations
 from genro_bag import Bag
 
 # =============================================================================
-# 1. inner #parent legge un fratello del nodo intermedio
+# 1. inner #parent reads a sibling of the intermediate node
 # =============================================================================
 
 
 class TestInnerParentReadsSibling:
     def test_inner_parent_walks_up_then_reads_sibling(self):
-        """a.x e' una Bag; a.x.#parent torna ad a; .c legge il fratello."""
+        """a.x is a Bag; a.x.#parent goes up to a; .c reads sibling."""
         r = Bag()
         r.set_item("a.x.y", "Y")
         r.set_item("a.c", "C")
@@ -45,15 +45,15 @@ class TestInnerParentReadsSibling:
 
 
 # =============================================================================
-# 2. ../ alias deve funzionare uguale
+# 2. the ../ alias must work the same way
 # =============================================================================
 
 
 class TestSlashSlashAlias:
     def test_slash_slash_alias_resolves_inner_parent(self):
-        """``../`` e' alias testuale di ``#parent``. La sintassi richiede il
-        triplo-punto perche' la replace e' letterale: ``../`` consuma il
-        punto-separatore (``.`` + ``../`` -> ``...``)."""
+        """``../`` is textual alias of ``#parent``. Syntax requires triple-dot
+        because replace is literal: ``../`` consumes dot-separator
+        (``.`` + ``../`` -> ``...``)."""
         r = Bag()
         r.set_item("a.x.y", "Y")
         r.set_item("a.c", "C")
@@ -68,7 +68,7 @@ class TestSlashSlashAlias:
 
 class TestMultipleConsecutiveParents:
     def test_two_consecutive_parents_walk_up_two_levels(self):
-        """a.b.x.#parent.#parent.z dovrebbe salire da x a b a a, poi leggere z."""
+        """a.b.x.#parent.#parent.z should walk up from x to b to a, then read z."""
         r = Bag()
         r.set_item("a.b.x.y", "Y")
         r.set_item("a.z", "Z")
@@ -83,10 +83,10 @@ class TestMultipleConsecutiveParents:
 
 class TestParentFromRoot:
     def test_parent_above_root_returns_none(self):
-        """Da root non si puo' salire: get_item ritorna None senza eccezioni."""
+        """From root cannot go up: get_item returns None without exceptions."""
         r = Bag()
         r.set_item("a", 1)
-        # niente set_backref intenzionale: il root NON ha parent comunque
+        # no set_backref intentional: root has no parent anyway
         assert r.get_item("#parent.a") is None
 
 
@@ -97,13 +97,13 @@ class TestParentFromRoot:
 
 class TestSetItemWithInnerParent:
     def test_set_item_with_inner_parent_writes_at_right_level(self):
-        """set_item('a.x.#parent.d', 'D') deve creare a.d='D'."""
+        """set_item('a.x.#parent.d', 'D') must create a.d='D'."""
         r = Bag()
         r.set_item("a.x.y", "Y")
         r.set_backref()
         r.set_item("a.x.#parent.d", "D")
         assert r.get_item("a.d") == "D"
-        # gli altri rami non sono toccati
+        # other branches untouched
         assert r.get_item("a.x.y") == "Y"
 
 
@@ -114,11 +114,11 @@ class TestSetItemWithInnerParent:
 
 class TestLeadingParentStillWorks:
     def test_leading_parent_on_subbag_resolves_to_root(self):
-        """Da una sub-bag con backref, #parent in testa torna al root."""
+        """From a sub-bag with backref, leading #parent goes to root."""
         r = Bag()
         r.set_item("a.x.y", "Y")
         r.set_item("a.c", "C")
         r.set_backref()
         subbag = r["a.x"]
-        # subbag e' una Bag con parent = a
+        # subbag is a Bag with parent = a
         assert subbag.get_item("#parent.c") == "C"

@@ -1,37 +1,37 @@
-"""Spec test: la sintassi ``?attr`` risolve i BagResolver tenuti come
-attributi (issue #60), e il bare ``?`` ritorna tutti gli attributi come
-dict con i resolver risolti (issue #61).
+"""Spec test: the ``?attr`` syntax resolves BagResolvers held as
+attributes (issue #60), and bare ``?`` returns all attributes as
+a dict with resolvers resolved (issue #61).
 
-Dipende da test_basic.py (set_item) e test_resolvers.py (EnvResolver).
+Depends on test_basic.py (set_item) and test_resolvers.py (EnvResolver).
 
-Contratto:
-- ``bag['n?key']``: se ``key`` e' un BagResolver e ``static=False``,
-  restituisce il valore risolto. Altrimenti l'attributo grezzo.
-- ``bag['n?a&b']``: tupla di valori (risolti per i resolver, grezzi per
-  gli altri).
-- ``bag['n?']`` (bare): dict ``{name: value}`` con TUTTI gli attributi;
-  i resolver vengono risolti.
-- ``static=True``: non triggera alcun resolver in nessuna delle forme;
-  restituisce l'oggetto ``BagResolver`` grezzo.
+Contract:
+- ``bag['n?key']``: if ``key`` is a BagResolver and ``static=False``,
+  returns the resolved value. Otherwise the raw attribute.
+- ``bag['n?a&b']``: tuple of values (resolved for resolvers, raw for
+  others).
+- ``bag['n?']`` (bare): dict ``{name: value}`` with ALL attributes;
+  resolvers are resolved.
+- ``static=True``: does not trigger any resolver in any form;
+  returns the raw ``BagResolver`` object.
 
-## Scala
+## Scale
 
-### #60 (named form risolve i resolver)
-1. ?attr singolo con resolver           valore risolto
-2. ?attr singolo con valore piano       invariato
-3. ?a&b misto                           tupla mista risolto/piano
-4. ?a&b due resolver                    tupla con entrambi risolti
-5. ?attr inesistente                    None (invariato)
+### #60 (named form resolves resolvers)
+1. ?attr single with resolver           resolved value
+2. ?attr single with plain value        unchanged
+3. ?a&b mixed                           mixed tuple resolved/plain
+4. ?a&b two resolvers                   tuple with both resolved
+5. ?attr non-existent                   None (unchanged)
 
 ### #61 (bare ? dict)
-6. bag['n?'] misti                      dict con resolver risolti
-7. bag['n?'] senza attributi            {}
-8. bag['n?'] solo resolver              dict di valori risolti
-9. bag['n?'] preserva insertion order   sanity check dict
+6. bag['n?'] mixed                      dict with resolvers resolved
+7. bag['n?'] no attributes              {}
+8. bag['n?'] only resolvers             dict of resolved values
+9. bag['n?'] preserves insertion order  dict sanity check
 
 ### static=True
-10. static=True su ?key                 oggetto BagResolver, non chiamato
-11. static=True su ? bare               dict con resolver grezzi
+10. static=True on ?key                 BagResolver object, not called
+11. static=True on ? bare               dict with raw resolvers
 """
 
 from __future__ import annotations
@@ -84,7 +84,7 @@ class TestQueryAttrMissing:
 
 
 # =============================================================================
-# 6-9. #61: bare ? ritorna dict con resolver risolti
+# 6-9. #61: bare ? returns a dict with the resolvers resolved
 # =============================================================================
 
 
@@ -121,7 +121,7 @@ class TestBareQueryPreservesInsertionOrder:
 
 
 # =============================================================================
-# 10-11. static=True non triggera i resolver
+# 10-11. static=True does not trigger the resolvers
 # =============================================================================
 
 
@@ -132,7 +132,7 @@ class TestStaticNamedForm:
         b.set_item("n", "v", key=EnvResolver("X_SECRET"))
         node = b.get_node("n")
         result = node.get_value(static=True, _query_string="key")
-        # con static=True l'oggetto resolver non viene chiamato
+        # with static=True the resolver object is not called
         assert isinstance(result, EnvResolver)
 
 

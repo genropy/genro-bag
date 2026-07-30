@@ -1,22 +1,22 @@
-"""Spec test: la sintassi ``set_item('path?attr', value)`` deve essere
-equivalente a ``node.set_attr(attr=value)`` — semantica di merge, non di
-sostituzione totale.
+"""Spec test: ``set_item('path?attr', value)`` syntax must be
+equivalent to ``node.set_attr(attr=value)`` — merge semantics, not
+total replacement.
 
-Dipende da test_basic.py (set_item) e test_subscriptions.py (subscribe).
+Depends on test_basic.py (set_item) and test_subscriptions.py (subscribe).
 
-Contratto: quando il label contiene ``?<attr>``, ``set_item`` lascia il
-valore del nodo invariato e modifica SOLO l'attributo nominato. Tutti gli
-altri attributi del nodo sopravvivono (merge). Settare l'attributo a
-``None`` lo rimuove ma lascia gli altri al loro posto, esattamente come
-``node.set_attr(attr=None)`` con ``_remove_null_attributes=True``.
+Contract: when label contains ``?<attr>``, ``set_item`` leaves node value
+unchanged and modifies ONLY the named attribute. All other node attributes
+survive (merge). Setting attribute to ``None`` removes it but leaves others
+in place, exactly like ``node.set_attr(attr=None)`` with
+``_remove_null_attributes=True``.
 
-## Scala
+## Scale
 
-1. ?attr su nodo con piu' attributi              gli altri attributi sopravvivono
-2. ?attr1&attr2 con tuple                        modifica solo i due, gli altri restano
-3. ?attr=None                                    rimuove solo quello, gli altri restano
-4. ?attr equivalente a set_attr diretto          stesso risultato su un nodo identico
-5. valore del nodo non viene toccato             ?attr non altera node.value
+1. ?attr on node with multiple attrs             other attributes survive
+2. ?attr1&attr2 with tuple                       modifies only two, others remain
+3. ?attr=None                                    removes only that, others remain
+4. ?attr equivalent to direct set_attr           same result on identical node
+5. node value not touched                        ?attr does not alter node.value
 """
 
 from __future__ import annotations
@@ -24,14 +24,14 @@ from __future__ import annotations
 from genro_bag import Bag
 
 # =============================================================================
-# 1. ?attr su nodo con piu' attributi: gli altri sopravvivono
+# 1. ?attr on a node with several attributes: the others survive
 # =============================================================================
 
 
 class TestQueryAttrPreservesOthers:
     def test_single_attr_change_does_not_wipe_others(self):
-        """set_item('path?color', 'blue') su nodo con color+width deve
-        modificare solo color, lasciando width intatto."""
+        """set_item('path?color', 'blue') on node with color+width must
+        modify only color, leaving width unchanged."""
         b = Bag()
         b.set_item("alfa.beta", "foo", color="red", width=56)
         b.set_item("alfa.beta?color", "blue")
@@ -39,13 +39,13 @@ class TestQueryAttrPreservesOthers:
 
 
 # =============================================================================
-# 2. ?attr1&attr2 con tuple: solo i due nominati, gli altri restano
+# 2. ?attr1&attr2 with a tuple: only the two named change, the rest stay
 # =============================================================================
 
 
 class TestQueryMultipleAttrs:
     def test_multi_attr_query_only_touches_named_keys(self):
-        """set_item('path?a&b', (1, 2)) cambia solo a e b, lascia c."""
+        """set_item('path?a&b', (1, 2)) changes only a and b, leaves c."""
         b = Bag()
         b.set_item("x", "v", a=10, b=20, c=30)
         b.set_item("x?a&b", (100, 200))
@@ -59,8 +59,8 @@ class TestQueryMultipleAttrs:
 
 class TestQueryAttrSetToNone:
     def test_setting_attr_to_none_removes_only_that_attr(self):
-        """set_item('path?color', None) rimuove color (default
-        _remove_null_attributes=True) ma preserva gli altri."""
+        """set_item('path?color', None) removes color (default
+        _remove_null_attributes=True) but preserves others."""
         b = Bag()
         b.set_item("x", "v", color="red", width=56)
         b.set_item("x?color", None)
@@ -68,15 +68,15 @@ class TestQueryAttrSetToNone:
 
 
 # =============================================================================
-# 4. ?attr deve essere equivalente a set_attr diretta
+# 4. ?attr must behave exactly like a direct set_attr
 # =============================================================================
 
 
 class TestQueryAttrEquivalentToSetAttr:
     def test_query_syntax_matches_direct_set_attr(self):
-        """Il risultato di set_item('x?color', 'blue') deve essere identico
-        a node.set_attr(color='blue')."""
-        # via set_attr diretta
+        """Result of set_item('x?color', 'blue') must be identical to
+        node.set_attr(color='blue')."""
+        # via direct set_attr
         b1 = Bag()
         b1.set_item("x", "v", color="red", width=56)
         b1.get_node("x").set_attr(color="blue")
@@ -90,13 +90,13 @@ class TestQueryAttrEquivalentToSetAttr:
 
 
 # =============================================================================
-# 5. il valore del nodo non viene alterato dalla sintassi ?attr
+# 5. the ?attr syntax leaves the node value untouched
 # =============================================================================
 
 
 class TestQueryAttrDoesNotTouchValue:
     def test_node_value_untouched_by_query_syntax(self):
-        """?attr modifica solo gli attributi: node.value resta com'era."""
+        """?attr modifies only attributes: node.value stays as is."""
         b = Bag()
         b.set_item("x", "original_value", color="red")
         b.set_item("x?color", "blue")

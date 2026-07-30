@@ -1,57 +1,74 @@
 # tests/spec — Spec-driven test suite
 
-**Status**: DA REVISIONARE — suite in costruzione, non ancora approvata come sostituto della suite storica.
+This is the test suite of genro-bag. It replaced the earlier monolithic one
+(`test_bag.py` plus `test_coverage_extension.py`), and `testpaths` in
+pyproject.toml points here alone.
 
-## Principi
+## Principles
 
-I test in questa directory seguono 4 principi, da cui il nome "spec":
+Four principles, and they are where the name "spec" comes from:
 
-1. **Dai docstring, non dal codice.** Ogni test nasce dalla documentazione pubblica di un metodo di `Bag` (docstring, README, manual). Non si scrivono test per "coprire un ramo if" — si scrivono test per "documentare una variante d'uso".
+1. **From the docstrings, not from the code.** Every test starts from the public
+   documentation of a `Bag` method (docstring, README, manual). You do not write
+   a test to "cover an if branch" — you write one to document a documented way
+   of using the thing.
 
-2. **End-to-end, non primitive interne.** Il test crea una `Bag`, esercita un'operazione pubblica, verifica il comportamento osservabile. Nessun accesso a `_nodes`, `_htraverse`, `_node_to_xml` o qualunque altro attributo con underscore.
+2. **End-to-end, not internal primitives.** A test builds a `Bag`, exercises a
+   public operation, and checks the observable behaviour. No reaching into
+   `_nodes`, `_htraverse`, `_node_to_xml` or anything else underscored.
 
-3. **Un modulo = un dominio omogeneo.** `test_basic.py` tocca solo operazioni base senza resolver né subscription. `test_query.py` solo query/walk/aggregazioni. Non si mescolano domini nello stesso file.
+3. **One module, one domain.** `test_basic.py` covers base operations with no
+   resolvers and no subscriptions. `test_query.py` covers query/walk/aggregation
+   only. Domains do not mix within a file.
 
-4. **Non si testa ciò che non esiste da solo.** `BagNode`, `BagNodeContainer`, `BagResolver` sono strutture interne. L'utente li incontra solo come conseguenza di operazioni su `Bag`. Vengono esercitati attraverso la `Bag`, mai in isolamento.
+4. **What has no life of its own is not tested on its own.** `BagNode`,
+   `BagNodeContainer` and `BagResolver` are internal structures. A user meets
+   them only as a consequence of operating on a `Bag`, so that is how the tests
+   reach them — never in isolation.
 
-## API pubblica
+## Public API
 
-Definizione operativa: **tutto ciò che non inizia con `_`**.
+Working definition: **anything not starting with `_`**.
 
-- `set_item` è pubblica.
-- `_htraverse` non lo è.
+- `set_item` is public.
+- `_htraverse` is not.
 
-I dunder (`__init__`, `__getitem__`, `__setitem__`, `__delitem__`, `__contains__`, `__len__`, `__iter__`, `__eq__`, `__ne__`, `__str__`, `__repr__`, `__call__`) fanno parte dell'API.
+The dunders (`__init__`, `__getitem__`, `__setitem__`, `__delitem__`,
+`__contains__`, `__len__`, `__iter__`, `__eq__`, `__ne__`, `__str__`,
+`__repr__`, `__call__`) are part of the API.
 
-## Processo
+## Language
 
-1. Si parte dai metodi più fondativi (`set_item`, `get_item`, accesso `[...]`).
-2. Si scrive un test per variante d'uso documentata.
-3. Si misura la coverage con:
+Code, comments and docstrings are in English. Much of this suite was written in
+Italian and has since been translated; anything new goes in English from the
+start.
+
+## No external dependencies
+
+Tests needing a real HTTP request use the `http_server` fixture in
+`conftest.py`, a stdlib `http.server` on 127.0.0.1. No public endpoint, no extra
+test library: a service we do not control must never be able to fail the suite,
+and an undeclared dependency can silently disable a whole file — both of which
+happened before the fixture existed.
+
+## Process
+
+1. Start from the most foundational methods (`set_item`, `get_item`, `[...]`).
+2. Write one test per documented way of using it.
+3. Measure coverage:
 
    ```bash
    pytest tests/spec/ --cov=genro_bag --cov-report=term-missing --cov-report=html:htmlcov-spec
    ```
 
-4. Si apre `htmlcov-spec/index.html`, si guarda quali rami restano scoperti, si decide il prossimo test.
-5. Il coverage report è la TODO-list: non si scrive test "in più" senza verificare che aggiunga copertura reale.
+4. Open `htmlcov-spec/index.html`, see which branches are still uncovered,
+   decide the next test.
+5. The coverage report is the to-do list: no extra test without checking it
+   adds real coverage.
 
-## Moduli previsti
+## What this suite does NOT contain
 
-Ordine di costruzione:
-
-1. `test_basic.py` — istanziazione, `set_item`/`get_item`, `[...]`, `len`, `in`, iter, `get_node`, proprietà base.
-2. `test_query.py` — `query`, `walk`, `keys`/`values`/`items`, `get_nodes`, `sort`, `sum`, `is_empty`, `columns`.
-3. `test_population.py` — `fill_from`, `update`, `deepcopy`, `from_url`.
-4. `test_serialization.py` — `to_xml`/`from_xml`, `to_json`/`from_json`, `to_tytx`/`from_tytx`.
-5. `test_events.py` — `subscribe`/`unsubscribe`, `transaction`, backref.
-6. `test_resolvers.py` — `Bag` con resolver come valori (comportamento osservabile).
-
-Ogni modulo si chiude quando la coverage marginale che aggiunge è sotto soglia e ogni metodo pubblico del dominio è stato chiamato in tutte le varianti documentate.
-
-## Cosa questa suite NON contiene
-
-- Test su `BagNode`, `BagNodeContainer`, `BagResolver` istanziati direttamente.
-- Test che esercitano attributi o metodi con underscore.
-- Test "tappabuchi" il cui solo scopo è alzare una metrica.
-- Duplicazioni di dominio (una feature sta in un solo file).
+- Tests on `BagNode`, `BagNodeContainer` or `BagResolver` instantiated directly.
+- Tests reaching underscored attributes or methods.
+- Filler tests whose only purpose is to move a metric.
+- Domain duplication — a feature lives in one file.

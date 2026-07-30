@@ -1,36 +1,36 @@
-"""Spec test: Bag - serializzazione XML / JSON / TYTX.
+"""Spec test: Bag - XML / JSON / TYTX serialization.
 
-Dipende da test_basic.py (set_item, get_item, get_attr, get_node,
-__len__, __contains__) e test_population.py (fill_from, deepcopy).
+Depends on test_basic.py (set_item, get_item, get_attr, get_node,
+__len__, __contains__) and test_population.py (fill_from, deepcopy).
 
-I formati XML/JSON/TYTX sono tre contratti DISTINTI:
-- XML: human-readable, senza type info (tutto stringa)
+XML/JSON/TYTX formats are THREE DISTINCT contracts:
+- XML: human-readable, no type info (all strings)
 - TYTX: type-preserving (int, float, date, datetime, Decimal)
-- JSON: struttura esplicita label/value/attr, con o senza type info (typed=True)
+- JSON: explicit label/value/attr structure, with or without type info (typed=True)
 
-Per ciascuno testiamo il roundtrip: from_X(to_X(bag)) deve ricostruire
-Bag equivalente per i valori attesi dal formato.
+For each we test roundtrip: from_X(to_X(bag)) must reconstruct
+equivalent Bag for format's expected values.
 
-## Scala
+## Scale
 
-1.  to_xml / from_xml                roundtrip semplice
-2.  to_xml opzioni                   pretty, doc_header, self_closed_tags
-3.  to_xml filename                  scrittura su file
-4.  to_xml attributi                 attr serializzati come XML attributes
-5.  to_xml nested                    sub-Bag annidate
-6.  from_xml plain                   elementi -> nodi
+1.  to_xml / from_xml                simple roundtrip
+2.  to_xml options                   pretty, doc_header, self_closed_tags
+3.  to_xml filename                  write to file
+4.  to_xml attributes                attr serialized as XML attributes
+5.  to_xml nested                    nested sub-Bags
+6.  from_xml plain                   elements -> nodes
 7.  from_xml legacy GenRoBag         auto-detect + _T types
-8.  from_xml tag_attribute           path da attributo
+8.  from_xml tag_attribute           path from attribute
 
-9.  to_tytx / from_tytx              roundtrip JSON e msgpack
-10. to_tytx filename                 scrittura su file
-11. to_tytx compact mode             parent paths come codici numerici
+9.  to_tytx / from_tytx              JSON and msgpack roundtrip
+10. to_tytx filename                 write to file
+11. to_tytx compact mode             parent paths as numeric codes
 12. to_tytx preserves types          int / float / None / bytes
-13. to_tytx preserves attr e node_tag
+13. to_tytx preserves attr and node_tag
 
-14. to_json / from_json              roundtrip JSON (typed o no)
-15. to_json typed                    preserva date/datetime/Decimal
-16. from_json da dict Python diretto
+14. to_json / from_json              JSON roundtrip (typed or not)
+15. to_json typed                    preserves date/datetime/Decimal
+16. from_json from direct Python dict
 """
 
 from __future__ import annotations
@@ -42,17 +42,16 @@ import pytest
 
 from genro_bag import Bag
 
-
 # =============================================================================
-# 1. to_xml / from_xml - roundtrip semplice
+# 1. to_xml / from_xml - simple roundtrip
 # =============================================================================
 
 
 class TestXmlRoundtripSimple:
     def test_roundtrip_under_single_root(self):
-        """Roundtrip XML richiede un singolo root element (vincolo del formato).
+        """XML roundtrip requires single root element (format constraint).
 
-        XML non preserva i tipi: i valori tornano come stringa.
+        XML does not preserve types: values return as strings.
         """
         src = Bag()
         src["root.a"] = "1"
@@ -63,18 +62,18 @@ class TestXmlRoundtripSimple:
         assert restored.get_item("root.b") == "2"
 
     def test_empty_bag_produces_empty_string(self):
-        """to_xml() su Bag vuoto ritorna stringa vuota (caso limite del formato)."""
+        """to_xml() on empty Bag returns empty string (format edge case)."""
         assert Bag().to_xml() == ""
 
 
 # =============================================================================
-# 2. to_xml - opzioni
+# 2. to_xml - options
 # =============================================================================
 
 
 class TestToXmlOptions:
     def test_pretty_adds_indentation(self):
-        """pretty=True produce output indentato."""
+        """pretty=True produces indented output."""
         bag = Bag({"a": "1", "b": "2"})
         compact = bag.to_xml()
         pretty = bag.to_xml(pretty=True)
@@ -82,46 +81,46 @@ class TestToXmlOptions:
         assert "\n" in (pretty or "")
 
     def test_doc_header_true_adds_xml_declaration(self):
-        """doc_header=True prefissa la dichiarazione XML."""
+        """doc_header=True prefixes XML declaration."""
         bag = Bag({"a": "1"})
         xml = bag.to_xml(doc_header=True)
         assert (xml or "").startswith("<?xml version=")
 
     def test_doc_header_string_uses_custom_header(self):
-        """doc_header str viene usato come header custom."""
+        """doc_header str is used as custom header."""
         bag = Bag({"a": "1"})
         xml = bag.to_xml(doc_header="<!DOCTYPE custom>")
         assert (xml or "").startswith("<!DOCTYPE custom>")
 
     def test_self_closed_tags(self):
-        """self_closed_tags lista rende i tag indicati self-closing se vuoti."""
+        """self_closed_tags list makes indicated tags self-closing if empty."""
         bag = Bag()
         bag["empty_tag"] = None
         xml = bag.to_xml(self_closed_tags=["empty_tag"])
         assert "<empty_tag/>" in (xml or "")
 
     def test_self_closed_tags_excludes_others(self):
-        """Tag NON presenti in self_closed_tags usano la forma <tag></tag> se vuoti.
+        """Tags NOT in self_closed_tags use <tag></tag> form if empty.
 
-        Scenario: utente specifica solo 'br' come self-closed; un altro tag
-        vuoto non deve essere self-closed.
+        Scenario: user specifies only 'br' as self-closed; another empty tag
+        must not be self-closed.
         """
         bag = Bag()
         bag.set_item("empty_scalar", None)
         xml = bag.to_xml(self_closed_tags=["br"]) or ""
-        # empty_scalar non e' in self_closed_tags → forma estesa
+        # empty_scalar not in self_closed_tags → extended form
         assert "<empty_scalar></empty_scalar>" in xml
         assert "<empty_scalar/>" not in xml
 
     def test_self_closed_tags_empty_sub_bag_included(self):
-        """Sub-Bag vuota con tag in self_closed_tags si auto-chiude."""
+        """Empty sub-Bag with tag in self_closed_tags self-closes."""
         bag = Bag()
         bag.set_item("container", Bag())
         xml = bag.to_xml(self_closed_tags=["container"]) or ""
         assert "<container/>" in xml
 
     def test_self_closed_tags_empty_sub_bag_excluded(self):
-        """Sub-Bag vuota con tag NON in self_closed_tags usa <tag></tag>."""
+        """Empty sub-Bag with tag NOT in self_closed_tags uses <tag></tag>."""
         bag = Bag()
         bag.set_item("container", Bag())
         xml = bag.to_xml(self_closed_tags=["other"]) or ""
@@ -129,9 +128,9 @@ class TestToXmlOptions:
         assert "<container/>" not in xml
 
     def test_self_closed_tags_default_all_empty_are_self_closed(self):
-        """Senza self_closed_tags (default) ogni tag vuoto si auto-chiude.
+        """Without self_closed_tags (default) every empty tag self-closes.
 
-        Questo e' il comportamento standard XML.
+        This is standard XML behavior.
         """
         bag = Bag()
         bag.set_item("a", None)
@@ -150,7 +149,7 @@ class TestToXmlOptions:
 
 class TestToXmlFile:
     def test_writes_to_file_when_filename_given(self, tmp_path: Path):
-        """filename=... scrive su file e ritorna None."""
+        """filename=... writes to file and returns None."""
         bag = Bag({"a": "hello"})
         file = tmp_path / "out.xml"
         result = bag.to_xml(filename=str(file))
@@ -159,7 +158,7 @@ class TestToXmlFile:
         assert "hello" in content
 
     def test_file_can_be_read_back(self, tmp_path: Path):
-        """Il file XML prodotto e' rileggibile con from_xml tramite fill_from."""
+        """XML file produced is readable back with from_xml via fill_from."""
         src = Bag({"x": "world"})
         file = tmp_path / "out.xml"
         src.to_xml(filename=str(file))
@@ -168,13 +167,13 @@ class TestToXmlFile:
 
 
 # =============================================================================
-# 4. to_xml - attributi
+# 4. to_xml - attributes
 # =============================================================================
 
 
 class TestToXmlAttributes:
     def test_attributes_serialized_as_xml_attrs(self):
-        """attributi del nodo finiscono come XML attributes."""
+        """Node attributes end up as XML attributes."""
         bag = Bag()
         bag.set_item("elem", "text", _attributes={"type": "string", "id": "x"})
         xml = bag.to_xml() or ""
@@ -182,14 +181,14 @@ class TestToXmlAttributes:
         assert 'id="x"' in xml
 
     def test_none_attribute_skipped(self):
-        """attributi con valore None non vengono emessi."""
+        """Attributes with None value are not emitted."""
         bag = Bag()
         bag.set_item("e", "v", _attributes={"keep": "yes"})
-        # inserisco un attributo None manualmente via set_attr
+        # insert None attribute manually via set_attr
         bag.set_attr("e", nil=None)
         xml = bag.to_xml() or ""
         assert "keep" in xml
-        # l'attributo None viene rimosso, non appare
+        # None attribute is removed, doesn't appear
         assert "nil=" not in xml
 
 
@@ -200,7 +199,7 @@ class TestToXmlAttributes:
 
 class TestToXmlNested:
     def test_nested_bag_nested_xml(self):
-        """Una sub-Bag produce XML annidato."""
+        """A sub-Bag produces nested XML."""
         bag = Bag()
         bag["outer.inner"] = "v"
         xml = bag.to_xml() or ""
@@ -209,7 +208,7 @@ class TestToXmlNested:
         assert "</outer>" in xml
 
     def test_nested_roundtrip(self):
-        """Roundtrip XML su struttura annidata."""
+        """XML roundtrip on nested structure."""
         src = Bag()
         src["outer.inner"] = "v"
         xml = src.to_xml() or ""
@@ -224,19 +223,19 @@ class TestToXmlNested:
 
 class TestFromXmlPlain:
     def test_simple_xml_elements_become_nodes(self):
-        """Ogni elemento XML diventa un nodo della Bag."""
+        """Each XML element becomes a Bag node."""
         bag = Bag.from_xml("<root><a>1</a><b>2</b></root>")
         assert bag.get_item("root.a") == "1"
         assert bag.get_item("root.b") == "2"
 
     def test_attributes_become_node_attr(self):
-        """XML attributes -> node.attr."""
+        """XML attributes become node.attr."""
         bag = Bag.from_xml('<root><item id="x" kind="small">hello</item></root>')
         assert bag.get_attr("root.item", "id") == "x"
         assert bag.get_attr("root.item", "kind") == "small"
 
     def test_bytes_source_decoded(self):
-        """from_xml accetta bytes (UTF-8)."""
+        """from_xml accepts bytes (UTF-8)."""
         bag = Bag.from_xml(b"<root><a>1</a></root>")
         assert bag.get_item("root.a") == "1"
 
@@ -248,13 +247,13 @@ class TestFromXmlPlain:
 
 class TestFromXmlLegacy:
     def test_legacy_wrapper_unwrapped(self):
-        """Il wrapper <GenRoBag> e' rimosso automaticamente."""
+        """The <GenRoBag> wrapper is automatically removed."""
         bag = Bag.from_xml("<GenRoBag><a>1</a></GenRoBag>")
-        # senza _T il valore e' stringa
+        # without _T the value is string
         assert bag.get_item("a") == "1"
 
     def test_legacy_type_marker_int(self):
-        """_T='L' converte il valore a int."""
+        """_T='L' converts value to int."""
         bag = Bag.from_xml('<GenRoBag><count _T="L">42</count></GenRoBag>')
         assert bag.get_item("count") == 42
         assert isinstance(bag.get_item("count"), int)
@@ -267,7 +266,7 @@ class TestFromXmlLegacy:
 
 class TestFromXmlTagAttribute:
     def test_tag_attribute_uses_attr_as_label(self):
-        """tag_attribute=X fa usare l'attributo X come label del nodo."""
+        """tag_attribute=X uses attribute X as node label."""
         xml = '<grammar><define name="section"/></grammar>'
         bag = Bag.from_xml(xml, tag_attribute="name")
         assert "section" in bag["grammar"]
@@ -280,7 +279,7 @@ class TestFromXmlTagAttribute:
 
 class TestTytxRoundtrip:
     def test_roundtrip_json_preserves_int_and_str(self):
-        """to_tytx + from_tytx ricostruisce valori int e str."""
+        """to_tytx + from_tytx reconstructs int and str values."""
         src = Bag({"a": 1, "b": "hello"})
         data = src.to_tytx(transport="json")
         restored = Bag.from_tytx(data, transport="json")  # type: ignore[arg-type]
@@ -289,7 +288,7 @@ class TestTytxRoundtrip:
         assert restored.get_item("b") == "hello"
 
     def test_roundtrip_msgpack(self):
-        """Stesso roundtrip ma con transport msgpack (binary)."""
+        """Same roundtrip but with msgpack transport (binary)."""
         src = Bag({"a": 1, "b": "hello"})
         data = src.to_tytx(transport="msgpack")
         assert isinstance(data, bytes)
@@ -332,7 +331,7 @@ class TestToTytxFile:
 
 class TestToTytxCompact:
     def test_compact_roundtrip(self):
-        """compact=True preserva la struttura nel roundtrip."""
+        """compact=True preserves the structure through the roundtrip."""
         src = Bag()
         src["a.b.c"] = 42
         src["a.b.d"] = "x"
@@ -359,7 +358,7 @@ class TestTytxTypes:
         assert isinstance(restored.get_item("x"), float)
 
     def test_preserves_none(self):
-        """Valori None sono conservati come None."""
+        """None values are kept as None."""
         src = Bag()
         src["empty"] = None
         data = src.to_tytx(transport="json")
@@ -368,7 +367,7 @@ class TestTytxTypes:
         assert "empty" in restored
 
     def test_preserves_decimal(self):
-        """Decimal: TYTX preserva il tipo."""
+        """Decimal: TYTX preserves the type."""
         src = Bag()
         src["price"] = Decimal("19.99")
         data = src.to_tytx(transport="json")
@@ -385,7 +384,7 @@ class TestTytxTypes:
 
 class TestTytxAttrAndTag:
     def test_roundtrip_preserves_attributes(self):
-        """Gli attributi dei nodi sopravvivono al roundtrip TYTX."""
+        """Node attributes survive the TYTX roundtrip."""
         src = Bag()
         src.set_item("a", 1, _attributes={"kind": "int", "size": 4})
         data = src.to_tytx(transport="json")
@@ -411,7 +410,7 @@ class TestTytxAttrAndTag:
 
 class TestJsonRoundtrip:
     def test_typed_roundtrip_preserves_values(self):
-        """to_json(typed=True) + from_json ricostruisce valori e attributi."""
+        """to_json(typed=True) plus from_json rebuilds values and attributes."""
         src = Bag()
         src.set_item("a", 42, _attributes={"type": "int"})
         src.set_item("b", "hello")
@@ -479,7 +478,7 @@ class TestFromJsonNonString:
 
 class TestFromXmlExtra:
     def test_empty_factory_called_on_empty_element(self):
-        """empty callable produce il valore di default per elementi vuoti."""
+        """The empty callable supplies the default value for empty elements."""
         bag = Bag.from_xml(
             '<GenRoBag><x _T="L"></x></GenRoBag>',
             empty=lambda: 0,
@@ -487,7 +486,7 @@ class TestFromXmlExtra:
         assert bag.get_item("x") == 0
 
     def test_raise_on_error_true_propagates(self):
-        """raise_on_error=True solleva per valori non convertibili."""
+        """raise_on_error=True raises on values that cannot be converted."""
         with pytest.raises(Exception):
             Bag.from_xml(
                 '<GenRoBag><x _T="L">not_a_number</x></GenRoBag>',
@@ -496,13 +495,13 @@ class TestFromXmlExtra:
 
 
 # =============================================================================
-# 18. XML tag sanitization (label Python validi ma invalidi come tag XML)
+# 18. XML tag sanitization (labels valid in Python, invalid as XML tags)
 # =============================================================================
 
 
 class TestXmlTagSanitization:
     def test_label_with_invalid_chars_is_sanitized(self):
-        """Label con spazi/caratteri speciali: to_xml produce un tag valido.
+        """Labels with spaces or special characters: to_xml emits a valid tag.
 
         Scenario reale: dati da CSV con header "My Col" o "col$1".
         """
@@ -514,24 +513,24 @@ class TestXmlTagSanitization:
         assert "</root>" in xml
 
     def test_label_starting_with_digit_gets_underscore_prefix(self):
-        """Label che inizia con cifra: il tag sanitizzato ha prefisso '_'."""
+        """A label starting with a digit: the sanitized tag gets a '_' prefix."""
         bag = Bag()
         bag.set_item("root.2024data", "v")
         xml = bag.to_xml() or ""
-        # il tag emesso inizia con '_' (non con cifra)
+        # the emitted tag starts with '_', not with a digit
         assert "<_2024data" in xml or "<_" in xml
 
     def test_empty_label_becomes_none_marker(self):
         """Label vuoto produce il tag speciale '_none_'."""
-        # uso set_item con path contenente un segmento vuoto -> label ''
+        # set_item with a path holding an empty segment -> label ''
         bag = Bag()
-        # setto direttamente un nodo con label vuoto tramite path "root." non funziona
-        # perche' split elimina gli empty. Passo per set sulla sub-Bag.
+        # setting a node with an empty label through the path "root." does not work
+        # because split drops the empties. Set it on the sub-Bag instead.
         sub = Bag()
         sub.set_item("", "v")
         bag.set_item("root", sub)
         xml = bag.to_xml() or ""
-        # il tag emesso include il marker _none_
+        # the emitted tag carries the _none_ marker
         assert "_none_" in xml
 
 
@@ -544,7 +543,7 @@ class TestJsonWithResolver:
     def test_to_json_includes_resolver_for_serializable_resolver(self):
         """to_json(typed=True) emette 'resolver' per resolver serializzabili.
 
-        UuidResolver e' serializzabile (nessun callback, solo args/kwargs).
+        UuidResolver is serializable: no callback, only args and kwargs.
         """
         from genro_bag.resolvers import UuidResolver
 
@@ -573,7 +572,7 @@ class TestJsonWithResolver:
 
 class TestJsonWithNodeTag:
     def test_to_json_includes_node_tag(self):
-        """to_json emette 'tag' nel dict del nodo quando il nodo ha node_tag."""
+        """to_json writes 'tag' in the node dict when the node has a node_tag."""
         bag = Bag()
         bag.set_item("doc", "hello", node_tag="paragraph")
         data = bag.to_json(typed=True)
@@ -601,18 +600,18 @@ class TestJsonEmpty:
 # 22. XML legacy mixed content + from_json list_joiner
 # =============================================================================
 #
-# Nota: il docstring di from_xml dichiara env var substitution {GNR_*}
-# ma nel codice di _parse.py non c'e' logica di sostituzione.
-# Test non scritto: la feature e' documentata ma non implementata
-# (candidato bug/doc-mismatch).
+# Note: from_xml's docstring claims env var substitution {GNR_*},
+# but _parse.py holds no substitution logic.
+# No test written: the feature is documented but not implemented
+# (candidate bug / doc mismatch).
 
 
 class TestXmlMixedContent:
     def test_mixed_content_text_becomes_special_node(self):
-        """XML con testo e figli dentro lo stesso elemento emette un nodo '_' per il testo."""
+        """XML mixing text and children in one element emits a '_' node for the text."""
         xml = "<root>leading text<child>v</child></root>"
         bag = Bag.from_xml(xml)
-        # 'root' ha un figlio 'child' e un nodo '_' per il testo misto
+        # 'root' has a 'child' plus a '_' node holding the mixed text
         root = bag.get_item("root")
         assert isinstance(root, Bag)
         assert root.get_item("child") == "v"

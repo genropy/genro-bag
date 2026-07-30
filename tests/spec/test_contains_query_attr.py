@@ -1,27 +1,27 @@
-"""Spec test: ``Bag.__contains__`` (operatore ``in``) deve essere
-una pura check di esistenza, statica e con supporto della sintassi
-``?attr`` come gli altri metodi di lettura.
+"""Spec test: ``Bag.__contains__`` (operator ``in``) must be
+a pure existence check, static and supporting ``?attr`` syntax
+like other read methods.
 
-Dipende da test_basic.py (set_item) e test_resolvers.py (resolver).
+Depends on test_basic.py (set_item) and test_resolvers.py (resolver).
 
-Contratto:
-- ``"a.b" in bag`` ritorna True se il path esiste, False altrimenti.
-- ``"a.b?color" in bag`` ritorna True se il nodo a.b esiste E ha
-  l'attributo ``color``. False se manca il path o l'attributo.
-- ``"a.b?a1&a2" in bag`` ritorna True solo se TUTTI gli attributi
-  esistono sul nodo. (Convenzione uniforme con get.)
-- ``in`` e' statico: non triggera resolver lungo il path.
+Contract:
+- ``"a.b" in bag`` returns True if path exists, False otherwise.
+- ``"a.b?color" in bag`` returns True if node a.b exists AND has
+  ``color`` attribute. False if path or attribute missing.
+- ``"a.b?a1&a2" in bag`` returns True only if ALL attributes
+  exist on node. (Uniform convention with get.)
+- ``in`` is static: does not trigger resolver along path.
 
-## Scala
+## Scale
 
-1. path esistente                       True
-2. path inesistente                     False
-3. ?attr esistente                      True
-4. ?attr inesistente                    False
-5. ?a&b: tutti esistenti                True
-6. ?a&b: uno manca                      False
-7. ?attr su path inesistente            False
-8. in NON triggera resolver             load non chiamato
+1. existing path                        True
+2. missing path                         False
+3. ?attr existing                       True
+4. ?attr missing                        False
+5. ?a&b: all present                    True
+6. ?a&b: one missing                    False
+7. ?attr on missing path                False
+8. in does NOT trigger resolver         load not called
 """
 
 from __future__ import annotations
@@ -30,7 +30,7 @@ from genro_bag import Bag
 from genro_bag.resolver import BagSyncResolver
 
 # =============================================================================
-# 1-2. esistenza di un path
+# 1-2. path existence
 # =============================================================================
 
 
@@ -67,7 +67,7 @@ class TestContainsQueryAttr:
 
 
 # =============================================================================
-# 5-6. ?a&b: tutti gli attributi devono esistere
+# 5-6. ?a&b: every attribute must exist
 # =============================================================================
 
 
@@ -98,17 +98,16 @@ class TestContainsQueryAttrOnMissingPath:
 
 
 # =============================================================================
-# 8-9. in NON triggera resolver (semantica statica)
+# 8-9. `in` does NOT trigger resolvers (static semantics)
 # =============================================================================
 
 
 class TestContainsIsStatic:
     def test_in_does_not_trigger_resolver(self):
-        """L'operatore ``in`` deve essere puramente statico: nessun resolver
-        viene eseguito durante un containment check. Conseguenza diretta:
-        un resolver NON ancora triggerato e' opaco per ``in``, il path
-        sotto di esso non risulta presente finche' il resolver non viene
-        caricato esplicitamente."""
+        """Operator ``in`` must be purely static: no resolver is executed
+        during a containment check. Direct consequence: an untriggered resolver
+        is opaque to ``in``, the path beneath it does not appear present until
+        the resolver is loaded explicitly."""
         calls = []
 
         class CountingResolver(BagSyncResolver):
@@ -121,21 +120,21 @@ class TestContainsIsStatic:
         b = Bag()
         b.set_item("aa", CountingResolver())
 
-        # Il path sotto il resolver e' opaco a `in` finche' il resolver
-        # non e' stato caricato. Nessun side-effect.
+        # Path under resolver is opaque to `in` until resolver is loaded.
+        # No side-effects.
         assert ("aa.bb" in b) is False
         assert calls == []
 
-        # Il nodo `aa` (livello del resolver) e' visibile staticamente.
+        # Node `aa` (resolver level) is visible statically.
         assert "aa" in b
         assert calls == []
 
     def test_in_remains_opaque_to_resolver_content(self):
-        """Anche dopo che il resolver e' stato caricato esplicitamente, il
-        contenuto generato non viene materializzato sul nodo (resta nel
-        resolver). ``in`` continua a non vederlo: e' coerente con la sua
-        semantica statica, e l'utente che vuole sapere se ``aa.bb`` esiste
-        davvero deve usare ``bag.get_node('aa.bb')`` (non statico)."""
+        """Even after resolver is explicitly loaded, generated content is not
+        materialized on the node (stays in resolver). ``in`` continues not to
+        see it: consistent with its static semantics, and user who wants to
+        know if ``aa.bb`` truly exists must use ``bag.get_node('aa.bb')`` (not
+        static)."""
         calls = []
 
         class CountingResolver(BagSyncResolver):
@@ -148,14 +147,14 @@ class TestContainsIsStatic:
         b = Bag()
         b.set_item("aa", CountingResolver())
 
-        # Trigger esplicito del resolver
+        # Explicit trigger of resolver
         _ = b["aa"]
         assert calls == ["load"]
 
-        # `in` resta statico: opaco anche dopo il trigger
+        # `in` remains static: opaque even after trigger
         assert ("aa.bb" in b) is False
-        # E non ha aggiunto chiamate (non ri-triggera)
+        # And did not add calls (does not re-trigger)
         assert calls == ["load"]
 
-        # Per testare la presenza "vera" del path serve l'API non statica
+        # To test true presence of path, use non-static API
         assert b.get_node("aa.bb") is not None

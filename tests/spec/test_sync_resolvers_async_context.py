@@ -1,26 +1,26 @@
-"""Spec test: i resolver CPU-only (subclass di BagSyncResolver) non
-restituiscono coroutine quando risolti dentro un event loop attivo.
+"""Spec test: CPU-only resolvers (subclass of BagSyncResolver) do not
+return coroutines when resolved inside an active event loop.
 
-Regressione del bug documentato in issue #59: EnvResolver estendeva
-BagResolver e in contesto async la policy della base class wrappava
-load() in asyncio.to_thread, ritornando una coroutine invece del valore.
+Regression of the bug documented in issue #59: EnvResolver extended
+BagResolver and in async context the base class policy wrapped
+load() in asyncio.to_thread, returning a coroutine instead of the value.
 
-Contratto:
-- EnvResolver, UuidResolver, BagCbResolver (con callback sync) sono
-  sync-only: il valore risolto e' sempre il valore diretto, mai una
-  coroutine, anche dentro un event loop.
-- BagAsyncCbResolver e' async by design: torna una coroutine da awaitare.
-- BagCbResolver rifiuta callback async al costruttore (TypeError).
-- BagAsyncCbResolver rifiuta callback sync al costruttore (TypeError).
+Contract:
+- EnvResolver, UuidResolver, BagCbResolver (with sync callback) are
+  sync-only: the resolved value is always the direct value, never a
+  coroutine, even inside an event loop.
+- BagAsyncCbResolver is async by design: returns a coroutine to await.
+- BagCbResolver rejects async callback at constructor (TypeError).
+- BagAsyncCbResolver rejects sync callback at constructor (TypeError).
 
-## Scala
+## Scale
 
-1. EnvResolver in async context                     ritorna str/valore, non coroutine
-2. UuidResolver in async context                    ritorna str, non coroutine
-3. BagCbResolver (sync callback) in async context   ritorna valore, non coroutine
-4. BagCbResolver con callback async                 TypeError al costruttore
-5. BagAsyncCbResolver con callback sync             TypeError al costruttore
-6. BagAsyncCbResolver in async context              awaited restituisce il valore
+1. EnvResolver in async context                     returns str/value, not coroutine
+2. UuidResolver in async context                    returns str, not coroutine
+3. BagCbResolver (sync callback) in async context   returns value, not coroutine
+4. BagCbResolver with async callback                TypeError at constructor
+5. BagAsyncCbResolver with sync callback            TypeError at constructor
+6. BagAsyncCbResolver in async context              awaited returns the value
 """
 
 from __future__ import annotations

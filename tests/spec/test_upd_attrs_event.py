@@ -1,37 +1,37 @@
-"""Spec test: payload dell'evento ``upd_attrs`` emesso da BagNode.set_attr.
+"""Spec test: payload of ``upd_attrs`` event emitted by BagNode.set_attr.
 
-Dipende da test_basic.py (set_item) e test_subscriptions.py (subscribe).
+Depends on test_basic.py (set_item) and test_subscriptions.py (subscribe).
 
-Contratto: ogni chiamata a ``set_attr`` che modifica almeno un attributo
-emette ``upd_attrs`` con payload **diff dict** auto-contenuto:
+Contract: every call to ``set_attr`` that modifies at least one attribute
+emits ``upd_attrs`` with self-contained **diff dict** payload:
 
     {"<attr>": {"old": <prev_value>, "new": <curr_value>}, ...}
 
-Regole:
-- chiavi nel diff: solo quelle effettivamente cambiate;
-- attributo aggiunto:   ``{"old": None, "new": <value>}``;
-- attributo rimosso:    ``{"old": <value>, "new": None}``;
-- attributo modificato: ``{"old": <prev>, "new": <curr>}``;
-- nessuna modifica reale -> nessun evento emesso (no-op silenzioso);
-- ``trigger=False`` -> nessun evento.
+Rules:
+- keys in diff: only those actually changed;
+- attribute added:    ``{"old": None, "new": <value>}``;
+- attribute removed:  ``{"old": <value>, "new": None}``;
+- attribute modified: ``{"old": <prev>, "new": <curr>}``;
+- no actual change -> no event emitted (silent no-op);
+- ``trigger=False`` -> no event.
 
-Il payload arriva:
-- ai subscriber node-level come ``info={"attrs_diff": <diff>}``;
-- ai subscriber bag-level (via _on_node_changed) come kwarg
-  ``attrs_diff=<diff>``; ``oldvalue`` resta None (e' riservato al valore
-  vecchio scalare di upd_value / upd_value_attr).
+The payload arrives:
+- to node-level subscribers as ``info={"attrs_diff": <diff>}``;
+- to bag-level subscribers (via _on_node_changed) as kwarg
+  ``attrs_diff=<diff>``; ``oldvalue`` stays None (it's reserved for
+  the old scalar value of upd_value / upd_value_attr).
 
-## Scala
+## Scale
 
-1. attributo aggiunto                       diff con old=None, new=value
-2. attributo modificato                     diff con old=prev, new=curr
-3. attributo rimosso (None + remove_null)   diff con new=None
-4. piu' attributi in una sola chiamata      diff multi-key coerente
-5. no-op                                    nessun evento
-6. trigger=False                            nessun evento
-7. _updattr=False (replace totale)          attributi non passati = removed
-8. node subscriber                          riceve info={"attrs_diff": <diff>}
-9. bag subscriber                           riceve attrs_diff=<diff>, oldvalue=None
+1. attribute added                          diff with old=None, new=value
+2. attribute modified                       diff with old=prev, new=curr
+3. attribute removed (None + remove_null)   diff with new=None
+4. multiple attributes in one call          multi-key diff coherent
+5. no-op                                    no event
+6. trigger=False                            no event
+7. _updattr=False (total replacement)       unpasssed attributes = removed
+8. node subscriber                          receives info={"attrs_diff": <diff>}
+9. bag subscriber                           receives attrs_diff=<diff>, oldvalue=None
 """
 
 from __future__ import annotations
@@ -45,7 +45,7 @@ from genro_bag import Bag
 
 class TestUpdAttrsAdded:
     def test_added_attribute_emits_diff_with_old_none(self):
-        """Un attributo nuovo appare nel diff come {"old": None, "new": <value>}."""
+        """New attribute appears in diff as {"old": None, "new": <value>}."""
         events = []
         bag = Bag()
         bag.set_item("x", "value")
@@ -64,7 +64,7 @@ class TestUpdAttrsAdded:
 
 class TestUpdAttrsModified:
     def test_modified_attribute_emits_diff_with_old_and_new(self):
-        """Un attributo modificato appare nel diff con old e new entrambi valorizzati."""
+        """Modified attribute appears in diff with both old and new populated."""
         events = []
         bag = Bag()
         bag.set_item("x", "value", color="red")
@@ -83,8 +83,8 @@ class TestUpdAttrsModified:
 
 class TestUpdAttrsRemoved:
     def test_attribute_set_to_none_appears_as_removed(self):
-        """Settare un attributo a None con _remove_null_attributes=True (default)
-        produce un diff con new=None (l'attributo viene rimosso)."""
+        """Setting attribute to None with _remove_null_attributes=True (default)
+        produces diff with new=None (attribute is removed)."""
         events = []
         bag = Bag()
         bag.set_item("x", "value", color="red")
@@ -97,14 +97,14 @@ class TestUpdAttrsRemoved:
 
 
 # =============================================================================
-# 4. piu' attributi in una sola chiamata
+# 4. several attributes in a single call
 # =============================================================================
 
 
 class TestUpdAttrsMultiple:
     def test_multiple_changes_in_one_call_produce_single_event_with_all_keys(self):
-        """Una sola set_attr che tocca piu' chiavi emette un solo evento con
-        tutte le chiavi nel diff."""
+        """Single set_attr touching multiple keys emits one event with
+        all keys in diff."""
         events = []
         bag = Bag()
         bag.set_item("x", "value", color="red")
@@ -123,13 +123,13 @@ class TestUpdAttrsMultiple:
 
 
 # =============================================================================
-# 5. no-op (nessun cambio reale)
+# 5. no-op (nothing actually changes)
 # =============================================================================
 
 
 class TestUpdAttrsNoOp:
     def test_setting_same_value_emits_no_event(self):
-        """Settare un attributo allo stesso valore non emette eventi."""
+        """Setting attribute to same value emits no event."""
         events = []
         bag = Bag()
         bag.set_item("x", "value", color="red")
@@ -145,14 +145,14 @@ class TestUpdAttrsNoOp:
 
 class TestUpdAttrsTriggerFalse:
     def test_trigger_false_emits_no_event(self):
-        """trigger=False sopprime l'evento anche se ci sono cambi reali."""
+        """trigger=False suppresses event even if there are real changes."""
         events = []
         bag = Bag()
         bag.set_item("x", "value", color="red")
         bag.subscribe("s1", update=lambda **kw: events.append(kw["evt"]))
         bag.get_node("x").set_attr(color="blue", trigger=False)
         assert events == []
-        assert bag.get_node("x").attr["color"] == "blue"  # la modifica e' avvenuta
+        assert bag.get_node("x").attr["color"] == "blue"  # change did happen
 
 
 # =============================================================================
@@ -162,8 +162,8 @@ class TestUpdAttrsTriggerFalse:
 
 class TestUpdAttrsReplaceMode:
     def test_replace_mode_marks_dropped_attributes_as_removed(self):
-        """Con _updattr=False gli attributi precedenti non passati nella nuova
-        chiamata appaiono nel diff come removed (new=None)."""
+        """With _updattr=False previous attributes not passed in new
+        call appear in diff as removed (new=None)."""
         events = []
         bag = Bag()
         bag.set_item("x", "value", color="red", size=10)
@@ -189,8 +189,8 @@ class TestUpdAttrsReplaceMode:
 
 class TestUpdAttrsNodeSubscriber:
     def test_node_level_subscriber_receives_diff_as_info_attrs_diff(self):
-        """Un subscriber registrato direttamente sul nodo riceve il diff dict
-        come argomento ``info["attrs_diff"]``."""
+        """Subscriber registered directly on node receives diff dict
+        as argument ``info["attrs_diff"]``."""
         events = []
         bag = Bag()
         bag.set_item("x", "value", color="red")
@@ -215,9 +215,9 @@ class TestUpdAttrsNodeSubscriber:
 
 class TestUpdAttrsBagSubscriber:
     def test_bag_level_subscriber_receives_diff_as_attrs_diff_kwarg(self):
-        """Un subscriber registrato sul parent bag riceve il diff dict come
-        kwarg ``attrs_diff`` (propagato via _on_node_changed). ``oldvalue``
-        resta None per gli eventi puramente di attributi."""
+        """Subscriber registered on parent bag receives diff dict as
+        kwarg ``attrs_diff`` (propagated via _on_node_changed). ``oldvalue``
+        stays None for purely attribute events."""
         events = []
         bag = Bag()
         bag.set_item("x", "value", color="red")

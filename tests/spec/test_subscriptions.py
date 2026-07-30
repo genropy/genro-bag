@@ -1,38 +1,37 @@
-"""Spec test: Bag - subscriptions (osservabilita' degli eventi, sync).
+"""Spec test: Bag - subscriptions (event observability, sync).
 
-Dipende da test_basic.py (set_item, get_item, pop, __delitem__) e da
+Depends on test_basic.py (set_item, get_item, pop, __delitem__) and
 test_population.py (fill_from).
 
-Le subscriptions sono il contratto observer di Bag: registri un callback
-con un id, la Bag notifica quando avvengono update/insert/delete. Nel
-contesto sync testiamo:
+Subscriptions are the observer contract for Bag: register a callback with
+an id, Bag notifies when update/insert/delete occur. In sync context we test:
 
-- le notifiche granulari (update, insert, delete, any)
-- la propagazione degli eventi lungo la catena parent (backref)
-- il blocco della propagazione (callback che ritorna False)
-- transaction() come meccanismo di coalescenza
+- granular notifications (update, insert, delete, any)
+- event propagation along parent chain (backref)
+- propagation blocking (callback returns False)
+- transaction() as coalescing mechanism
 
-Timer e reset(refresh=True) richiedono un event loop -> test_async_reactive.
+Timer and reset(refresh=True) require event loop -> test_async_reactive.
 
-## Scala
+## Scale
 
-1.  subscribe(update=...)               notifica su cambio valore
-2.  subscribe(insert=...)               notifica su nuovo nodo
-3.  subscribe(delete=...)               notifica su rimozione
-4.  subscribe(any=...)                  un callback per tutti
-5.  subscribe attiva automaticamente backref
-6.  subscribe senza callback            noop
-7.  unsubscribe selettivo               update / insert / delete separati
-8.  unsubscribe(any=True)               rimuove upd/ins/del ma NON transaction
-9.  callback riceve argomenti documentati
-10. propagazione lungo parent chain
-11. callback ritorna False              stop propagazione
+1.  subscribe(update=...)               notify on value change
+2.  subscribe(insert=...)               notify on new node
+3.  subscribe(delete=...)               notify on removal
+4.  subscribe(any=...)                  single callback for all
+5.  subscribe enables backref automatically
+6.  subscribe with no callback          noop
+7.  unsubscribe selective               update / insert / delete separate
+8.  unsubscribe(any=True)               removes upd/ins/del but NOT transaction
+9.  callback receives documented arguments
+10. propagation along parent chain
+11. callback returns False              stop propagation
 12. transaction()                       mutations coalesced
-13. transaction()                       subscribers granulari silenziati
-14. transaction() con exception         nessun evento transaction
-15. transaction() annidate              liste isolate per scope
-16. set_backref manuale                 fullpath diventa non-None
-17. subscribe(timer=...) senza interval ValueError
+13. transaction()                       granular subscribers silenced
+14. transaction() with exception        no transaction event
+15. nested transaction()                isolated lists per scope
+16. manual set_backref                  fullpath becomes non-None
+17. subscribe(timer=...) without interval ValueError
 """
 
 from __future__ import annotations
@@ -49,7 +48,7 @@ from genro_bag import Bag, BagNode
 
 class TestUpdateSubscription:
     def test_update_callback_fires_on_value_change(self):
-        """Modificare il valore di un nodo esistente triggera il callback update."""
+        """Changing value of existing node triggers update callback."""
         events = []
         bag = Bag()
         bag["a"] = 1
@@ -58,7 +57,7 @@ class TestUpdateSubscription:
         assert events == ["upd_value"]
 
     def test_update_not_fired_on_insert(self):
-        """Un insert non triggera il callback update."""
+        """An insert does not fire the update callback."""
         events = []
         bag = Bag()
         bag.subscribe("s1", update=lambda **kw: events.append(kw["evt"]))
@@ -73,7 +72,7 @@ class TestUpdateSubscription:
 
 class TestInsertSubscription:
     def test_insert_callback_fires_on_new_node(self):
-        """Assegnare un path nuovo triggera il callback insert."""
+        """Assigning a new path fires the insert callback."""
         events = []
         bag = Bag()
         bag.subscribe("s1", insert=lambda **kw: events.append(kw["evt"]))
@@ -81,7 +80,7 @@ class TestInsertSubscription:
         assert events == ["ins"]
 
     def test_insert_not_fired_on_update(self):
-        """Modificare un nodo esistente non triggera insert."""
+        """Changing existing node does not trigger insert."""
         events = []
         bag = Bag()
         bag["a"] = 1
@@ -97,7 +96,7 @@ class TestInsertSubscription:
 
 class TestDeleteSubscription:
     def test_delete_callback_fires_on_pop(self):
-        """pop/del triggerano il callback delete."""
+        """pop/del trigger delete callback."""
         events = []
         bag = Bag()
         bag["a"] = 1
@@ -106,7 +105,7 @@ class TestDeleteSubscription:
         assert events == ["del"]
 
     def test_delete_callback_fires_on_del_item(self):
-        """del bag[path] triggera il callback delete."""
+        """del bag[path] triggers delete callback."""
         events = []
         bag = Bag()
         bag["a"] = 1
@@ -122,7 +121,7 @@ class TestDeleteSubscription:
 
 class TestAnySubscription:
     def test_any_callback_fires_on_all_three(self):
-        """any=... copre update + insert + delete (non timer/transaction)."""
+        """any=... covers update + insert + delete (not timer/transaction)."""
         events = []
         bag = Bag()
         bag.subscribe("s1", any=lambda **kw: events.append(kw["evt"]))
@@ -139,7 +138,7 @@ class TestAnySubscription:
 
 class TestSubscribeEnablesBackref:
     def test_subscribe_enables_backref(self):
-        """subscribe attiva backref se non gia' attivo."""
+        """subscribe enables backref if not already active."""
         bag = Bag()
         assert bag.backref is False
         bag.subscribe("s1", update=lambda **kw: None)
@@ -147,18 +146,18 @@ class TestSubscribeEnablesBackref:
 
 
 # =============================================================================
-# 6. subscribe senza callback
+# 6. subscribe with no callback
 # =============================================================================
 
 
 class TestSubscribeNoCallback:
     def test_subscribe_without_callbacks_is_noop_but_enables_backref(self):
-        """subscribe(id) senza callback non registra nulla ma abilita backref."""
+        """subscribe(id) without callbacks registers nothing but enables backref."""
         bag = Bag()
         bag.subscribe("s1")
         assert bag.backref is True
-        # non ci sono callback: nessuna notifica da verificare, nessun errore
-        bag["a"] = 1  # deve funzionare senza sollevare
+        # no callbacks: no notifications to verify, no error
+        bag["a"] = 1  # must work without raising
 
 
 # =============================================================================
@@ -168,7 +167,7 @@ class TestSubscribeNoCallback:
 
 class TestUnsubscribeSelective:
     def test_unsubscribe_update_only(self):
-        """unsubscribe(update=True) rimuove solo la callback update."""
+        """unsubscribe(update=True) removes the update callback only."""
         events: list[str] = []
         bag = Bag()
         bag.subscribe(
@@ -205,7 +204,7 @@ class TestUnsubscribeSelective:
 
 class TestUnsubscribeAny:
     def test_unsubscribe_any_removes_upd_ins_del_keeps_transaction(self):
-        """any=True rimuove upd/ins/del/timer ma NON transaction."""
+        """any=True removes upd/ins/del/timer but NOT transaction."""
         events: list[str] = []
         bag = Bag()
         bag.subscribe(
@@ -217,11 +216,11 @@ class TestUnsubscribeAny:
 
         with bag.transaction():
             bag["a"] = 1
-        # upd/ins/del sono stati rimossi; transaction ancora attivo
+        # upd/ins/del removed; transaction still active
         assert events == ["txn"]
 
     def test_unsubscribe_transaction_only(self):
-        """unsubscribe(transaction=True) rimuove solo transaction."""
+        """unsubscribe(transaction=True) removes transaction only."""
         events: list[str] = []
         bag = Bag()
         bag.subscribe(
@@ -232,8 +231,8 @@ class TestUnsubscribeAny:
         bag.unsubscribe("s1", transaction=True)
         with bag.transaction():
             bag["a"] = 1
-        # transaction rimosso, ma granulari silenziati dentro with
-        # -> nessun evento (il with consuma le mutations senza dispatcher)
+        # transaction removed, but granular silenced inside with
+        # -> no event (with consumes mutations without dispatch)
         assert events == []
 
 
@@ -244,7 +243,7 @@ class TestUnsubscribeAny:
 
 class TestCallbackArguments:
     def test_update_callback_receives_evt_node_pathlist_oldvalue(self):
-        """Il callback update riceve evt, node, pathlist, oldvalue, reason."""
+        """Update callback receives evt, node, pathlist, oldvalue, reason."""
         captured: list[dict] = []
         bag = Bag()
         bag["a"] = "old"
@@ -260,7 +259,7 @@ class TestCallbackArguments:
         assert "reason" in kw
 
     def test_insert_callback_receives_evt_node_pathlist_ind(self):
-        """Il callback insert riceve evt, node, pathlist, ind, reason."""
+        """Insert callback receives evt, node, pathlist, ind, reason."""
         captured: list[dict] = []
         bag = Bag()
         bag.subscribe("s1", insert=lambda **kw: captured.append(kw))
@@ -274,7 +273,7 @@ class TestCallbackArguments:
         assert "pathlist" in kw
 
     def test_delete_callback_receives_evt_node_pathlist_ind(self):
-        """Il callback delete riceve evt, node, pathlist, ind, reason."""
+        """Delete callback receives evt, node, pathlist, ind, reason."""
         captured: list[dict] = []
         bag = Bag()
         bag["x"] = 1
@@ -295,21 +294,21 @@ class TestCallbackArguments:
 
 class TestEventPropagation:
     def test_change_in_child_notifies_root(self):
-        """Una modifica su un nodo di sub-Bag arriva al subscriber del root."""
+        """Change on sub-Bag node reaches root subscriber."""
         events: list = []
         root = Bag()
         root.subscribe("root_sub", update=lambda **kw: events.append(kw["pathlist"]))
-        # creo sub-bag e la aggancio
+        # create sub-bag and attach
         root["outer.inner"] = 1
-        # modifica foglia profonda
+        # change deep leaf
         root["outer.inner"] = 2
 
         assert len(events) == 1
-        # la pathlist contiene la sequenza dei label fino alla foglia modificata
+        # pathlist contains label sequence to modified leaf
         assert events[0] == ["outer", "inner"]
 
     def test_insert_in_child_notifies_root(self):
-        """Un insert in sub-Bag propaga al root."""
+        """Insert in sub-Bag propagates to root."""
         events: list = []
         root = Bag()
         root["outer.x"] = 1  # crea sub-bag 'outer'
@@ -320,13 +319,13 @@ class TestEventPropagation:
 
 
 # =============================================================================
-# 11. Callback ritorna False -> stop propagazione
+# 11. A callback returning False stops the propagation
 # =============================================================================
 
 
 class TestPropagationStop:
     def test_false_stops_bubbling_to_parent(self):
-        """Un callback che ritorna False blocca la propagazione al parent."""
+        """Callback returning False blocks propagation to parent."""
         root_events: list = []
         child_events: list = []
 
@@ -335,7 +334,7 @@ class TestPropagationStop:
         child = root.get_item("outer")
         assert isinstance(child, Bag)
 
-        # subscriber sul child che blocca; subscriber sul root che NON deve vedere
+        # subscriber on child that blocks; subscriber on root must NOT see
         child.subscribe(
             "child_sub",
             update=lambda **kw: (child_events.append(kw["evt"]), False)[1],
@@ -355,7 +354,7 @@ class TestPropagationStop:
 
 class TestTransaction:
     def test_mutations_coalesced_into_single_event(self):
-        """Mutazioni dentro un with transaction() arrivano in un unico evento."""
+        """Mutations inside transaction() arrive in single event."""
         received: list[list] = []
         bag = Bag()
         bag.subscribe("s1", transaction=lambda **kw: received.append(kw["mutations"]))
@@ -368,12 +367,12 @@ class TestTransaction:
         assert len(received) == 1
         mutations = received[0]
         assert len(mutations) == 3
-        # ciascun item e' una tupla con il tipo di evento come primo elemento
+        # each item is tuple with event type as first element
         event_kinds = [m[0] for m in mutations]
         assert event_kinds == ["ins", "ins", "ins"]
 
     def test_granular_subscribers_silenced_inside_transaction(self):
-        """Dentro un with, i callback granulari update/insert/delete non sono chiamati."""
+        """Inside with, granular update/insert/delete callbacks are not called."""
         granular: list[str] = []
         txn_received: list = []
         bag = Bag()
@@ -390,7 +389,7 @@ class TestTransaction:
         assert txn_received == [2]
 
     def test_exception_inside_with_suppresses_transaction_event(self):
-        """Se il body del with solleva, nessun evento transaction viene emesso."""
+        """If with body raises, no transaction event is emitted."""
         txn_received: list = []
         bag = Bag()
         bag.subscribe("s1", transaction=lambda **kw: txn_received.append(kw))
@@ -401,11 +400,11 @@ class TestTransaction:
                 raise RuntimeError("boom")
 
         assert txn_received == []
-        # la mutazione gia' applicata resta (no rollback documentato)
+        # already-applied mutation remains (no rollback documented)
         assert bag.get_item("a") == 1
 
     def test_nested_transactions_emit_separate_events(self):
-        """Ogni with innestato emette il proprio evento transaction."""
+        """Each nested with emits own transaction event."""
         received: list[list] = []
         bag = Bag()
         bag.subscribe("s1", transaction=lambda **kw: received.append(kw["mutations"]))
@@ -417,7 +416,7 @@ class TestTransaction:
                 bag["inner2"] = 3
             bag["outer2"] = 4
 
-        # due eventi: prima l'inner (chiude prima), poi l'outer
+        # two events: inner first (closes first), then outer
         assert len(received) == 2
         assert len(received[0]) == 2  # inner: 2 mutations
         assert len(received[1]) == 2  # outer: 2 mutations (outer1, outer2)
@@ -430,14 +429,14 @@ class TestTransaction:
 
 class TestSetBackref:
     def test_set_backref_enables_backref_flag(self):
-        """set_backref() attiva il flag backref."""
+        """set_backref() enables backref flag."""
         bag = Bag()
         assert bag.backref is False
         bag.set_backref()
         assert bag.backref is True
 
     def test_fullpath_none_without_backref(self):
-        """fullpath su sub-Bag senza backref e' None."""
+        """fullpath on sub-Bag without backref is None."""
         root = Bag()
         root["outer.inner"] = 1
         outer = root.get_item("outer")
@@ -445,7 +444,7 @@ class TestSetBackref:
         assert outer.fullpath is None
 
     def test_fullpath_reports_path_after_subscribe_enables_backref(self):
-        """Dopo che subscribe attiva backref, fullpath riflette la gerarchia."""
+        """After subscribe enables backref, fullpath reflects hierarchy."""
         root = Bag()
         root["outer.inner"] = 1
         root.subscribe("s1", update=lambda **kw: None)
@@ -455,29 +454,29 @@ class TestSetBackref:
 
 
 # =============================================================================
-# 17. subscribe(timer=...) senza interval solleva
+# 17. subscribe(timer=...) without interval raises
 # =============================================================================
 
 
 class TestTimerValidation:
     def test_timer_without_interval_raises(self):
-        """subscribe(timer=cb) senza interval solleva ValueError."""
+        """subscribe(timer=cb) without interval raises ValueError."""
         bag = Bag()
         with pytest.raises(ValueError):
             bag.subscribe("s1", timer=lambda **kw: None)
 
 
 # =============================================================================
-# 18. clear su sub-Bag con backref -> notifica upd_value sul parent
+# 18. clear on a sub-Bag with backref -> upd_value notified on the parent
 # =============================================================================
 
 
 class TestClearWithBackref:
     def test_clear_of_nested_bag_notifies_parent_with_oldvalue(self):
-        """Una clear() su sub-Bag annidata con backref emette upd_value sul parent.
+        """clear() on nested sub-Bag with backref emits upd_value on parent.
 
-        oldvalue e' un Bag orfano con il contenuto precedente (snapshot).
-        Scenario: reset atomico di una sezione con watcher esterno.
+        oldvalue is orphan Bag with prior content (snapshot).
+        Scenario: atomic reset of section with external watcher.
         """
         events: list[dict] = []
         root = Bag()
@@ -489,18 +488,18 @@ class TestClearWithBackref:
         assert isinstance(section, Bag)
         section.clear()
 
-        # evento ricevuto dal parent
+        # event received by parent
         assert len(events) >= 1
         last = events[-1]
         assert last["evt"] == "upd_value"
-        # oldvalue e' un Bag con il contenuto di prima
+        # oldvalue is Bag with prior content
         old = last["oldvalue"]
         assert isinstance(old, Bag)
         assert old.get_item("a") == 1
         assert old.get_item("b") == 2
 
     def test_clear_of_nested_bag_leaves_it_empty(self):
-        """Dopo clear() su sub-Bag annidata, la sub-Bag e' vuota."""
+        """After clear() on nested sub-Bag, sub-Bag is empty."""
         root = Bag()
         root["section.a"] = 1
         root.subscribe("w", update=lambda **kw: None)
@@ -517,7 +516,7 @@ class TestClearWithBackref:
 
 class TestDeepHierarchy:
     def test_fullpath_three_levels(self):
-        """fullpath di una foglia a 3 livelli: outer.middle.inner."""
+        """fullpath of 3-level leaf: outer.middle.inner."""
         root = Bag()
         root["a.b.c"] = 42
         root.subscribe("w", update=lambda **kw: None)
@@ -526,7 +525,7 @@ class TestDeepHierarchy:
         assert middle.fullpath == "a.b"
 
     def test_root_traverses_full_chain(self):
-        """bag.root dal nodo piu' profondo risale fino alla radice."""
+        """bag.root from deepest node ascends to root."""
         root = Bag()
         root["a.b.c.d"] = 42
         root.subscribe("w", update=lambda **kw: None)
@@ -535,7 +534,7 @@ class TestDeepHierarchy:
         assert deepest.root is root
 
     def test_attributes_of_nested_bag_reflect_parent_node(self):
-        """sub.attributes legge gli attr del nodo che contiene la sub-Bag."""
+        """sub.attributes reads attributes of node containing sub-Bag."""
         root = Bag()
         root["section.inner"] = "v"
         root.set_attr("section", kind="form")
@@ -546,24 +545,24 @@ class TestDeepHierarchy:
 
 
 # =============================================================================
-# 20. get_inherited_attributes della Bag (sub-Bag eredita da parent)
+# 20. Bag.get_inherited_attributes (a sub-Bag inherits from its parent)
 # =============================================================================
 
 
 class TestBagGetInheritedAttributes:
     def test_sub_bag_inherits_from_parent_node(self):
-        """Bag.get_inherited_attributes raccoglie attributi dalla catena parent.
+        """Bag.get_inherited_attributes gathers attributes from parent chain.
 
-        Scenario: sezione di form che eredita 'permission' dall'ancestor.
+        Scenario: form section inheriting 'permission' from ancestor.
         """
         root = Bag()
         root["outer.inner"] = "v"
         root.set_attr("outer", permission="read")
         root.subscribe("w", update=lambda **kw: None)
         inner_bag = root.get_item("outer.inner")
-        # 'outer.inner' non e' un Bag ma un valore scalare; richiede che
-        # testiamo il meccanismo a livello di un container interno
-        # Riparto: creo una sub-Bag vera come valore
+        # 'outer.inner' is not Bag but scalar value; requires that
+        # we test mechanism at internal container level
+        # Restart: create true sub-Bag as value
         root2 = Bag()
         deep = Bag()
         deep["k"] = 1
@@ -576,13 +575,13 @@ class TestBagGetInheritedAttributes:
 
 
 # =============================================================================
-# 21. relative_path: dalla Bag al nodo discendente
+# 21. relative_path: from the Bag down to a descendant node
 # =============================================================================
 
 
 class TestRelativePath:
     def test_relative_path_from_root_to_leaf(self):
-        """bag.relative_path(leaf_node) ritorna il path dal bag al nodo."""
+        """bag.relative_path(leaf_node) returns path from bag to node."""
         root = Bag()
         root["a.b.c"] = 42
         root.subscribe("w", update=lambda **kw: None)
@@ -591,7 +590,7 @@ class TestRelativePath:
         assert root.relative_path(leaf) == "a.b.c"
 
     def test_relative_path_from_intermediate_to_leaf(self):
-        """Path relativo dall'intermedio al figlio diretto."""
+        """Relative path from intermediate to direct child."""
         root = Bag()
         root["outer.inner.leaf"] = 1
         root.subscribe("w", update=lambda **kw: None)
@@ -599,7 +598,7 @@ class TestRelativePath:
         assert isinstance(outer, Bag)
         leaf = root.get_node("outer.inner.leaf")
         assert isinstance(leaf, BagNode)
-        # il path da 'outer' alla foglia e' 'inner.leaf'
+        # path from 'outer' to leaf is 'inner.leaf'
         assert outer.relative_path(leaf) == "inner.leaf"
 
 
@@ -610,7 +609,7 @@ class TestRelativePath:
 
 class TestClearBackref:
     def test_clear_backref_disables_backref(self):
-        """clear_backref() disabilita il backref sulla Bag."""
+        """clear_backref() disables backref on Bag."""
         bag = Bag()
         bag["x"] = 1
         bag.set_backref()
@@ -619,26 +618,26 @@ class TestClearBackref:
         assert bag.backref is False
 
     def test_clear_backref_recursive_on_nested_bags(self):
-        """clear_backref() disabilita il backref anche sulle sub-Bag."""
+        """clear_backref() disables backref on sub-Bags too."""
         root = Bag()
         root["section.inner"] = 1
         root.subscribe("w", update=lambda **kw: None)
         section = root.get_item("section")
         assert isinstance(section, Bag)
-        assert section.backref is True  # ereditato da root
+        assert section.backref is True  # inherited from root
         root.clear_backref()
         assert root.backref is False
         assert section.backref is False
 
 
 # =============================================================================
-# 23. get_node con autocreate su Bag con subscribers -> ins event
+# 23. get_node with autocreate on a Bag with subscribers -> ins event
 # =============================================================================
 
 
 class TestAutocreateWithSubscribers:
     def test_autocreate_fires_insert_event(self):
-        """get_node(path, autocreate=True) su Bag con backref emette ins event."""
+        """get_node(path, autocreate=True) on Bag with backref emits ins event."""
         events: list = []
         bag = Bag()
         bag.subscribe("w", insert=lambda **kw: events.append(kw["node"].label))
@@ -653,9 +652,9 @@ class TestAutocreateWithSubscribers:
 
 class TestStopPropagationInsertDelete:
     def test_false_on_child_insert_blocks_parent(self):
-        """Callback insert sul child che ritorna False blocca la propagazione."""
+        """Insert callback on child returning False blocks propagation."""
         root = Bag()
-        # creo la sub-Bag 'section' con un nodo preesistente
+        # create sub-Bag 'section' with preexisting node
         root["section.x"] = 0
         section = root.get_item("section")
         assert isinstance(section, Bag)
@@ -668,14 +667,14 @@ class TestStopPropagationInsertDelete:
         )
         root.subscribe("root_sub", insert=lambda **kw: root_events.append(kw["node"].label))
 
-        # nuovo insert dentro section
+        # new insert inside section
         root["section.new"] = 1
 
         assert child_events == ["new"]
         assert root_events == []
 
     def test_false_on_child_delete_blocks_parent(self):
-        """Callback delete sul child che ritorna False blocca la propagazione."""
+        """Delete callback on child returning False blocks propagation."""
         root = Bag()
         root["section.x"] = 0
         section = root.get_item("section")
@@ -689,7 +688,7 @@ class TestStopPropagationInsertDelete:
         )
         root.subscribe("root_sub", delete=lambda **kw: root_events.append(kw["node"].label))
 
-        # delete dentro section
+        # delete inside section
         root.pop("section.x")
 
         assert child_events == ["x"]
@@ -697,20 +696,20 @@ class TestStopPropagationInsertDelete:
 
 
 # =============================================================================
-# 25. Update dentro transaction (record come mutation 'upd')
+# 25. Update inside a transaction (recorded as an 'upd' mutation)
 # =============================================================================
 
 
 class TestTransactionUpdates:
     def test_update_inside_transaction_captured_as_upd_mutation(self):
-        """Modifiche di valore dentro transaction finiscono nel batch come 'upd'."""
+        """Value changes inside transaction end up in batch as 'upd'."""
         received: list[list] = []
         bag = Bag()
-        bag["x"] = 1  # pre-esistente
+        bag["x"] = 1  # pre-existing
         bag.subscribe("s1", transaction=lambda **kw: received.append(kw["mutations"]))
 
         with bag.transaction():
-            bag["x"] = 99        # update del valore
+            bag["x"] = 99        # update value
             bag["new"] = "ins"   # insert
             bag.pop("x")         # delete
 
@@ -726,7 +725,7 @@ class TestTransactionUpdates:
 
 class TestDeletePropagation:
     def test_delete_in_child_bubbles_with_pathlist(self):
-        """pop su una foglia in sub-Bag notifica il root con pathlist."""
+        """pop on leaf in sub-Bag notifies root with pathlist."""
         captured: list[list] = []
         root = Bag()
         root["section.x"] = 1
@@ -734,18 +733,18 @@ class TestDeletePropagation:
         root.pop("section.x")
 
         assert len(captured) == 1
-        # pathlist contiene la sequenza di label dal parent fino al nodo cancellato
+        # pathlist contains label sequence from parent to deleted node
         assert captured[0] == ["section"]
 
 
 # =============================================================================
-# 27. bag.move con backref: emette eventi del/ins per il riordino
+# 27. bag.move with backref: emits del/ins events for the reordering
 # =============================================================================
 
 
 class TestMoveWithBackref:
     def test_single_move_fires_del_and_ins_events(self):
-        """move(0, 2) con backref emette prima un del sul nodo spostato e poi un ins."""
+        """move(0, 2) with backref emits del on moved node then ins."""
         events: list[str] = []
         bag = Bag()
         bag["a"] = 1
@@ -757,14 +756,14 @@ class TestMoveWithBackref:
             insert=lambda **kw: events.append(f"ins:{kw['node'].label}"),
         )
         bag.move(0, 2)
-        # 'a' viene prima rimosso e poi reinserito in posizione 2
+        # 'a' removed then reinserted at position 2
         assert "del:a" in events
         assert "ins:a" in events
-        # ordine finale coerente con la semantica di move
+        # final order consistent with move semantics
         assert bag.keys() == ["b", "c", "a"]
 
     def test_single_move_trigger_false_suppresses_events(self):
-        """move(..., trigger=False) non emette ins/del events."""
+        """move(..., trigger=False) does not emit ins/del events."""
         events: list[str] = []
         bag = Bag()
         bag["a"] = 1
@@ -777,7 +776,7 @@ class TestMoveWithBackref:
         assert events == []
 
     def test_multi_move_fires_events_for_each_node(self):
-        """move([0, 2], 1) con backref emette eventi per ciascun nodo spostato."""
+        """move([0, 2], 1) with backref emits events for each moved node."""
         events: list[str] = []
         bag = Bag()
         bag["a"] = 1
@@ -790,7 +789,7 @@ class TestMoveWithBackref:
             insert=lambda **kw: events.append(f"ins:{kw['node'].label}"),
         )
         bag.move([0, 2], 1)
-        # entrambi i nodi spostati ricevono del + ins
+        # both moved nodes receive del + ins
         assert any(e.startswith("del:a") for e in events)
         assert any(e.startswith("ins:a") for e in events)
         assert any(e.startswith("del:c") for e in events)

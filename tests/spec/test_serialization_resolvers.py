@@ -1,51 +1,51 @@
-"""Spec test: i BagResolver sopravvivono alla serializzazione, come valore
-del nodo e come attributo, in tutti i formati.
+"""Spec test: BagResolvers survive serialization, both as node value
+and as attribute, in all formats.
 
-Dipende da test_serialization.py (to_xml/to_json/to_tytx) e
+Depends on test_serialization.py (to_xml/to_json/to_tytx) and
 test_resolvers.py (EnvResolver, UuidResolver).
 
-Contratto:
-- Un resolver viaggia come stringa marcata ``::RSLV:<payload>``. Come
-  valore del nodo: attributo ``_resolver`` in XML, chiave ``"resolver"``
-  in JSON, slot valore in TYTX. Come attributo: al posto del valore.
-- Il giro completo restituisce un resolver equivalente ma **distinto**:
-  stessa classe, stessi parametri, altra istanza.
-- ``sign_key`` firma i payload; rileggendo con una chiave si pretende una
-  firma valida. Serve quando la Bag esce dal processo e puo' tornare: gli
-  argomenti di un resolver dicono su cosa agira'.
-- La rilettura e' **inerte**: il resolver viene ricostruito, mai chiamato.
-  L'effetto avviene alla prima lettura del valore.
-- Un resolver che non sta in JSON (callback) solleva
-  ``BagSerializationError`` nominando nodo e attributo.
-- ``deepcopy`` ricostruisce i resolver invece di condividerli.
+Contract:
+- A resolver travels as marked string ``::RSLV:<payload>``. As
+  node value: ``_resolver`` attribute in XML, ``"resolver"`` key
+  in JSON, value slot in TYTX. As attribute: in place of value.
+- The roundtrip returns an equivalent but **distinct** resolver:
+  same class, same parameters, different instance.
+- ``sign_key`` signs payloads; reading back with a key expects valid
+  signature. Used when Bag exits process and returns: resolver
+  arguments tell what it will act on.
+- Rereading is **inert**: resolver is reconstructed, never called.
+  Effect happens on first value read.
+- A resolver not in JSON (callback) raises
+  ``BagSerializationError`` naming node and attribute.
+- ``deepcopy`` reconstructs resolvers instead of sharing them.
 
-## Scala
+## Scale
 
-### Round-trip, 3 formati x 2 posizioni
-1. XML   valore / attributo
-2. JSON  valore / attributo
-3. TYTX  valore / attributo (anche compact)
-4. Bag annidata                        resolver ricorsivo
-5. valore + attributo sullo stesso nodo
+### Round-trip, 3 formats x 2 positions
+1. XML   value / attribute
+2. JSON  value / attribute
+3. TYTX  value / attribute (also compact)
+4. Nested Bag                          recursive resolver
+5. value + attribute on same node
 
-### Firma
-6. giro firmato nei 3 formati          resolver ricostruito
-7. chiave diversa al ritorno           SignatureError
-8. payload non firmato, chiave attesa  SignatureError
-9. firma scaduta                       SignatureExpired
-10. payload con il separatore          round-trip integro
+### Signing
+6. signed roundtrip in 3 formats       resolver reconstructed
+7. different key on return             SignatureError
+8. unsigned payload, key expected      SignatureError
+9. signature expired                   SignatureExpired
+10. payload with separator             roundtrip intact
 
-### Inerzia
-11. serializzare non chiama load()
-12. rileggere non chiama load()
-13. la prima lettura chiama load()
+### Inertness
+11. serializing doesn't call load()
+12. rereading doesn't call load()
+13. first read calls load()
 
-### Errori
-14. resolver callback                  BagSerializationError con nodo e attr
+### Errors
+14. callback resolver                  BagSerializationError with node and attr
 
 ### deepcopy
-15. resolver del valore preservato
-16. istanze distinte, non condivise
+15. value-side resolver preserved
+16. distinct instances, not shared
 """
 
 from __future__ import annotations
@@ -63,10 +63,10 @@ KEY = "server-side-secret"
 
 
 class CountingResolver(BagSyncResolver):
-    """Resolver che conta le proprie esecuzioni, per provare l'inerzia.
+    """Resolver that counts its own executions, to prove inertness.
 
-    Il contatore vive di classe perche' il round-trip ricostruisce
-    l'istanza: contare sull'istanza non direbbe nulla.
+    Counter lives at class level because roundtrip reconstructs
+    the instance: counting on instance would tell nothing.
     """
 
     class_kwargs = {"cache_time": 0, "read_only": False, "tag": None}
@@ -83,7 +83,7 @@ class CountingResolver(BagSyncResolver):
 
 
 class TestRoundTripValueSide:
-    """Il resolver del nodo sopravvive al giro."""
+    """Node resolver survives the roundtrip."""
 
     def test_xml(self):
         b = Bag()
@@ -119,7 +119,7 @@ class TestRoundTripValueSide:
 
 
 class TestRoundTripAttributeSide:
-    """Il resolver tenuto in un attributo sopravvive al giro."""
+    """Resolver held in an attribute survives the roundtrip."""
 
     def test_xml(self, monkeypatch):
         monkeypatch.setenv("X_SECRET", "secret")
@@ -151,7 +151,7 @@ class TestRoundTripAttributeSide:
         assert back["n?num"] == 3
 
     def test_no_memory_address_in_xml(self):
-        """La vecchia str() scriveva '<... object at 0x...>' nell'attributo."""
+        """Old str() wrote '<... object at 0x...>' in attribute."""
         b = Bag()
         b.set_item("n", "v", who=EnvResolver("HOME"))
         assert "object at 0x" not in b.to_xml()
@@ -192,7 +192,7 @@ class TestNestedAndCombined:
 
 
 class TestSignedRoundTrip:
-    """Con una chiave il payload e' firmato e va verificato al ritorno."""
+    """With a key the payload is signed and must be verified on return."""
 
     def test_xml(self):
         b = Bag()
@@ -222,7 +222,7 @@ class TestSignedRoundTrip:
 
 
 class TestSignatureRejection:
-    """Quello che torna dal client non e' piu' quello che e' partito."""
+    """What comes back from client is no longer what left."""
 
     def test_wrong_key(self):
         b = Bag()
@@ -247,11 +247,11 @@ class TestSignatureRejection:
             Bag.from_json(data, sign_key=KEY)
 
     def test_tampered_argument_is_refused(self):
-        """Il caso vero: il client riscrive un parametro e rimanda.
+        """Real case: client rewrites a parameter and sends it back.
 
-        Il payload firmato e' base64, quindi il client non puo' editarlo in
-        chiaro: puo' solo sostituirlo con uno costruito da se'. Che e'
-        esattamente cio' che la firma respinge.
+        Signed payload is base64, so client can't edit it in plain text:
+        can only replace it with self-made one. That's exactly what
+        signature rejects.
         """
         legit = Bag()
         legit.set_item("n", "v", who=EnvResolver("HOME"))
@@ -266,7 +266,7 @@ class TestSignatureRejection:
             Bag.from_json(json.dumps(signed), sign_key=KEY)
 
     def test_unsigned_substitution_is_refused(self):
-        """Rimandare il payload senza firma non basta a farlo passare."""
+        """Sending unsigned payload back is not enough to pass."""
         legit = Bag()
         legit.set_item("n", "v", who=EnvResolver("HOME"))
         signed = json.loads(legit.to_json(typed=False, sign_key=KEY))
@@ -287,7 +287,7 @@ class TestSignatureRejection:
 
 
 class TestPayloadWithSeparator:
-    """Un payload che contiene il separatore della firma resta integro."""
+    """Payload containing signature separator stays intact."""
 
     def test_json_roundtrip(self, monkeypatch):
         monkeypatch.setenv("X.SECRET.DOTTED", "ok")
@@ -303,7 +303,7 @@ class TestPayloadWithSeparator:
 
 
 class TestInertness:
-    """Serializzare e rileggere non eseguono nulla: solo la lettura lo fa."""
+    """Serializing and rereading execute nothing: only reading does."""
 
     def test_serializing_does_not_call_load(self):
         CountingResolver.calls = 0
@@ -337,7 +337,7 @@ class TestInertness:
 
 
 class TestNonSerializableResolver:
-    """Un callback non sta in JSON: errore esplicito, non silenzio."""
+    """Callback doesn't fit in JSON: explicit error, not silence."""
 
     def test_value_side_raises(self):
         b = Bag()
@@ -373,7 +373,7 @@ class TestNonSerializableResolver:
 
 
 class TestDeepcopyResolvers:
-    """La copia ricostruisce i resolver: nessuna istanza condivisa."""
+    """Copy reconstructs resolvers: no shared instances."""
 
     def test_value_side_preserved(self):
         b = Bag()
@@ -406,12 +406,12 @@ class TestDeepcopyResolvers:
 
 
 # =============================================================================
-# Sicurezza: la classe nominata dal payload
+# Security: the class named by the payload
 # =============================================================================
 
 
 class TestClassGuard:
-    """Il payload sceglie il nome della classe, non la sua gerarchia."""
+    """Payload chooses class name, not its hierarchy."""
 
     def test_class_outside_hierarchy_is_refused(self):
         forged = json.dumps(

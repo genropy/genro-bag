@@ -174,10 +174,10 @@ class TestUrlResolverPost:
 
     @pytest.mark.asyncio
     async def test_post_body_overridable_via_underscore_body(self, http_server):
-        """_body impostato via set_attr sovrascrive il body del costruttore.
+        """_body set via set_attr overrides the constructor body.
 
-        Il parametro '_body' del UrlResolver, quando presente fra gli
-        attributi del nodo, ha priorita' sul body originale del costruttore.
+        UrlResolver's '_body' parameter, when present among the node
+        attributes, wins over the body given to the constructor.
         """
         url = str(http_server.make_url("/echo_body"))
         bag = Bag()

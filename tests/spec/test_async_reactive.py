@@ -1,32 +1,32 @@
-"""Spec test: Bag - uso asincrono e reattivita'.
+"""Spec test: Bag - async usage and reactivity.
 
-Dipende da test_basic.py, test_resolvers.py, test_subscriptions.py.
+Depends on test_basic.py, test_resolvers.py, test_subscriptions.py.
 
-Questo modulo raccoglie i test che richiedono un event loop attivo:
+This module collects tests that require an active event loop:
 
-- resolver async (callback coroutine)
-- reset(refresh=True) e il suo scheduling al prossimo tick
-- reactive=True: refresh automatico sul cambio di attributo
-- interval=N: timer di background che ricarica periodicamente
-- subscribe(timer=..., interval=...) come osservatore temporale
+- async resolver (coroutine callback)
+- reset(refresh=True) and its scheduling at the next tick
+- reactive=True: automatic refresh on attribute change
+- interval=N: background timer that periodically reloads
+- subscribe(timer=..., interval=...) as a temporal observer
 
-I test sono marcati @pytest.mark.asyncio. Il loop attivo e' richiesto per:
-1. is_async_context() deve essere True per far partire interval/reactive.
-2. reset(refresh=True) usa loop.call_soon per coalescenza.
-3. async_load() restituisce coroutine che vanno awaited.
+Tests are marked @pytest.mark.asyncio. The active loop is required for:
+1. is_async_context() must be True to start interval/reactive.
+2. reset(refresh=True) uses loop.call_soon for coalescing.
+3. async_load() returns coroutines that must be awaited.
 
-## Scala
+## Scale
 
-1.  Resolver async in contesto async           await bag[path]
-2.  reset() lazy                                nessun evento, prossimo pull ricarica
-3.  reset(refresh=True) emette update event
+1.  Async resolver in async context            await bag[path]
+2.  reset() lazy                                no event, next pull reloads
+3.  reset(refresh=True) emits update event
 4.  reset(refresh=True) in sync                 RuntimeError
-5.  reset(refresh=True) su read_only            ValueError
-6.  reactive=True                               refresh su set_attr
+5.  reset(refresh=True) on read_only            ValueError
+6.  reactive=True                               refresh on set_attr
 7.  interval in sync                            RuntimeError
-8.  interval in async                           timer parte, callback eseguito
-9.  subscribe(timer=..., interval=...)          callback temporale
-10. coalescing multipli trigger                 un solo refresh per burst
+8.  interval in async                           timer starts, callback executed
+9.  subscribe(timer=..., interval=...)          temporal callback
+10. coalescing multiple triggers                one refresh per burst
 """
 
 from __future__ import annotations
@@ -46,7 +46,7 @@ from genro_bag.resolvers import BagAsyncCbResolver, BagCbResolver
 class TestAsyncResolverInAsyncContext:
     @pytest.mark.asyncio
     async def test_async_callback_awaited(self):
-        """Un callback async fornisce una coroutine che va awaited."""
+        """An async callback provides a coroutine to await."""
 
         async def async_value():
             return "async-result"
@@ -59,7 +59,7 @@ class TestAsyncResolverInAsyncContext:
 
     @pytest.mark.asyncio
     async def test_async_callback_with_kwargs_awaited(self):
-        """Il callback async riceve kwargs e ritorna coroutine."""
+        """The async callback receives kwargs and returns a coroutine."""
 
         async def async_add(x, y):
             return x + y
@@ -76,7 +76,7 @@ class TestAsyncResolverInAsyncContext:
 
 class TestResetLazy:
     def test_reset_does_not_emit_event(self):
-        """reset() default (refresh=False) non emette update events."""
+        """reset() default (refresh=False) does not emit update events."""
         bag = Bag()
         bag["d"] = BagCbResolver(lambda: 42, cache_time=False)
         events: list = []
@@ -89,7 +89,7 @@ class TestResetLazy:
         assert events == []
 
     def test_reset_invalidates_cache_for_next_pull(self):
-        """Dopo reset(), il prossimo accesso richiama il callback."""
+        """After reset(), the next access calls the callback."""
         counter = {"n": 0}
 
         def cb():
@@ -112,11 +112,11 @@ class TestResetLazy:
 class TestResetRefreshTrue:
     @pytest.mark.asyncio
     async def test_reset_refresh_true_emits_update_event(self):
-        """reset(refresh=True) pianifica un reload che emette update event.
+        """reset(refresh=True) schedules a reload that emits an update event.
 
-        Nota: NON si fa prime con await in contesto async perche' l'allineamento
-        dello stato interno del resolver richiede che il primo load venga
-        eseguito dal refresh (documentato in test_reactive_contract).
+        Note: we do NOT prime with await in async context because the alignment
+        of the resolver's internal state requires that the first load be
+        executed by the refresh (documented in test_reactive_contract).
         """
         counter = {"n": 0}
 
@@ -127,7 +127,7 @@ class TestResetRefreshTrue:
         bag = Bag()
         bag.set_backref()
         bag["d"] = BagCbResolver(cb, cache_time=False)
-        _ = bag["d"]  # prime (coroutine lasciata non-awaited di proposito)
+        _ = bag["d"]  # prime (coroutine left unawaited on purpose)
 
         events: list = []
         bag.subscribe("w", update=lambda **kw: events.append(kw["evt"]))
@@ -137,12 +137,12 @@ class TestResetRefreshTrue:
             await asyncio.sleep(0)
 
         assert len(events) >= 1
-        # cleanup per stoppare l'eventuale timer
+        # cleanup to stop any timer
         bag.get_resolver("d").parent_node = None
 
     @pytest.mark.asyncio
     async def test_reset_refresh_true_writes_new_value_to_node(self):
-        """Dopo reset(refresh=True), il static_value del nodo e' il valore nuovo."""
+        """After reset(refresh=True), the node's static_value is the new value."""
         counter = {"n": 0}
 
         async def cb():
@@ -168,7 +168,7 @@ class TestResetRefreshTrue:
 
 class TestResetRefreshSyncRejection:
     def test_refresh_in_sync_raises_runtime_error(self):
-        """reset(refresh=True) fuori da un event loop solleva RuntimeError."""
+        """reset(refresh=True) outside an event loop raises RuntimeError."""
         bag = Bag()
         bag["d"] = BagCbResolver(lambda: 1, cache_time=False)
         with pytest.raises(RuntimeError, match="async context"):
@@ -182,7 +182,7 @@ class TestResetRefreshSyncRejection:
 
 class TestResetRefreshReadOnly:
     def test_refresh_on_read_only_raises_value_error(self):
-        """reset(refresh=True) su resolver read_only solleva ValueError."""
+        """reset(refresh=True) on read_only resolver raises ValueError."""
         resolver = BagCbResolver(lambda: 1, read_only=True)
         with pytest.raises(ValueError, match="read_only"):
             resolver.reset(refresh=True)
@@ -196,7 +196,7 @@ class TestResetRefreshReadOnly:
 class TestReactive:
     @pytest.mark.asyncio
     async def test_set_attr_triggers_refresh(self):
-        """reactive=True: cambiare un attr schedula un refresh (update event)."""
+        """reactive=True: changing an attr schedules a refresh (update event)."""
         counter = {"n": 0}
 
         def cb(factor):
@@ -206,7 +206,7 @@ class TestReactive:
         bag = Bag()
         bag.set_backref()
         bag["d"] = BagCbResolver(cb, factor=2, cache_time=False, reactive=True)
-        _ = bag["d"]  # prime coroutine, non-awaited (vedi docstring altro test)
+        _ = bag["d"]  # prime coroutine, unawaited (see docstring in other test)
 
         events: list = []
         bag.subscribe("w", update=lambda **kw: events.append(kw["evt"]))
@@ -216,7 +216,7 @@ class TestReactive:
         for _ in range(4):
             await asyncio.sleep(0)
 
-        # almeno un evento update generato dal refresh
+        # at least one update event generated by the refresh
         assert len(events) >= 1
         bag.get_resolver("d").parent_node = None
 
@@ -228,7 +228,7 @@ class TestReactive:
 
 class TestIntervalSyncRejection:
     def test_interval_in_sync_raises(self):
-        """interval=N in contesto sync solleva RuntimeError all'attach."""
+        """interval=N in sync context raises RuntimeError on attach."""
         bag = Bag()
         with pytest.raises(RuntimeError, match="async context"):
             bag["d"] = BagCbResolver(lambda: 1, interval=1)
@@ -242,7 +242,7 @@ class TestIntervalSyncRejection:
 class TestIntervalAsync:
     @pytest.mark.asyncio
     async def test_interval_timer_fires_and_refreshes_value(self):
-        """Un resolver con interval=0.01 aggiorna il nodo almeno una volta."""
+        """A resolver with interval=0.01 updates the node at least once."""
         counter = {"n": 0}
 
         def cb():
@@ -251,11 +251,11 @@ class TestIntervalAsync:
 
         bag = Bag()
         bag["d"] = BagCbResolver(cb, interval=0.01, cache_time=False)
-        # wait per qualche tick
+        # wait for a few ticks
         for _ in range(10):
             await asyncio.sleep(0.01)
 
-        # il callback e' stato chiamato almeno una volta dal timer
+        # the callback was called at least once by the timer
         assert counter["n"] >= 1
         # cleanup
         bag.get_resolver("d").interval = None
@@ -269,7 +269,7 @@ class TestIntervalAsync:
 class TestTimerSubscription:
     @pytest.mark.asyncio
     async def test_timer_callback_fires_at_interval(self):
-        """subscribe(timer=cb, interval=0.01) invoca cb dopo il primo tick."""
+        """subscribe(timer=cb, interval=0.01) invokes cb after the first tick."""
         hits: list = []
         bag = Bag()
         bag.subscribe("t1", timer=lambda **kw: hits.append(kw["evt"]), interval=0.01)
@@ -279,12 +279,12 @@ class TestTimerSubscription:
 
         assert len(hits) >= 1
         assert all(evt == "tmr" for evt in hits)
-        # cleanup del timer registrato
+        # cleanup of the registered timer
         bag.unsubscribe("t1", timer=True)
 
     @pytest.mark.asyncio
     async def test_unsubscribe_timer_stops_ticks(self):
-        """unsubscribe(timer=True) ferma i tick successivi."""
+        """unsubscribe(timer=True) stops subsequent ticks."""
         hits: list = []
         bag = Bag()
         bag.subscribe("t1", timer=lambda **kw: hits.append(1), interval=0.01)
@@ -298,8 +298,8 @@ class TestTimerSubscription:
         for _ in range(5):
             await asyncio.sleep(0.01)
 
-        # nessun tick aggiuntivo DOPO la cancellazione
-        # (tolleriamo 1 tick in flight gia' schedulato dal loop)
+        # no additional ticks AFTER cancellation
+        # (we tolerate 1 tick already scheduled by the loop)
         assert len(hits) - count_before <= 1
 
 
@@ -311,12 +311,12 @@ class TestTimerSubscription:
 class TestCoalescing:
     @pytest.mark.asyncio
     async def test_multiple_resets_in_same_tick_run_one_refresh(self):
-        """Tre reset(refresh=True) nello stesso tick eseguono un solo refresh.
+        """Three reset(refresh=True) in the same tick execute one refresh.
 
-        Il primo accesso a bag["d"] esegue il callback sync (contatore=1),
-        poi i tre reset coalescono in un unico refresh (contatore=2). Il
-        test verifica quindi il conteggio finale = 2, e che l'insieme dei
-        tre reset abbia prodotto un solo delta rispetto al prime.
+        The first access to bag["d"] executes the sync callback (counter=1),
+        then the three resets coalesce into a single refresh (counter=2). The
+        test verifies the final count = 2, and that the three resets combined
+        produced only one delta compared to the prime.
         """
         counter = {"n": 0}
 
@@ -327,11 +327,11 @@ class TestCoalescing:
         bag = Bag()
         bag.set_backref()
         bag["d"] = BagCbResolver(cb, cache_time=False)
-        _ = bag["d"]  # prime: esegue il callback sync una volta
+        _ = bag["d"]  # prime: executes the sync callback once
         assert counter["n"] == 1
 
         r = bag.get_resolver("d")
-        # tre trigger concentrati nello stesso tick sincrono
+        # three triggers concentrated in the same synchronous tick
         r.reset(refresh=True)
         r.reset(refresh=True)
         r.reset(refresh=True)
@@ -339,42 +339,42 @@ class TestCoalescing:
         for _ in range(4):
             await asyncio.sleep(0)
 
-        # prime (1) + un unico refresh coalescato (1) = 2 esecuzioni totali
+        # prime (1) + one coalesced refresh (1) = 2 total executions
         assert counter["n"] == 2
         bag.get_resolver("d").parent_node = None
 
 
 # =============================================================================
-# 11. Path traversal con resolver: matrice sync/async 2x2
+# 11. Path traversal with resolver: 2x2 sync/async matrix
 # =============================================================================
 #
-# La Bag deve comportarsi in modo osservabile in tutte le combinazioni di:
-#   - contesto di esecuzione: sync (no loop) o async (loop running)
-#   - resolver: callback sync o async
+# The Bag must behave observably in all combinations of:
+#   - execution context: sync (no loop) or async (loop running)
+#   - resolver: sync or async callback
 #
-# Inoltre il resolver puo' stare:
-#   - solo sul leaf
-#   - solo in posizione intermedia (restituisce una sotto-Bag)
-#   - in piu' posizioni lungo il path (catena di resolver)
+# Furthermore, the resolver can be:
+#   - only on the leaf
+#   - only in an intermediate position (returns a sub-Bag)
+#   - in multiple positions along the path (chain of resolvers)
 #
-# Regola di contratto osservabile:
-#   - In ctx sync: bag[path] restituisce sempre il valore finale (la Bag
-#     risolve internamente le coroutine quando serve).
-#   - In ctx async: bag[path] su path con resolver puo' restituire una
-#     coroutine che l'utente deve await. L'utente puo' sempre chiudere
-#     con `while iscoroutine(v): v = await v`.
+# Observable contract rule:
+#   - In sync ctx: bag[path] always returns the final value (the Bag
+#     resolves coroutines internally when needed).
+#   - In async ctx: bag[path] on a path with a resolver can return a
+#     coroutine that the user must await. The user can always close
+#     with `while iscoroutine(v): v = await v`.
 # =============================================================================
 
 
 def _sub_bag_sync():
-    """Callback sync che restituisce una sotto-Bag."""
+    """Sync callback that returns a sub-Bag."""
     sub = Bag()
     sub["leaf"] = "deep_value"
     return sub
 
 
 async def _sub_bag_async():
-    """Callback async che restituisce una sotto-Bag."""
+    """Async callback that returns a sub-Bag."""
     await asyncio.sleep(0)
     sub = Bag()
     sub["leaf"] = "deep_value"
@@ -382,44 +382,44 @@ async def _sub_bag_async():
 
 
 def _scalar_sync():
-    """Callback sync che restituisce uno scalare (caso leaf)."""
+    """Sync callback that returns a scalar (leaf case)."""
     return "leaf_sync"
 
 
 async def _scalar_async():
-    """Callback async che restituisce uno scalare (caso leaf)."""
+    """Async callback that returns a scalar (leaf case)."""
     await asyncio.sleep(0)
     return "leaf_async"
 
 
 async def _drain(value):
-    """Utility: await ripetuto finche' il risultato non e' piu' una coroutine."""
+    """Utility: repeated await until the result is no longer a coroutine."""
     while asyncio.iscoroutine(value):
         value = await value
     return value
 
 
 class TestPathTraversalIntermediateResolver:
-    """Resolver in posizione intermedia: path 'middle.leaf' dove 'middle' ha
-    un resolver che restituisce una sotto-Bag con dentro 'leaf'.
+    """Resolver in intermediate position: path 'middle.leaf' where 'middle' has
+    a resolver that returns a sub-Bag with 'leaf' inside.
     """
 
     def test_ctx_sync_resolver_sync_returns_value(self):
-        """ctx sync + resolver intermedio sync → valore finale diretto."""
+        """sync ctx + intermediate sync resolver → final value directly."""
         root = Bag()
         root["middle"] = BagCbResolver(_sub_bag_sync)
         assert root["middle.leaf"] == "deep_value"
 
     def test_ctx_sync_resolver_async_returns_value(self):
-        """ctx sync + resolver intermedio async → la Bag risolve internamente."""
+        """sync ctx + intermediate async resolver → the Bag resolves internally."""
         root = Bag()
         root["middle"] = BagAsyncCbResolver(_sub_bag_async)
-        # In sync context, la coroutine interna viene risolta in modo trasparente
+        # In sync context, the internal coroutine is resolved transparently
         assert root["middle.leaf"] == "deep_value"
 
     @pytest.mark.asyncio
     async def test_ctx_async_resolver_sync_returns_value_after_await(self):
-        """ctx async + resolver intermedio sync → bag[path] e' awaitable."""
+        """async ctx + intermediate sync resolver → bag[path] is awaitable."""
         root = Bag()
         root["middle"] = BagCbResolver(_sub_bag_sync)
         v = await _drain(root["middle.leaf"])
@@ -427,7 +427,7 @@ class TestPathTraversalIntermediateResolver:
 
     @pytest.mark.asyncio
     async def test_ctx_async_resolver_async_returns_value_after_await(self):
-        """ctx async + resolver intermedio async → bag[path] e' awaitable."""
+        """async ctx + intermediate async resolver → bag[path] is awaitable."""
         root = Bag()
         root["middle"] = BagAsyncCbResolver(_sub_bag_async)
         v = await _drain(root["middle.leaf"])
@@ -435,27 +435,27 @@ class TestPathTraversalIntermediateResolver:
 
 
 class TestPathTraversalLeafResolver:
-    """Resolver in posizione finale (leaf): path diretto a un nodo con resolver.
+    """Resolver in final position (leaf): direct path to a node with resolver.
 
-    Questo e' il caso gia' coperto dalla suite, replicato qui per la
-    matrice completa.
+    This is the case already covered by the suite, replicated here for the
+    complete matrix.
     """
 
     def test_ctx_sync_leaf_sync(self):
-        """ctx sync + resolver leaf sync."""
+        """sync ctx + leaf sync resolver."""
         root = Bag()
         root["leaf"] = BagCbResolver(_scalar_sync)
         assert root["leaf"] == "leaf_sync"
 
     def test_ctx_sync_leaf_async(self):
-        """ctx sync + resolver leaf async → risolve internamente."""
+        """sync ctx + leaf async resolver → resolves internally."""
         root = Bag()
         root["leaf"] = BagAsyncCbResolver(_scalar_async)
         assert root["leaf"] == "leaf_async"
 
     @pytest.mark.asyncio
     async def test_ctx_async_leaf_sync(self):
-        """ctx async + resolver leaf sync → valore diretto (non awaitable)."""
+        """async ctx + leaf sync resolver → direct value (not awaitable)."""
         root = Bag()
         root["leaf"] = BagCbResolver(_scalar_sync)
         v = await _drain(root["leaf"])
@@ -463,7 +463,7 @@ class TestPathTraversalLeafResolver:
 
     @pytest.mark.asyncio
     async def test_ctx_async_leaf_async(self):
-        """ctx async + resolver leaf async → awaitable."""
+        """async ctx + leaf async resolver → awaitable."""
         root = Bag()
         root["leaf"] = BagAsyncCbResolver(_scalar_async)
         v = await _drain(root["leaf"])
@@ -471,12 +471,12 @@ class TestPathTraversalLeafResolver:
 
 
 class TestPathTraversalChainedResolvers:
-    """Piu' resolver in catena lungo il path. Ogni resolver intermedio
-    restituisce una Bag che contiene il prossimo resolver.
+    """Multiple resolvers in chain along the path. Each intermediate resolver
+    returns a Bag that contains the next resolver.
     """
 
     def test_two_resolvers_sync_then_sync_on_leaf(self):
-        """path 'mid.leaf': resolver intermedio sync + resolver leaf sync."""
+        """path 'mid.leaf': intermediate sync resolver + leaf sync resolver."""
         def intermediate():
             inner = Bag()
             inner["leaf"] = BagCbResolver(_scalar_sync)
@@ -487,7 +487,7 @@ class TestPathTraversalChainedResolvers:
         assert root["mid.leaf"] == "leaf_sync"
 
     def test_two_resolvers_async_then_sync_on_leaf_sync_ctx(self):
-        """path 'mid.leaf': resolver intermedio async + resolver leaf sync, ctx sync."""
+        """path 'mid.leaf': intermediate async resolver + leaf sync resolver, sync ctx."""
         async def intermediate():
             await asyncio.sleep(0)
             inner = Bag()
@@ -500,7 +500,7 @@ class TestPathTraversalChainedResolvers:
 
     @pytest.mark.asyncio
     async def test_two_resolvers_mixed_async_ctx(self):
-        """ctx async + due resolver misti (async intermedio + async leaf)."""
+        """async ctx + two mixed resolvers (async intermediate + async leaf)."""
         async def intermediate():
             await asyncio.sleep(0)
             inner = Bag()
@@ -513,7 +513,7 @@ class TestPathTraversalChainedResolvers:
         assert v == "leaf_async"
 
     def test_three_resolvers_chain_all_sync_ctx(self):
-        """path 'a.b.c' con 3 resolver in catena (tipi misti), ctx sync."""
+        """path 'a.b.c' with 3 resolvers in chain (mixed types), sync ctx."""
         def leaf_cb():
             return "FINAL"
 
@@ -530,12 +530,12 @@ class TestPathTraversalChainedResolvers:
 
         root = Bag()
         root["a"] = BagAsyncCbResolver(first_cb)
-        # path: a (async) -> b (sync, ritorna Bag) -> c (sync leaf)
+        # path: a (async) -> b (sync, returns Bag) -> c (sync leaf)
         assert root["a.b.c"] == "FINAL"
 
     @pytest.mark.asyncio
     async def test_three_resolvers_chain_all_async_ctx(self):
-        """path 'a.b.c' con 3 resolver in catena (tipi misti), ctx async."""
+        """path 'a.b.c' with 3 resolvers in chain (mixed types), async ctx."""
         async def leaf_cb():
             await asyncio.sleep(0)
             return "FINAL_ASYNC"

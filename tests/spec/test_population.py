@@ -1,28 +1,28 @@
 """Spec test: Bag - populate, deepcopy, update, pickle, from_url.
 
-Dipende da test_basic.py (set_item, get_item, get_attr, __len__,
-__iter__, __contains__) e da test_query.py (query, keys, values, items).
+Depends on test_basic.py (set_item, get_item, get_attr, __len__,
+__iter__, __contains__) and test_query.py (query, keys, values, items).
 
-## Scala
+## Scale
 
 1.  fill_from(None)                 no-op, returns self
-2.  fill_from(dict)                 ricostruzione da dict, nested dict -> Bag
-3.  fill_from(list)                 item numerati 0,1,2... dict item -> Bag
-4.  fill_from(Bag)                  clone profondo dei nodi
-5.  fill_from(bytes)                delega dopo decode utf-8
-6.  fill_from(str) inline XML/JSON  detect dal primo carattere
+2.  fill_from(dict)                 reconstruction from dict, nested dict -> Bag
+3.  fill_from(list)                 numbered items 0,1,2... dict item -> Bag
+4.  fill_from(Bag)                  deep clone of nodes
+5.  fill_from(bytes)                delegates after utf-8 decode
+6.  fill_from(str) inline XML/JSON  detect from first character
 7.  fill_from(file path .bag.json)  transport JSON (TYTX)
 8.  fill_from(file path .bag.mp)    transport MessagePack
 9.  fill_from(file path .xml)       transport XML
-10. fill_from(Path)                 pathlib.Path equivalente a str
-11. fill_from transport esplicito   override dell'estensione
-12. fill_from raise su tipo invalido
-13. fill_from atomic semantics      errore -> self invariato
-14. fill_from chainable             ritorna self
-15. deepcopy isolamento             modifiche alla copia non toccano l'original
+10. fill_from(Path)                 pathlib.Path equivalent to str
+11. fill_from explicit transport    override extension
+12. fill_from raise on invalid type
+13. fill_from atomic semantics      error -> self unchanged
+14. fill_from chainable             returns self
+15. deepcopy isolation              changes to copy don't touch original
 16. update(dict) / update(Bag)      merge / ignore_none / nested
 17. pickle roundtrip                __getstate__ / __setstate__
-18. from_url                        marker network, test di smoke
+18. from_url                        network marker, smoke test
 """
 
 from __future__ import annotations
@@ -34,7 +34,6 @@ import pytest
 
 from genro_bag import Bag
 
-
 # =============================================================================
 # 1. fill_from(None)
 # =============================================================================
@@ -42,14 +41,14 @@ from genro_bag import Bag
 
 class TestFillFromNone:
     def test_none_source_is_noop(self):
-        """fill_from(None) non cambia nulla e ritorna self."""
+        """fill_from(None) changes nothing and returns self."""
         bag = Bag({"a": 1})
         result = bag.fill_from(None)
         assert result is bag
         assert bag.get_item("a") == 1
 
     def test_no_args_equivalent_to_none(self):
-        """fill_from() senza argomenti (source default None) e' no-op."""
+        """fill_from() without arguments (source default None) is no-op."""
         bag = Bag({"a": 1})
         bag.fill_from()
         assert bag.get_item("a") == 1
@@ -62,24 +61,24 @@ class TestFillFromNone:
 
 class TestFillFromDict:
     def test_flat_dict_populates_labels(self):
-        """fill_from(dict) crea un nodo per chiave."""
+        """fill_from(dict) creates one node per key."""
         bag = Bag()
         bag.fill_from({"a": 1, "b": 2})
         assert bag.get_item("a") == 1
         assert bag.get_item("b") == 2
 
     def test_dict_replaces_existing_content(self):
-        """fill_from(dict) rimpiazza il contenuto precedente."""
+        """fill_from(dict) replaces previous content."""
         bag = Bag({"old": 99})
         bag.fill_from({"new": 42})
         assert bag.get_item("old") is None
         assert bag.get_item("new") == 42
 
     def test_nested_dict_becomes_nested_bag(self):
-        """Un dict annidato come valore diventa un Bag annidato."""
+        """A nested dict as value becomes a nested Bag."""
         bag = Bag()
         bag.fill_from({"outer": {"inner": 7}})
-        # il valore di 'outer' e' una Bag navigabile via path puntato
+        # the value of 'outer' is a Bag navigable via dotted path
         assert bag.get_item("outer.inner") == 7
 
 
@@ -90,7 +89,7 @@ class TestFillFromDict:
 
 class TestFillFromList:
     def test_list_creates_numbered_nodes(self):
-        """fill_from(list) crea label '0', '1', '2'..."""
+        """fill_from(list) creates labels '0', '1', '2'..."""
         bag = Bag()
         bag.fill_from(["a", "b", "c"])
         assert bag.get_item("0") == "a"
@@ -98,14 +97,14 @@ class TestFillFromList:
         assert bag.get_item("2") == "c"
 
     def test_list_of_dicts_converts_each_to_bag(self):
-        """Item dict in una lista diventa un Bag annidato."""
+        """Dict items in a list become nested Bags."""
         bag = Bag()
         bag.fill_from([{"name": "alice"}, {"name": "bob"}])
         assert bag.get_item("0.name") == "alice"
         assert bag.get_item("1.name") == "bob"
 
     def test_empty_list_empties_bag(self):
-        """fill_from([]) svuota la bag."""
+        """fill_from([]) empties the bag."""
         bag = Bag({"a": 1})
         bag.fill_from([])
         assert bag.keys() == []
@@ -118,7 +117,7 @@ class TestFillFromList:
 
 class TestFillFromBag:
     def test_copies_nodes_from_source_bag(self):
-        """fill_from(Bag) copia label, value e attributi."""
+        """fill_from(Bag) copies labels, values and attributes."""
         src = Bag()
         src.set_item("a", 1, _attributes={"type": "int"})
         src.set_item("b", "hi")
@@ -129,12 +128,12 @@ class TestFillFromBag:
         assert dst.get_item("b") == "hi"
 
     def test_nested_bag_is_deep_copied(self):
-        """Sub-Bag nei nodi della sorgente vengono copiate in profondita'."""
+        """Sub-Bags in source nodes are deep copied."""
         src = Bag()
         src["nest.inner"] = 42
         dst = Bag()
         dst.fill_from(src)
-        # modifico la destinazione, l'originale non cambia
+        # modify the destination, original doesn't change
         dst["nest.inner"] = 99
         assert src.get_item("nest.inner") == 42
 
@@ -146,7 +145,7 @@ class TestFillFromBag:
 
 class TestFillFromBytes:
     def test_bytes_json_inline_is_decoded(self):
-        """bytes contenente JSON inline viene decodificato come JSON."""
+        """Bytes containing inline JSON is decoded as JSON."""
         bag = Bag()
         bag.fill_from(b'{"a": 1, "b": 2}')
         assert bag.get_item("a") == 1
@@ -160,16 +159,16 @@ class TestFillFromBytes:
 
 class TestFillFromInlineStr:
     def test_json_inline_detected_by_leading_brace(self):
-        """Stringa che inizia con '{' e' parsata come JSON."""
+        """String starting with '{' is parsed as JSON."""
         bag = Bag()
         bag.fill_from('{"a": 1, "b": 2}')
         assert bag.get_item("a") == 1
         assert bag.get_item("b") == 2
 
     def test_json_list_inline_detected_by_leading_bracket(self):
-        """Stringa che inizia con '[' e' parsata come JSON (list).
+        """String starting with '[' is parsed as JSON (list).
 
-        Una list JSON top-level produce nodi con prefix 'r_' e indice.
+        A top-level JSON list produces nodes with 'r_' prefix and index.
         """
         bag = Bag()
         bag.fill_from("[10, 20, 30]")
@@ -178,10 +177,10 @@ class TestFillFromInlineStr:
         assert bag.get_item("r_2") == 30
 
     def test_xml_inline_detected_by_leading_angle(self):
-        """Stringa che inizia con '<' e' parsata come XML."""
+        """String starting with '<' is parsed as XML."""
         bag = Bag()
         bag.fill_from("<root><a>1</a></root>")
-        # l'elemento root e' un contenitore che avvolge il nodo 'a'
+        # the root element is a container wrapping the node 'a'
         assert bag.get_item("root.a") == "1"
 
 
@@ -192,8 +191,8 @@ class TestFillFromInlineStr:
 
 class TestFillFromFile:
     def test_bag_json_file(self, tmp_path: Path):
-        """File con estensione .bag.json usa transport JSON (TYTX)."""
-        # to_tytx aggiunge .bag.json automaticamente all'argomento filename
+        """File with .bag.json extension uses JSON transport (TYTX)."""
+        # to_tytx automatically adds .bag.json to the filename argument
         src = Bag({"a": 1, "b": "hello"})
         src.to_tytx(filename=str(tmp_path / "sample"), transport="json")
         target = Bag()
@@ -202,7 +201,7 @@ class TestFillFromFile:
         assert target.get_item("b") == "hello"
 
     def test_bag_mp_file(self, tmp_path: Path):
-        """File con estensione .bag.mp usa transport MessagePack."""
+        """File with .bag.mp extension uses MessagePack transport."""
         src = Bag({"a": 1, "b": "hello"})
         src.to_tytx(filename=str(tmp_path / "sample"), transport="msgpack")
         target = Bag()
@@ -211,7 +210,7 @@ class TestFillFromFile:
         assert target.get_item("b") == "hello"
 
     def test_xml_file(self, tmp_path: Path):
-        """File con estensione .xml viene parsato come XML."""
+        """File with .xml extension is parsed as XML."""
         file = tmp_path / "sample.xml"
         file.write_text("<root><a>1</a></root>", encoding="utf-8")
         bag = Bag()
@@ -219,12 +218,12 @@ class TestFillFromFile:
         assert bag.get_item("root.a") == "1"
 
     def test_file_not_found_raises(self):
-        """File inesistente solleva FileNotFoundError."""
+        """Non-existent file raises FileNotFoundError."""
         with pytest.raises(FileNotFoundError):
             Bag().fill_from("/nonexistent/path/file.xml")
 
     def test_unrecognized_extension_raises(self, tmp_path: Path):
-        """Estensione non riconosciuta e senza transport esplicito solleva ValueError."""
+        """Unrecognized extension without explicit transport raises ValueError."""
         file = tmp_path / "sample.unknown"
         file.write_text("nothing", encoding="utf-8")
         with pytest.raises(ValueError):
@@ -238,7 +237,7 @@ class TestFillFromFile:
 
 class TestFillFromPath:
     def test_pathlib_path_works_like_str(self, tmp_path: Path):
-        """Un pathlib.Path e' equivalente a una stringa di path."""
+        """A pathlib.Path is equivalent to a path string."""
         file = tmp_path / "sample.xml"
         file.write_text("<root><a>1</a></root>", encoding="utf-8")
         bag = Bag()
@@ -253,9 +252,9 @@ class TestFillFromPath:
 
 class TestFillFromExplicitTransport:
     def test_transport_overrides_extension(self, tmp_path: Path):
-        """transport='json' forza il formato indipendentemente dall'estensione."""
+        """transport='json' forces format regardless of extension."""
         src = Bag({"a": 1})
-        # salvo con .bag.json ma rinomino a .dat
+        # save with .bag.json but rename to .dat
         src.to_tytx(filename=str(tmp_path / "sample"), transport="json")
         raw = (tmp_path / "sample.bag.json").read_text(encoding="utf-8")
         weird = tmp_path / "sample.dat"
@@ -273,12 +272,12 @@ class TestFillFromExplicitTransport:
 
 class TestFillFromInvalidType:
     def test_unsupported_type_raises_typeerror(self):
-        """Un oggetto non gestibile solleva TypeError."""
+        """An unhandled object raises TypeError."""
         with pytest.raises(TypeError):
             Bag().fill_from(42)
 
     def test_tuple_also_unsupported(self):
-        """Una tupla (non list) non e' supportata."""
+        """A tuple (not list) is not supported."""
         with pytest.raises(TypeError):
             Bag().fill_from((1, 2, 3))
 
@@ -290,17 +289,17 @@ class TestFillFromInvalidType:
 
 class TestFillFromAtomic:
     def test_typeerror_on_invalid_source_leaves_bag_unchanged(self):
-        """Source con tipo non supportato: self resta intatta."""
+        """Source with unsupported type: self remains unchanged."""
         bag = Bag({"a": 1, "b": 2})
         with pytest.raises(TypeError):
             bag.fill_from(42)
-        # contenuto invariato
+        # content unchanged
         assert bag.get_item("a") == 1
         assert bag.get_item("b") == 2
         assert bag.keys() == ["a", "b"]
 
     def test_filenotfound_leaves_bag_unchanged(self):
-        """File inesistente: self resta intatta dopo l'eccezione."""
+        """Non-existent file: self remains unchanged after exception."""
         bag = Bag({"a": 1})
         with pytest.raises(FileNotFoundError):
             bag.fill_from("/nonexistent/file.xml")
@@ -314,7 +313,7 @@ class TestFillFromAtomic:
 
 class TestFillFromChainable:
     def test_returns_self_for_chaining(self):
-        """fill_from ritorna self per concatenare chiamate."""
+        """fill_from returns self for chaining calls."""
         bag = Bag()
         assert bag.fill_from({"a": 1}) is bag
 
@@ -326,7 +325,7 @@ class TestFillFromChainable:
 
 class TestDeepcopy:
     def test_deepcopy_creates_independent_bag(self):
-        """deepcopy crea una Bag nuova: modifiche non si propagano."""
+        """deepcopy creates new Bag: changes don't propagate."""
         src = Bag({"a": 1, "b": 2})
         copy = src.deepcopy()
         copy["a"] = 99
@@ -334,14 +333,14 @@ class TestDeepcopy:
         assert copy.get_item("a") == 99
 
     def test_deepcopy_preserves_attributes(self):
-        """deepcopy preserva attributi dei nodi come dict indipendente."""
+        """deepcopy preserves node attributes as independent dict."""
         src = Bag()
         src.set_item("a", 1, _attributes={"type": "int"})
         copy = src.deepcopy()
         assert copy.get_attr("a", "type") == "int"
 
     def test_deepcopy_recurses_on_nested_bags(self):
-        """Sub-Bag vengono copiate in profondita'."""
+        """Sub-Bags are deep copied."""
         src = Bag()
         src["outer.inner"] = 1
         copy = src.deepcopy()
@@ -349,7 +348,7 @@ class TestDeepcopy:
         assert src.get_item("outer.inner") == 1
 
     def test_deepcopy_same_class(self):
-        """La copia e' un'istanza della stessa classe (per subclassing)."""
+        """Copy is instance of same class (for subclassing)."""
         src = Bag({"a": 1})
         copy = src.deepcopy()
         assert type(copy) is type(src)
@@ -362,7 +361,7 @@ class TestDeepcopy:
 
 class TestUpdate:
     def test_update_with_dict_adds_new_and_overwrites(self):
-        """update(dict) aggiunge chiavi nuove e sovrascrive esistenti."""
+        """update(dict) adds new keys and overwrites existing."""
         bag = Bag({"a": 1, "b": 2})
         bag.update({"a": 10, "c": 3})
         assert bag.get_item("a") == 10
@@ -370,7 +369,7 @@ class TestUpdate:
         assert bag.get_item("c") == 3
 
     def test_update_with_bag_merges_attributes(self):
-        """update(Bag) merge anche gli attributi dei nodi esistenti."""
+        """update(Bag) also merges attributes of existing nodes."""
         dst = Bag()
         dst.set_item("a", 1, _attributes={"x": 10})
         src = Bag()
@@ -381,19 +380,19 @@ class TestUpdate:
         assert dst.get_attr("a", "y") == 20
 
     def test_update_ignore_none_preserves_existing(self):
-        """Con ignore_none=True, valori None non sovrascrivono."""
+        """With ignore_none=True, None values don't overwrite."""
         bag = Bag({"a": 1})
         bag.update({"a": None}, ignore_none=True)
         assert bag.get_item("a") == 1
 
     def test_update_ignore_none_false_overwrites(self):
-        """Con ignore_none=False (default), None sovrascrive."""
+        """With ignore_none=False (default), None overwrites."""
         bag = Bag({"a": 1})
         bag.update({"a": None})
         assert bag.get_item("a") is None
 
     def test_update_recurses_on_nested_bags(self):
-        """Se entrambi hanno Bag nello stesso label, update ricorsivo."""
+        """If both have Bag at same label, update is recursive."""
         dst = Bag()
         dst["outer.a"] = 1
         dst["outer.b"] = 2
@@ -420,7 +419,7 @@ class TestPickle:
         assert restored.get_item("b") == "hi"
 
     def test_roundtrip_preserves_attributes(self):
-        """Pickle preserva gli attributi dei nodi."""
+        """Pickle preserves node attributes."""
         src = Bag()
         src.set_item("a", 1, _attributes={"type": "int"})
         restored = pickle.loads(pickle.dumps(src))
@@ -434,7 +433,7 @@ class TestPickle:
         assert restored.get_item("outer.inner") == 42
 
     def test_roundtrip_preserves_backref_state(self):
-        """Pickle di una Bag con backref attivo restituisce una Bag con backref.
+        """Pickling a Bag with backref on gives back a Bag with backref on.
 
         Scenario: salviamo una Bag "vivente" (pronta a notificare) e dobbiamo
         ricostruirla nello stesso stato dopo l'unpickle.
@@ -446,13 +445,13 @@ class TestPickle:
         data = pickle.dumps(src)
         restored = pickle.loads(data)
         assert restored.backref is True
-        # la sub-Bag annidata deve avere backref attivato anche lei
+        # the nested sub-Bag must have backref enabled too
         inner = restored.get_item("outer")
         assert isinstance(inner, Bag)
         assert inner.backref is True
 
     def test_roundtrip_without_backref_stays_without_backref(self):
-        """Pickle di una Bag senza backref resta senza backref dopo il restore."""
+        """A Bag pickled without backref stays without it after the restore."""
         src = Bag()
         src["outer.inner"] = 42
         assert src.backref is False

@@ -1,43 +1,43 @@
-"""Spec test: Bag - resolver (valori calcolati lazy).
+"""Spec test: Bag - resolver (lazy-evaluated values).
 
-Dipende da test_basic.py (set_item, get_item, get_attr, set_attr,
+Depends on test_basic.py (set_item, get_item, get_attr, set_attr,
 set_callback_item, set_resolver, get_resolver, get_node).
 
-I resolver sono oggetti pubblici: l'utente li istanzia e li passa alla
-Bag come valore. Il test li esercita PRINCIPALMENTE attraverso la Bag
-(bag['path'] triggera il load). Solo per aspetti che riguardano
-esclusivamente la vita del resolver (reset, expired, serialize) il test
-chiama direttamente i metodi pubblici del resolver stesso.
+Resolvers are public objects: the user instantiates them and passes them to
+the Bag as a value. The test exercises them PRIMARILY through the Bag
+(bag['path'] triggers the load). Only for aspects concerning exclusively
+the resolver's lifetime (reset, expired, serialize) does the test call the
+resolver's public methods directly.
 
-## Scala
+## Scale
 
-1.  UuidResolver              generatore di id univoci, cache_time=False
+1.  UuidResolver              unique id generator, cache_time=False
 2.  EnvResolver               env var + default
-3.  BagCbResolver sync        callback sync con kwargs
-4.  BagCbResolver con cache   cache_time > 0
-5.  BagCbResolver async       callback coroutine (smartawait)
-6.  FileResolver              filesystem, formati txt/json/csv
-7.  node.attr vs resolver._kw priorita' parametri
-8.  static=True               lettura senza trigger
-9.  reset / expired           invalidation manuale
-10. read_only                 non salva il valore nel nodo
-11. cache_time < 0            errore in __init__
-12. serialize roundtrip       serializzazione resolver
-13. get_resolver / set_resolver  accessori del nodo
+3.  BagCbResolver sync        sync callback with kwargs
+4.  BagCbResolver with cache  cache_time > 0
+5.  BagCbResolver async       coroutine callback (smartawait)
+6.  FileResolver              filesystem, formats txt/json/csv
+7.  node.attr vs resolver._kw parameter priority
+8.  static=True               read without trigger
+9.  reset / expired           manual invalidation
+10. read_only                 does not save the value in the node
+11. cache_time < 0            error in __init__
+12. serialize roundtrip       resolver serialization
+13. get_resolver / set_resolver  node accessors
 14. UrlResolver               network (marker)
 
-## Resolver in place - API pubblica del resolver ottenuto via bag
+## Resolver in place - public API of resolver obtained via bag
 
-Come il BagNode, un resolver non si istanzia da solo nei test e poi si
-usa in isolamento: lo si piazza in una Bag (bag['x'] = Resolver(...))
-e poi si accede via bag.get_resolver(path). Una volta in place, tutti
-i metodi/property pubblici del resolver sono API testabile.
+Like BagNode, a resolver is not instantiated alone in a test and then
+used in isolation: you place it in a Bag (bag['x'] = Resolver(...))
+and then access it via bag.get_resolver(path). Once in place, all
+public methods/properties of the resolver are testable API.
 
 15. property cache_time / interval / reactive / read_only / is_async
 16. cached_value getter/setter
-17. __eq__ tra resolver             stessa classe + stessi args
+17. __eq__ among resolvers     same class + same args
 18. kw pre-processed (on_loading)
-19. container proxy                  resolver['x'], resolver.keys/items/values
+19. container proxy            resolver['x'], resolver.keys/items/values
 """
 
 from __future__ import annotations
@@ -64,7 +64,7 @@ from genro_bag.resolvers import (
 
 class TestUuidResolver:
     def test_generates_string(self):
-        """bag['id'] con UuidResolver produce una stringa non vuota."""
+        """bag['id'] with UuidResolver produces a non-empty string."""
         bag = Bag()
         bag["id"] = UuidResolver()
         value = bag["id"]
@@ -72,7 +72,7 @@ class TestUuidResolver:
         assert len(value) > 0
 
     def test_cached_by_default(self):
-        """Con cache_time=False (default) due letture ritornano lo stesso UUID."""
+        """With cache_time=False (default) two reads return the same UUID."""
         bag = Bag()
         bag["id"] = UuidResolver()
         first = bag["id"]
@@ -80,16 +80,16 @@ class TestUuidResolver:
         assert first == second
 
     def test_version_uuid1(self):
-        """UuidResolver('uuid1') genera un UUID di tipo uuid1."""
+        """UuidResolver('uuid1') generates a uuid1-type UUID."""
         bag = Bag()
         bag["id"] = UuidResolver("uuid1")
         value = bag["id"]
         assert isinstance(value, str)
-        # UUID1 ha versione '1' nel terzo gruppo (es. xxxxxxxx-xxxx-1xxx-...)
+        # UUID1 has version '1' in the third group (e.g. xxxxxxxx-xxxx-1xxx-...)
         assert value[14] == "1"
 
     def test_unsupported_version_raises_on_load(self):
-        """Una versione sconosciuta solleva ValueError al primo accesso."""
+        """An unknown version raises ValueError on first access."""
         bag = Bag()
         bag["id"] = UuidResolver("uuid99")
         with pytest.raises(ValueError):
@@ -103,14 +103,14 @@ class TestUuidResolver:
 
 class TestEnvResolver:
     def test_reads_env_variable(self, monkeypatch: pytest.MonkeyPatch):
-        """EnvResolver legge una variabile d'ambiente esistente."""
+        """EnvResolver reads an existing environment variable."""
         monkeypatch.setenv("GENRO_BAG_TEST_VAR", "hello")
         bag = Bag()
         bag["v"] = EnvResolver("GENRO_BAG_TEST_VAR")
         assert bag["v"] == "hello"
 
     def test_returns_default_if_unset(self, monkeypatch: pytest.MonkeyPatch):
-        """Se la variabile non esiste ritorna default."""
+        """If the variable does not exist, returns default."""
         monkeypatch.delenv("GENRO_BAG_MISSING_VAR", raising=False)
         bag = Bag()
         bag["v"] = EnvResolver("GENRO_BAG_MISSING_VAR", default="fallback")
@@ -119,7 +119,7 @@ class TestEnvResolver:
     def test_reflects_runtime_changes_without_cache(
         self, monkeypatch: pytest.MonkeyPatch
     ):
-        """cache_time=0 (default): ogni accesso rilegge l'env."""
+        """cache_time=0 (default): each access re-reads the env."""
         monkeypatch.setenv("GENRO_BAG_VAR_B", "first")
         bag = Bag()
         bag["v"] = EnvResolver("GENRO_BAG_VAR_B")
@@ -135,13 +135,13 @@ class TestEnvResolver:
 
 class TestBagCbResolverSync:
     def test_calls_callback_sync(self):
-        """bag['calc'] triggera il callback alla prima lettura."""
+        """bag['calc'] triggers the callback on first read."""
         bag = Bag()
         bag["calc"] = BagCbResolver(lambda: 42)
         assert bag["calc"] == 42
 
     def test_callback_kwargs_passed_through(self):
-        """I kwargs del resolver vengono passati al callback."""
+        """The resolver's kwargs are passed to the callback."""
         def add(a, b):
             return a + b
 
@@ -150,7 +150,7 @@ class TestBagCbResolverSync:
         assert bag["sum"] == 8
 
     def test_set_callback_item_shortcut(self):
-        """set_callback_item e' una shortcut per BagCbResolver."""
+        """set_callback_item is a shortcut for BagCbResolver."""
         bag = Bag()
         bag.set_callback_item("now", lambda: "fixed")
         assert bag["now"] == "fixed"
@@ -163,7 +163,7 @@ class TestBagCbResolverSync:
 
 class TestBagCbResolverCache:
     def test_cache_time_zero_recomputes(self):
-        """cache_time=0: ogni accesso richiama il callback."""
+        """cache_time=0: each access calls the callback."""
         counter = {"n": 0}
 
         def cb():
@@ -177,7 +177,7 @@ class TestBagCbResolverCache:
         assert bag["c"] == 3
 
     def test_cache_time_infinite(self):
-        """cache_time=False: il valore resta stabile dopo il primo load."""
+        """cache_time=False: the value remains stable after the first load."""
         counter = {"n": 0}
 
         def cb():
@@ -199,8 +199,8 @@ class TestBagCbResolverCache:
 class TestBagAsyncCbResolverAsync:
     @pytest.mark.asyncio
     async def test_async_callback_awaited_in_async_context(self):
-        """Callback async via BagAsyncCbResolver: bag[path] restituisce una
-        coroutine da awaitare in contesto async."""
+        """Async callback via BagAsyncCbResolver: bag[path] returns a
+        coroutine to await in async context."""
 
         async def async_cb():
             return "async-value"
@@ -214,7 +214,7 @@ class TestBagAsyncCbResolverAsync:
 
     @pytest.mark.asyncio
     async def test_async_callback_with_kwargs(self):
-        """Il callback async riceve i kwargs definiti."""
+        """The async callback receives the defined kwargs."""
 
         async def async_add(x, y):
             return x + y
@@ -227,14 +227,14 @@ class TestBagAsyncCbResolverAsync:
         assert result == 42
 
     def test_sync_callback_rejected(self):
-        """BagAsyncCbResolver rifiuta un callback sync con TypeError."""
+        """BagAsyncCbResolver rejects a sync callback with TypeError."""
         with pytest.raises(TypeError, match="requires an async"):
             BagAsyncCbResolver(lambda: 42)
 
 
 class TestBagCbResolverRejectsAsync:
     def test_async_callback_rejected(self):
-        """BagCbResolver rifiuta un callback coroutine con TypeError."""
+        """BagCbResolver rejects a coroutine callback with TypeError."""
 
         async def async_cb():
             return 1
@@ -250,7 +250,7 @@ class TestBagCbResolverRejectsAsync:
 
 class TestFileResolver:
     def test_loads_text_file(self, tmp_path):
-        """FileResolver legge un .txt come stringa."""
+        """FileResolver reads a .txt as a string."""
         file = tmp_path / "doc.txt"
         file.write_text("hello world", encoding="utf-8")
         bag = Bag()
@@ -258,17 +258,17 @@ class TestFileResolver:
         assert bag["doc"] == "hello world"
 
     def test_loads_json_file(self, tmp_path):
-        """FileResolver su .json ritorna un dict/list parsato."""
+        """FileResolver on .json returns a parsed dict/list."""
         file = tmp_path / "data.json"
         file.write_text('{"a": 1, "b": 2}', encoding="utf-8")
         bag = Bag()
         bag["data"] = FileResolver(str(file))
         result = bag["data"]
-        # senza as_bag=True resta dict (read_only=True forza no-conversion)
+        # without as_bag=True remains dict (read_only=True forces no-conversion)
         assert result == {"a": 1, "b": 2}
 
     def test_as_bag_true_converts_to_bag(self, tmp_path):
-        """FileResolver con as_bag=True converte il JSON in Bag navigabile."""
+        """FileResolver with as_bag=True converts JSON to a navigable Bag."""
         file = tmp_path / "data.json"
         file.write_text('{"a": 1, "b": 2}', encoding="utf-8")
         bag = Bag()
@@ -278,16 +278,16 @@ class TestFileResolver:
         assert data.get_item("a") == 1
 
     def test_missing_file_raises(self, tmp_path):
-        """Un file inesistente fa sollevare FileNotFoundError al primo accesso."""
+        """A missing file raises FileNotFoundError on first access."""
         bag = Bag()
         bag["doc"] = FileResolver(str(tmp_path / "missing.txt"))
         with pytest.raises(FileNotFoundError):
             _ = bag["doc"]
 
     def test_loads_csv_file_as_bag_of_records(self, tmp_path):
-        """FileResolver su .csv ritorna una Bag di record con colonne come attr.
+        """FileResolver on .csv returns a Bag of records with columns as attrs.
 
-        Scenario reale: tabella CSV che viene mount-ata in una sezione di una app.
+        Real-world scenario: CSV table mounted in a section of an app.
         """
         file = tmp_path / "contacts.csv"
         file.write_text(
@@ -298,18 +298,18 @@ class TestFileResolver:
         bag["contacts"] = FileResolver(str(file))
         contacts = bag["contacts"]
         assert isinstance(contacts, Bag)
-        # due record
+        # two records
         assert len(contacts) == 2
 
     def test_loads_bag_json_file(self, tmp_path):
-        """FileResolver su .bag.json usa TYTX per caricare la Bag.
+        """FileResolver on .bag.json uses TYTX to load the Bag.
 
-        Scenario: persistenza Bag-native (type-preserving).
+        Scenario: native Bag persistence (type-preserving).
         """
-        # preparo il file usando to_tytx della Bag originale
+        # prepare the file using to_tytx of the original Bag
         src = Bag({"a": 1, "b": "hello"})
         src.to_tytx(filename=str(tmp_path / "out"), transport="json")
-        # il file creato e' out.bag.json
+        # the created file is out.bag.json
         bag = Bag()
         bag["data"] = FileResolver(str(tmp_path / "out.bag.json"))
         data = bag["data"]
@@ -318,9 +318,9 @@ class TestFileResolver:
         assert data.get_item("b") == "hello"
 
     def test_base_path_resolves_relative_path(self, tmp_path):
-        """FileResolver(path, base_path=...) risolve path relativi rispetto a base_path.
+        """FileResolver(path, base_path=...) resolves relative paths relative to base_path.
 
-        Scenario reale: collezione di asset relativi a una directory di progetto.
+        Real-world scenario: collection of assets relative to a project directory.
         """
         file = tmp_path / "doc.txt"
         file.write_text("content", encoding="utf-8")
@@ -329,7 +329,7 @@ class TestFileResolver:
         assert bag["doc"] == "content"
 
     def test_unknown_extension_falls_back_to_text(self, tmp_path):
-        """File con estensione non riconosciuta viene letto come testo."""
+        """Files with unrecognized extensions are read as text."""
         file = tmp_path / "note.xyz"
         file.write_text("raw content", encoding="utf-8")
         bag = Bag()
@@ -337,7 +337,7 @@ class TestFileResolver:
         assert bag["doc"] == "raw content"
 
     def test_loads_bag_msgpack_file(self, tmp_path):
-        """FileResolver su .bag.mp carica tytx in formato binario msgpack."""
+        """FileResolver on .bag.mp loads tytx in binary msgpack format."""
         src = Bag({"a": 1, "b": "hello"})
         src.to_tytx(filename=str(tmp_path / "out"), transport="msgpack")
         bag = Bag()
@@ -348,7 +348,7 @@ class TestFileResolver:
         assert data.get_item("b") == "hello"
 
     def test_csv_no_header_mode_uses_positional_columns(self, tmp_path):
-        """FileResolver CSV con csv_has_header=False usa c0,c1,... come attrs."""
+        """FileResolver CSV with csv_has_header=False uses c0,c1,... as attrs."""
         file = tmp_path / "data.csv"
         file.write_text("alice,30\nbob,25\n", encoding="utf-8")
         bag = Bag()
@@ -362,7 +362,7 @@ class TestFileResolver:
         assert first.attr.get("c1") == "30"
 
     def test_csv_empty_file_returns_empty_bag(self, tmp_path):
-        """FileResolver CSV su file vuoto ritorna Bag vuota (no header = no rows)."""
+        """FileResolver CSV on empty file returns an empty Bag (no header = no rows)."""
         file = tmp_path / "empty.csv"
         file.write_text("", encoding="utf-8")
         bag = Bag()
@@ -379,13 +379,13 @@ class TestFileResolver:
 
 class TestParameterPriority:
     def test_resolver_kw_used_by_default(self):
-        """Se node.attr non e' settato, il resolver usa i suoi defaults (_kw)."""
+        """If node.attr is not set, the resolver uses its defaults (_kw)."""
         bag = Bag()
         bag["x"] = BagCbResolver(lambda a: a * 2, a=5)
         assert bag["x"] == 10
 
     def test_node_attr_overrides_resolver_kw(self):
-        """set_attr sul path sovrascrive il default del resolver."""
+        """set_attr on the path overrides the resolver's default."""
         bag = Bag()
         bag["x"] = BagCbResolver(lambda a: a * 2, a=5, cache_time=0)
         assert bag["x"] == 10
@@ -393,18 +393,18 @@ class TestParameterPriority:
         assert bag["x"] == 100
 
     def test_call_kwargs_update_node_attr(self):
-        """get_item(path, **kw) scrive i kwargs in node.attr e poi invoca load."""
+        """get_item(path, **kw) writes the kwargs to node.attr and then calls load."""
         bag = Bag()
         bag["x"] = BagCbResolver(lambda a: a * 3, a=1, cache_time=0)
         result = bag.get_item("x", a=7)
         assert result == 21
-        # il nuovo valore resta in node.attr
+        # the new value stays in node.attr
         assert bag.get_attr("x", "a") == 7
 
     def test_set_attr_on_resolver_param_invalidates_cache(self):
-        """Su resolver con cache_time=False e NON-reactive, cambiare un attr
-        che e' parametro del resolver invalida la cache: il prossimo accesso
-        ricomputa. Differenza con 'reactive=True' dove il refresh e' eager.
+        """On a resolver with cache_time=False and NON-reactive, changing an attr
+        that is a resolver parameter invalidates the cache: the next access
+        recomputes. Difference with 'reactive=True' where the refresh is eager.
         """
         calls = {"n": 0}
 
@@ -414,16 +414,16 @@ class TestParameterPriority:
 
         bag = Bag()
         bag["x"] = BagCbResolver(cb, cache_time=False, multiplier=5)
-        # primo accesso: calcola, cache hot
+        # first access: computes, cache hot
         assert bag["x"] == 5
-        # secondo accesso: cache hit, non ricomputa
+        # second access: cache hit, does not recompute
         assert bag["x"] == 5
         assert calls["n"] == 1
-        # modifico l'attr che e' parametro → cache invalidata
+        # modify the attr that is a parameter → cache invalidated
         node = bag.get_node("x")
         assert node is not None
         node.set_attr(multiplier=10)
-        # prossimo accesso ricomputa con il nuovo parametro
+        # next access recomputes with the new parameter
         assert bag["x"] == 20
         assert calls["n"] == 2
 
@@ -435,7 +435,7 @@ class TestParameterPriority:
 
 class TestStaticAccess:
     def test_static_true_returns_cached_without_loading(self):
-        """get_item(path, static=True) non triggera il resolver."""
+        """get_item(path, static=True) does not trigger the resolver."""
         calls = {"n": 0}
 
         def cb():
@@ -444,16 +444,16 @@ class TestStaticAccess:
 
         bag = Bag()
         bag["v"] = BagCbResolver(cb, cache_time=False)
-        # prima lettura lazy triggera load
+        # first lazy read triggers load
         bag["v"]
         assert calls["n"] == 1
-        # static=True rilegge senza richiamare cb
+        # static=True re-reads without calling cb
         cached = bag.get_item("v", static=True)
         assert cached == "value"
         assert calls["n"] == 1
 
     def test_static_before_any_load_returns_none(self):
-        """static=True prima di qualunque load ritorna il valore cached (None)."""
+        """static=True before any load returns the cached value (None)."""
         bag = Bag()
         bag["v"] = BagCbResolver(lambda: "hello", cache_time=False)
         assert bag.get_item("v", static=True) is None
@@ -466,7 +466,7 @@ class TestStaticAccess:
 
 class TestResetAndExpired:
     def test_reset_forces_reload_next_access(self):
-        """reset() (refresh=False) invalida la cache: il prossimo accesso ricarica."""
+        """reset() (refresh=False) invalidates the cache: the next access reloads."""
         counter = {"n": 0}
 
         def cb():
@@ -482,14 +482,14 @@ class TestResetAndExpired:
         assert bag["c"] == 2  # ricaricato
 
     def test_expired_false_when_cache_infinite_and_loaded(self):
-        """Con cache_time=False e gia' caricato, expired e' False."""
+        """With cache_time=False and already loaded, expired is False."""
         bag = Bag()
         bag["c"] = BagCbResolver(lambda: 1, cache_time=False)
         bag["c"]  # trigger
         assert bag.get_resolver("c").expired is False
 
     def test_expired_true_when_cache_time_zero(self):
-        """Con cache_time=0 expired e' sempre True (nessuna cache)."""
+        """With cache_time=0 expired is always True (no cache)."""
         bag = Bag()
         bag["c"] = BagCbResolver(lambda: 1, cache_time=0)
         assert bag.get_resolver("c").expired is True
@@ -502,7 +502,7 @@ class TestResetAndExpired:
 
 class TestReadOnly:
     def test_read_only_does_not_store_in_node(self):
-        """read_only=True: il valore NON viene salvato come static_value."""
+        """read_only=True: the value is NOT saved as static_value."""
         counter = {"n": 0}
 
         def cb():
@@ -512,9 +512,9 @@ class TestReadOnly:
         bag = Bag()
         bag["c"] = BagCbResolver(cb, read_only=True)
         assert bag["c"] == 1
-        # static=True legge il valore nel nodo, che non e' stato scritto
+        # static=True reads the value in the node, which was not written
         assert bag.get_item("c", static=True) is None
-        # dato che read_only non memorizza, ogni lettura non-static richiama cb
+        # since read_only does not store, each non-static read calls cb
         assert bag["c"] == 2
 
 
@@ -525,17 +525,17 @@ class TestReadOnly:
 
 class TestConstructionErrors:
     def test_negative_cache_time_rejected(self):
-        """cache_time negativo non e' piu' supportato: solleva ValueError."""
+        """Negative cache_time is no longer supported: raises ValueError."""
         with pytest.raises(ValueError):
             BagCbResolver(lambda: 1, cache_time=-10)
 
     def test_read_only_with_interval_rejected(self):
-        """read_only=True + interval solleva ValueError."""
+        """read_only=True + interval raises ValueError."""
         with pytest.raises(ValueError):
             BagCbResolver(lambda: 1, read_only=True, interval=5)
 
     def test_read_only_with_reactive_rejected(self):
-        """read_only=True + reactive=True solleva ValueError."""
+        """read_only=True + reactive=True raises ValueError."""
         with pytest.raises(ValueError):
             BagCbResolver(lambda: 1, read_only=True, reactive=True)
 
@@ -547,7 +547,7 @@ class TestConstructionErrors:
 
 class TestSerialize:
     def test_serialize_roundtrip_preserves_class_and_args(self):
-        """BagResolver.deserialize(resolver.serialize()) ricostruisce il resolver."""
+        """BagResolver.deserialize(resolver.serialize()) reconstructs the resolver."""
         original = UuidResolver("uuid4")
         data = original.serialize()
         assert isinstance(data, dict)
@@ -563,24 +563,24 @@ class TestSerialize:
 
 class TestResolverAccessors:
     def test_get_resolver_returns_resolver(self):
-        """get_resolver(path) ritorna l'istanza resolver del nodo."""
+        """get_resolver(path) returns the resolver instance of the node."""
         bag = Bag()
         r = UuidResolver()
         bag["id"] = r
         assert bag.get_resolver("id") is r
 
     def test_get_resolver_none_on_plain_node(self):
-        """get_resolver ritorna None per un nodo senza resolver."""
+        """get_resolver returns None for a node without a resolver."""
         bag = Bag()
         bag["x"] = 42
         assert bag.get_resolver("x") is None
 
     def test_get_resolver_none_on_missing_path(self):
-        """get_resolver ritorna None se il path non esiste."""
+        """get_resolver returns None if the path does not exist."""
         assert Bag().get_resolver("missing") is None
 
     def test_set_resolver_creates_node_with_resolver(self):
-        """set_resolver(path, resolver) crea un nodo con quel resolver."""
+        """set_resolver(path, resolver) creates a node with that resolver."""
         bag = Bag()
         r = UuidResolver()
         bag.set_resolver("id", r)
@@ -614,7 +614,7 @@ class TestUrlResolver:
 
 class TestResolverInPlaceProperties:
     def test_cache_time_property(self):
-        """resolver.cache_time espone il valore di cache_time."""
+        """resolver.cache_time exposes the cache_time value."""
         bag = Bag()
         bag["c"] = BagCbResolver(lambda: 1, cache_time=60)
         resolver = bag.get_resolver("c")
@@ -622,7 +622,7 @@ class TestResolverInPlaceProperties:
         assert resolver.cache_time == 60
 
     def test_cache_time_false_means_infinite(self):
-        """cache_time=False significa cache infinita."""
+        """cache_time=False means infinite cache."""
         bag = Bag()
         bag["c"] = BagCbResolver(lambda: 1, cache_time=False)
         resolver = bag.get_resolver("c")
@@ -630,7 +630,7 @@ class TestResolverInPlaceProperties:
         assert resolver.cache_time is False
 
     def test_interval_default_none(self):
-        """Un resolver senza interval ha interval=None."""
+        """A resolver without an interval has interval=None."""
         bag = Bag()
         bag["c"] = BagCbResolver(lambda: 1, cache_time=False)
         resolver = bag.get_resolver("c")
@@ -638,7 +638,7 @@ class TestResolverInPlaceProperties:
         assert resolver.interval is None
 
     def test_reactive_default_false(self):
-        """reactive default e' False."""
+        """reactive default is False."""
         bag = Bag()
         bag["c"] = BagCbResolver(lambda: 1)
         resolver = bag.get_resolver("c")
@@ -646,7 +646,7 @@ class TestResolverInPlaceProperties:
         assert resolver.reactive is False
 
     def test_reactive_true_when_set(self):
-        """reactive=True al construct e' esposta dalla property."""
+        """reactive=True at construct is exposed by the property."""
         bag = Bag()
         bag["c"] = BagCbResolver(lambda: 1, cache_time=False, reactive=True)
         resolver = bag.get_resolver("c")
@@ -654,7 +654,7 @@ class TestResolverInPlaceProperties:
         assert resolver.reactive is True
 
     def test_reactive_setter_mutates(self):
-        """reactive setter permette di modificare il flag a runtime."""
+        """reactive setter allows modifying the flag at runtime."""
         bag = Bag()
         bag["c"] = BagCbResolver(lambda: 1, cache_time=False)
         resolver = bag.get_resolver("c")
@@ -663,11 +663,11 @@ class TestResolverInPlaceProperties:
         assert resolver.reactive is True
 
     def test_read_only_derived_true_when_no_cache_no_trigger(self):
-        """read_only non esplicito: con cache_time=0 e no interval/reactive e' True.
+        """read_only not explicit: with cache_time=0 and no interval/reactive it is True.
 
-        Documentato: se non passato esplicito, viene derivato dai settings di
-        caching e refresh. Senza cache e senza trigger il resolver e' letto
-        ad ogni accesso -> read_only=True (niente scrittura nel nodo).
+        Documented: if not passed explicitly, it is derived from caching and refresh
+        settings. Without cache and without trigger the resolver is read
+        on each access -> read_only=True (no write to the node).
         """
         bag = Bag()
         bag["c"] = BagCbResolver(lambda: 1)  # cache_time=0 default, no interval
@@ -676,7 +676,7 @@ class TestResolverInPlaceProperties:
         assert resolver.read_only is True
 
     def test_read_only_derived_false_with_cache(self):
-        """Con cache_time=False (infinita), read_only non esplicito e' False."""
+        """With cache_time=False (infinite), read_only not explicit is False."""
         bag = Bag()
         bag["c"] = BagCbResolver(lambda: 1, cache_time=False)
         resolver = bag.get_resolver("c")
@@ -684,7 +684,7 @@ class TestResolverInPlaceProperties:
         assert resolver.read_only is False
 
     def test_read_only_explicit_false_honored(self):
-        """read_only=False esplicito vince sul derived."""
+        """read_only=False explicit wins over derived."""
         bag = Bag()
         bag["c"] = BagCbResolver(lambda: 1, read_only=False)
         resolver = bag.get_resolver("c")
@@ -692,7 +692,7 @@ class TestResolverInPlaceProperties:
         assert resolver.read_only is False
 
     def test_read_only_true_when_set(self):
-        """read_only=True al construct e' esposta dalla property."""
+        """read_only=True at construct is exposed by the property."""
         bag = Bag()
         bag["c"] = BagCbResolver(lambda: 1, read_only=True)
         resolver = bag.get_resolver("c")
@@ -700,7 +700,7 @@ class TestResolverInPlaceProperties:
         assert resolver.read_only is True
 
     def test_is_async_false_for_sync_callback(self):
-        """is_async e' False se il callback e' sync."""
+        """is_async is False if the callback is sync."""
         bag = Bag()
         bag["c"] = BagCbResolver(lambda: 1)
         resolver = bag.get_resolver("c")
@@ -708,7 +708,7 @@ class TestResolverInPlaceProperties:
         assert resolver.is_async is False
 
     def test_is_async_true_for_async_callback(self):
-        """is_async e' True per BagAsyncCbResolver."""
+        """is_async is True for BagAsyncCbResolver."""
 
         async def async_cb():
             return 1
@@ -727,7 +727,7 @@ class TestResolverInPlaceProperties:
 
 class TestResolverCachedValue:
     def test_cached_value_before_load_is_none(self):
-        """cached_value prima di ogni lettura e' None."""
+        """cached_value before any read is None."""
         bag = Bag()
         bag["c"] = BagCbResolver(lambda: "hello", cache_time=False)
         resolver = bag.get_resolver("c")
@@ -735,7 +735,7 @@ class TestResolverCachedValue:
         assert resolver.cached_value is None
 
     def test_cached_value_after_read(self):
-        """Dopo una lettura il cached_value riflette il valore."""
+        """After a read, cached_value reflects the value."""
         bag = Bag()
         bag["c"] = BagCbResolver(lambda: "hello", cache_time=False)
         _ = bag["c"]
@@ -751,19 +751,19 @@ class TestResolverCachedValue:
 
 class TestResolverEquality:
     def test_same_class_same_args_equal(self):
-        """Due UuidResolver con stessi args sono uguali."""
+        """Two UuidResolvers with the same args are equal."""
         assert UuidResolver("uuid4") == UuidResolver("uuid4")
 
     def test_same_class_different_args_not_equal(self):
-        """UuidResolver('uuid4') != UuidResolver('uuid1')."""
+        """UuidResolver('uuid4') is not equal to UuidResolver('uuid1')."""
         assert UuidResolver("uuid4") != UuidResolver("uuid1")
 
     def test_different_classes_not_equal(self):
-        """Resolver di classi diverse non sono uguali."""
+        """Resolvers of different classes are not equal."""
         assert UuidResolver() != EnvResolver("VAR")
 
     def test_resolver_not_equal_to_non_resolver(self):
-        """__eq__ con oggetto non-resolver ritorna False."""
+        """__eq__ with a non-resolver object returns False."""
         r = UuidResolver()
         assert (r == "not a resolver") is False
         assert (r == 42) is False
@@ -776,7 +776,7 @@ class TestResolverEquality:
 
 class TestResolverKw:
     def test_kw_returns_dict_of_parameters(self):
-        """resolver.kw e' il dict di parametri (post on_loading)."""
+        """resolver.kw is the dict of parameters (post on_loading)."""
         bag = Bag()
         bag["c"] = BagCbResolver(lambda a, b: a + b, a=1, b=2)
         resolver = bag.get_resolver("c")
@@ -787,12 +787,12 @@ class TestResolverKw:
         assert kw["b"] == 2
 
     def test_on_loading_default_is_identity(self):
-        """on_loading default e' identity: kw == input."""
+        """on_loading default is identity: kw == input."""
         bag = Bag()
         bag["c"] = BagCbResolver(lambda x: x, x=42)
         resolver = bag.get_resolver("c")
         assert resolver is not None
-        # on_loading(dict) ritorna il dict senza modifiche
+        # on_loading(dict) returns the dict unchanged
         kw_copy = dict(resolver.kw)
         assert resolver.on_loading(kw_copy) == kw_copy
 
@@ -804,13 +804,13 @@ class TestResolverKw:
 
 class TestResolverContainerProxy:
     def test_resolver_getitem_after_load(self):
-        """Dopo load che produce una Bag, resolver['key'] naviga la Bag risultato."""
+        """After load that produces a Bag, resolver['key'] navigates the resulting Bag."""
 
         def build():
             return {"a": 1, "b": 2}
 
         bag = Bag()
-        # as_bag=True forza la conversione del dict in Bag
+        # as_bag=True forces the conversion of the dict to a Bag
         bag["data"] = BagCbResolver(build, cache_time=False, as_bag=True)
         _ = bag["data"]  # trigger load
         resolver = bag.get_resolver("data")
@@ -819,7 +819,7 @@ class TestResolverContainerProxy:
         assert resolver["b"] == 2
 
     def test_resolver_keys_values_items(self):
-        """Il resolver proxy espone keys(), values(), items() della Bag cached."""
+        """The resolver proxy exposes keys(), values(), items() of the cached Bag."""
 
         def build():
             return {"a": 1, "b": 2}
@@ -834,7 +834,7 @@ class TestResolverContainerProxy:
         assert resolver.items() == [("a", 1), ("b", 2)]
 
     def test_resolver_get_node(self):
-        """resolver.get_node('key') ritorna il nodo della Bag cached."""
+        """resolver.get_node('key') returns the node of the cached Bag."""
 
         def build():
             return {"a": 42}
@@ -845,20 +845,20 @@ class TestResolverContainerProxy:
         resolver = bag.get_resolver("data")
         assert resolver is not None
         node = resolver.get_node("a")
-        # il nodo e' un BagNode valido, con label='a'
+        # the node is a valid BagNode, with label='a'
         assert node is not None
         assert node.label == "a"
         assert node.value == 42
 
 
 # =============================================================================
-# 20. DirectoryResolver - montaggio lazy di una directory come Bag
+# 20. DirectoryResolver - lazily mounting a directory as a Bag
 # =============================================================================
 
 
 class TestDirectoryResolverBasics:
     def test_empty_directory_produces_empty_bag(self, tmp_path):
-        """Una directory vuota -> Bag vuota."""
+        """An empty directory -> empty Bag."""
         bag = Bag()
         bag["docs"] = DirectoryResolver(str(tmp_path))
         result = bag["docs"]
@@ -866,7 +866,7 @@ class TestDirectoryResolverBasics:
         assert len(result) == 0
 
     def test_nonexistent_directory_produces_empty_bag(self, tmp_path):
-        """Path inesistente -> Bag vuota (OSError gestito internamente)."""
+        """Non-existent path -> empty Bag (OSError handled internally)."""
         bag = Bag()
         bag["docs"] = DirectoryResolver(str(tmp_path / "nonexistent"))
         result = bag["docs"]
@@ -874,18 +874,18 @@ class TestDirectoryResolverBasics:
         assert len(result) == 0
 
     def test_directory_with_xml_file(self, tmp_path):
-        """Un file .xml in directory produce un nodo con label label_xml."""
+        """An .xml file in directory produces a node with label label_xml."""
         (tmp_path / "config.xml").write_text(
             "<root><x>1</x></root>", encoding="utf-8"
         )
         bag = Bag()
         bag["docs"] = DirectoryResolver(str(tmp_path))
         result = bag["docs"]
-        # label default: nome + '_' + ext
+        # default label: name + '_' + ext
         assert "config_xml" in result.keys()
 
     def test_directory_with_multiple_extensions(self, tmp_path):
-        """ext='xml,txt' processa entrambe le estensioni."""
+        """ext='xml,txt' processes both extensions."""
         (tmp_path / "config.xml").write_text("<a>1</a>", encoding="utf-8")
         (tmp_path / "notes.txt").write_text("hello", encoding="utf-8")
         bag = Bag()
@@ -895,16 +895,16 @@ class TestDirectoryResolverBasics:
         assert "notes_txt" in result.keys()
 
     def test_subdirectory_becomes_nested_directory_resolver(self, tmp_path):
-        """Una sottodir produce un nodo con resolver DirectoryResolver."""
+        """A subdirectory produces a node with a DirectoryResolver."""
         sub = tmp_path / "sub"
         sub.mkdir()
         (sub / "inner.xml").write_text("<a/>", encoding="utf-8")
         bag = Bag()
         bag["docs"] = DirectoryResolver(str(tmp_path))
         result = bag["docs"]
-        # 'sub' e' presente come nodo
+        # 'sub' is present as a node
         assert "sub" in result.keys()
-        # accedendoci si scatena il resolver e si ottiene la Bag del sub
+        # accessing it triggers the resolver and returns the sub Bag
         sub_bag = result["sub"]
         assert isinstance(sub_bag, Bag)
         assert "inner_xml" in sub_bag.keys()
@@ -912,7 +912,7 @@ class TestDirectoryResolverBasics:
 
 class TestDirectoryResolverAttributes:
     def test_node_has_standard_attributes(self, tmp_path):
-        """Ogni nodo ha file_name, file_ext, rel_path, abs_path, mtime, size."""
+        """Each node has file_name, file_ext, rel_path, abs_path, mtime, size."""
         f = tmp_path / "doc.xml"
         f.write_text("<a/>", encoding="utf-8")
         bag = Bag()
@@ -925,7 +925,7 @@ class TestDirectoryResolverAttributes:
         assert attrs["size"] > 0
 
     def test_relocate_builds_rel_path(self, tmp_path):
-        """relocate='virtual' prefixa rel_path del nodo."""
+        """relocate='virtual' prefixes the node's rel_path."""
         (tmp_path / "doc.xml").write_text("<a/>", encoding="utf-8")
         bag = Bag()
         bag["docs"] = DirectoryResolver(str(tmp_path), "virtual")
@@ -933,7 +933,7 @@ class TestDirectoryResolverAttributes:
         assert result.get_attr("doc_xml", "rel_path") == "virtual/doc.xml"
 
     def test_relocate_propagates_to_subdirectories(self, tmp_path):
-        """Il prefix relocate viene propagato alle sottodirectory."""
+        """The relocate prefix is propagated to subdirectories."""
         sub = tmp_path / "sub"
         sub.mkdir()
         (sub / "inner.xml").write_text("<a/>", encoding="utf-8")
@@ -941,13 +941,13 @@ class TestDirectoryResolverAttributes:
         bag["docs"] = DirectoryResolver(str(tmp_path), "virtual")
         result = bag["docs"]
         sub_bag = result["sub"]
-        # il nodo 'inner_xml' dentro sub ha rel_path 'virtual/sub/inner.xml'
+        # the node 'inner_xml' inside sub has rel_path 'virtual/sub/inner.xml'
         assert sub_bag.get_attr("inner_xml", "rel_path") == "virtual/sub/inner.xml"
 
 
 class TestDirectoryResolverVisibility:
     def test_hidden_files_excluded_by_default(self, tmp_path):
-        """File con '.' iniziale sono esclusi (invisible=False default)."""
+        """Files with '.' at the start are excluded (invisible=False default)."""
         (tmp_path / ".secret").write_text("x", encoding="utf-8")
         (tmp_path / "visible.xml").write_text("<a/>", encoding="utf-8")
         bag = Bag()
@@ -959,18 +959,18 @@ class TestDirectoryResolverVisibility:
         assert "secret_" not in " ".join(keys)
 
     def test_invisible_true_includes_hidden_files(self, tmp_path):
-        """invisible=True include anche i file '.hidden'."""
+        """invisible=True also includes '.hidden' files."""
         (tmp_path / ".hidden").write_text("x", encoding="utf-8")
         bag = Bag()
         bag["docs"] = DirectoryResolver(str(tmp_path), invisible=True, ext="")
         result = bag["docs"]
-        # il file compare tra le key (il label ha forma '.hidden_')
+        # the file appears among the keys (the label has form '.hidden_')
         keys = result.keys()
-        # qualcosa con 'hidden' nel nome
+        # something with 'hidden' in the name
         assert any("hidden" in k for k in keys)
 
     def test_reserved_names_skipped(self, tmp_path):
-        """File che iniziano/finiscono con '#' o terminano con '~' vengono saltati."""
+        """Files that start/end with '#' or end with '~' are skipped."""
         (tmp_path / "#journal").write_text("x", encoding="utf-8")
         (tmp_path / "trailing~").write_text("x", encoding="utf-8")
         (tmp_path / "normal.xml").write_text("<a/>", encoding="utf-8")
@@ -982,7 +982,7 @@ class TestDirectoryResolverVisibility:
 
 class TestDirectoryResolverFilters:
     def test_include_glob_pattern(self, tmp_path):
-        """include='*.xml' filtra solo quelli matchanti."""
+        """include='*.xml' filters only matching ones."""
         (tmp_path / "a.xml").write_text("<a/>", encoding="utf-8")
         (tmp_path / "b.txt").write_text("x", encoding="utf-8")
         (tmp_path / "c.xml").write_text("<c/>", encoding="utf-8")
@@ -996,7 +996,7 @@ class TestDirectoryResolverFilters:
         assert "b_txt" not in keys
 
     def test_exclude_glob_pattern(self, tmp_path):
-        """exclude='*.bak' esclude i file matchanti."""
+        """exclude='*.bak' excludes matching files."""
         (tmp_path / "a.xml").write_text("<a/>", encoding="utf-8")
         (tmp_path / "old.bak").write_text("old", encoding="utf-8")
         bag = Bag()
@@ -1008,7 +1008,7 @@ class TestDirectoryResolverFilters:
         assert "old_bak" not in keys
 
     def test_callback_filter(self, tmp_path):
-        """callback ritorna False per scartare il nodo."""
+        """callback returns False to discard the node."""
         (tmp_path / "big.xml").write_text("<a>" + "x" * 500 + "</a>", encoding="utf-8")
         (tmp_path / "small.xml").write_text("<a/>", encoding="utf-8")
 
@@ -1022,9 +1022,9 @@ class TestDirectoryResolverFilters:
         assert "small_xml" not in keys
 
     def test_exclude_filter_applies_to_directories(self, tmp_path):
-        """exclude=pattern esclude anche le subdirectory che matchano.
+        """exclude=pattern also excludes subdirectories that match.
 
-        Scenario: esclusione di __pycache__ o .git quando si monta un tree.
+        Scenario: exclusion of __pycache__ or .git when mounting a tree.
         """
         (tmp_path / "docs").mkdir()
         (tmp_path / "__pycache__").mkdir()
@@ -1038,7 +1038,7 @@ class TestDirectoryResolverFilters:
 
 class TestDirectoryResolverCaption:
     def test_caption_true_auto_generates(self, tmp_path):
-        """caption=True genera caption con underscore -> spazi e capitalize."""
+        """caption=True auto-generates caption with underscore -> spaces and capitalize."""
         (tmp_path / "my_doc.xml").write_text("<a/>", encoding="utf-8")
         bag = Bag()
         bag["docs"] = DirectoryResolver(str(tmp_path), caption=True)
@@ -1046,7 +1046,7 @@ class TestDirectoryResolverCaption:
         assert result.get_attr("my_doc_xml", "caption") == "My doc"
 
     def test_caption_callable_custom(self, tmp_path):
-        """caption=callable: il callable riceve il filename e ritorna la caption."""
+        """caption=callable: the callable receives the filename and returns the caption."""
         (tmp_path / "file.xml").write_text("<a/>", encoding="utf-8")
         bag = Bag()
         bag["docs"] = DirectoryResolver(
@@ -1056,7 +1056,7 @@ class TestDirectoryResolverCaption:
         assert result.get_attr("file_xml", "caption") == "Caption[file]"
 
     def test_caption_none_omits_attribute(self, tmp_path):
-        """caption non impostato: l'attributo 'caption' non c'e'."""
+        """caption not set: the 'caption' attribute is not present."""
         (tmp_path / "doc.xml").write_text("<a/>", encoding="utf-8")
         bag = Bag()
         bag["docs"] = DirectoryResolver(str(tmp_path))
@@ -1068,18 +1068,18 @@ class TestDirectoryResolverCaption:
 
 class TestDirectoryResolverDropExt:
     def test_dropext_true_removes_extension_from_label(self, tmp_path):
-        """dropext=True: label senza '_ext' suffix."""
+        """dropext=True: label without '_ext' suffix."""
         (tmp_path / "doc.xml").write_text("<a/>", encoding="utf-8")
         bag = Bag()
         bag["docs"] = DirectoryResolver(str(tmp_path), dropext=True)
         keys = bag["docs"].keys()
-        # label senza _xml
+        # label without _xml
         assert "doc" in keys
 
 
 class TestDirectoryResolverProcessors:
     def test_custom_processor(self, tmp_path):
-        """processors={'ext': fn}: callable personalizzato ritorna il valore."""
+        """processors={'ext': fn}: custom callable returns the value."""
         (tmp_path / "data.csv").write_text("a,b,c\n1,2,3", encoding="utf-8")
 
         def csv_processor(path):
@@ -1091,24 +1091,24 @@ class TestDirectoryResolverProcessors:
             str(tmp_path), ext="csv", processors={"csv": csv_processor}
         )
         result = bag["docs"]
-        # il valore del nodo e' il ritorno del processor
+        # the node's value is the processor's return
         assert result.get_item("data_csv") == "A,B,C\n1,2,3"
 
     def test_processor_false_disables_handler(self, tmp_path):
-        """processors={'xml': False}: il processor e' disabilitato, usa default."""
+        """processors={'xml': False}: the processor is disabled, uses default."""
         (tmp_path / "doc.xml").write_text("<a/>", encoding="utf-8")
         bag = Bag()
         bag["docs"] = DirectoryResolver(
             str(tmp_path), ext="xml", processors={"xml": False}
         )
         result = bag["docs"]
-        # il nodo c'e', ma il valore viene dal processor_default
+        # the node exists, but the value comes from processor_default
         assert "doc_xml" in result.keys()
 
 
 class TestDirectoryResolverExtMapping:
     def test_ext_mapping_colon_syntax(self, tmp_path):
-        """ext='dat:xml' mappa l'estensione .dat al processor di xml."""
+        """ext='dat:xml' maps the .dat extension to the xml processor."""
         (tmp_path / "data.dat").write_text("<a/>", encoding="utf-8")
         bag = Bag()
         bag["docs"] = DirectoryResolver(str(tmp_path), ext="dat:xml")
@@ -1118,7 +1118,7 @@ class TestDirectoryResolverExtMapping:
 
 class TestDirectoryResolverContent:
     def test_xml_file_value_is_lazy_parsed_bag(self, tmp_path):
-        """Accedere a un nodo file .xml triggera il parsing e ritorna una Bag."""
+        """Accessing an .xml file node triggers parsing and returns a Bag."""
         (tmp_path / "doc.xml").write_text("<root><x>42</x></root>", encoding="utf-8")
         bag = Bag()
         bag["docs"] = DirectoryResolver(str(tmp_path))
@@ -1128,7 +1128,7 @@ class TestDirectoryResolverContent:
         assert parsed.get_item("root.x") == "42"
 
     def test_txt_file_value_is_lazy_bytes(self, tmp_path):
-        """File .txt con ext='txt' produce un nodo con value bytes."""
+        """.txt file with ext='txt' produces a node with bytes value."""
         (tmp_path / "note.txt").write_text("hello", encoding="utf-8")
         bag = Bag()
         bag["docs"] = DirectoryResolver(str(tmp_path), ext="txt")
@@ -1139,10 +1139,10 @@ class TestDirectoryResolverContent:
 
 class TestDirectoryResolverLabelSanitization:
     def test_dots_in_filename_replaced_by_underscore(self, tmp_path):
-        """Un filename con punti aggiuntivi ha i punti sostituiti da '_' nel label."""
+        """A filename with extra dots has dots replaced by '_' in the label."""
         (tmp_path / "my.v1.xml").write_text("<a/>", encoding="utf-8")
         bag = Bag()
         bag["docs"] = DirectoryResolver(str(tmp_path))
         keys = bag["docs"].keys()
-        # il label sostituisce i '.' con '_': "my_v1_xml"
+        # the label replaces '.' with '_': "my_v1_xml"
         assert "my_v1_xml" in keys

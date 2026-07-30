@@ -1,25 +1,25 @@
-"""Spec test: Bag - query / iterazione / aggregazione.
+"""Spec test: Bag - query / iteration / aggregation.
 
-Dipende da test_basic.py: qui si assume che set_item, get_item, get_attr,
-get_node, __len__, __iter__, __contains__ siano validi.
+Depends on test_basic.py: assumes set_item, get_item, get_attr,
+get_node, __len__, __iter__, __contains__ are valid.
 
-## Scala di dipendenze in questo file
+## Scale of dependencies in this file
 
-1.  keys()                          primitive piu' semplice
+1.  keys()                          simplest primitive
 2.  values()
 3.  items()
-4.  keys/values/items con iter=True (generator)
+4.  keys/values/items with iter=True (generator)
 5.  is_empty()
 6.  get_nodes()
 7.  get_node_by_attr()
 8.  get_node_by_value()
-9.  walk() generator mode            usa BagNode.label / .value / path puntati
+9.  walk() generator mode            uses BagNode.label / .value / dot-separated paths
 10. walk() callback mode
-11. query()                          varianti what/deep/leaf/branch/condition/limit
-12. digest()                         alias di query + as_columns
-13. columns()                        wrapper su digest
+11. query()                          variants what/deep/leaf/branch/condition/limit
+12. digest()                         query alias + as_columns
+13. columns()                        wrapper on digest
 14. sum()
-15. sort()                           osservato tramite keys()/values() gia' validati
+15. sort()                           observed via keys()/values() already validated
 """
 
 from __future__ import annotations
@@ -34,16 +34,16 @@ from genro_bag import Bag, BagNode
 
 class TestKeys:
     def test_empty_bag_returns_empty_list(self):
-        """keys() su Bag vuoto ritorna lista vuota."""
+        """keys() on empty Bag returns empty list."""
         assert Bag().keys() == []
 
     def test_returns_labels_in_insertion_order(self):
-        """keys() ritorna le label nell'ordine di inserimento."""
+        """keys() returns labels in insertion order."""
         bag = Bag({"a": 1, "b": 2, "c": 3})
         assert bag.keys() == ["a", "b", "c"]
 
     def test_first_level_only(self):
-        """keys() vede solo il primo livello (anche con path puntati)."""
+        """keys() sees only the first level (even with dot-separated paths)."""
         bag = Bag()
         bag["a.b.c"] = 1
         bag["x"] = 2
@@ -57,16 +57,16 @@ class TestKeys:
 
 class TestValues:
     def test_empty_bag_returns_empty_list(self):
-        """values() su Bag vuoto ritorna lista vuota."""
+        """values() on empty Bag returns empty list."""
         assert Bag().values() == []
 
     def test_returns_values_in_order(self):
-        """values() ritorna i valori nell'ordine di inserimento."""
+        """values() returns values in insertion order."""
         bag = Bag({"a": 1, "b": 2, "c": 3})
         assert bag.values() == [1, 2, 3]
 
     def test_nested_bag_value_is_bag_instance(self):
-        """Se un nodo ha come valore una Bag, values() lo espone come tale."""
+        """If a node has a Bag as value, values() exposes it as such."""
         bag = Bag()
         bag["a.b"] = 1
         vals = bag.values()
@@ -81,11 +81,11 @@ class TestValues:
 
 class TestItems:
     def test_empty_bag_returns_empty_list(self):
-        """items() su Bag vuoto ritorna lista vuota."""
+        """items() on empty Bag returns empty list."""
         assert Bag().items() == []
 
     def test_returns_label_value_tuples(self):
-        """items() ritorna (label, value) in ordine."""
+        """items() returns (label, value) in order."""
         bag = Bag({"a": 1, "b": 2})
         assert bag.items() == [("a", 1), ("b", 2)]
 
@@ -97,21 +97,21 @@ class TestItems:
 
 class TestIterVariants:
     def test_keys_iter_returns_iterator(self):
-        """keys(iter=True) ritorna un iteratore, non una lista."""
+        """keys(iter=True) returns an iterator, not a list."""
         bag = Bag({"a": 1, "b": 2})
         result = bag.keys(iter=True)
         assert not isinstance(result, list)
         assert list(result) == ["a", "b"]
 
     def test_values_iter_returns_iterator(self):
-        """values(iter=True) ritorna un iteratore."""
+        """values(iter=True) returns an iterator."""
         bag = Bag({"a": 1, "b": 2})
         result = bag.values(iter=True)
         assert not isinstance(result, list)
         assert list(result) == [1, 2]
 
     def test_items_iter_returns_iterator(self):
-        """items(iter=True) ritorna un iteratore."""
+        """items(iter=True) returns an iterator."""
         bag = Bag({"a": 1, "b": 2})
         result = bag.items(iter=True)
         assert not isinstance(result, list)
@@ -125,47 +125,47 @@ class TestIterVariants:
 
 class TestIsEmpty:
     def test_empty_bag_is_empty(self):
-        """Un Bag appena creato e' vuoto."""
+        """A newly created Bag is empty."""
         assert Bag().is_empty() is True
 
     def test_bag_with_non_none_value_is_not_empty(self):
-        """Un nodo con valore 1 rende la Bag non vuota."""
+        """A node with value 1 makes the Bag non-empty."""
         bag = Bag()
         bag["a"] = 1
         assert bag.is_empty() is False
 
     def test_bag_with_only_none_values_is_empty(self):
-        """Nodi con valore None contano come vuoti."""
+        """Nodes with None value count as empty."""
         bag = Bag()
         bag["a"] = None
         bag["b"] = None
         assert bag.is_empty() is True
 
     def test_zero_is_none_treats_zero_as_empty(self):
-        """Con zero_is_none=True anche 0 conta come vuoto."""
+        """With zero_is_none=True, 0 also counts as empty."""
         bag = Bag()
         bag["a"] = 0
         assert bag.is_empty(zero_is_none=True) is True
         assert bag.is_empty() is False
 
     def test_blank_is_none_treats_empty_string_as_empty(self):
-        """Con blank_is_none=True anche '' conta come vuoto."""
+        """With blank_is_none=True, empty string also counts as empty."""
         bag = Bag()
         bag["a"] = ""
         assert bag.is_empty(blank_is_none=True) is True
         assert bag.is_empty() is False
 
     def test_bag_with_resolver_node_is_not_empty(self):
-        """Un nodo con resolver conta come non vuoto anche senza valore statico.
+        """A node with a resolver counts as non-empty even without static value.
 
-        Razionale: il resolver rappresenta contenuto potenziale. is_empty non
-        deve attivare il resolver per scoprirlo, ma la sua sola presenza basta
-        a marcare il Bag come non vuoto.
+        Rationale: the resolver represents potential content. is_empty should not
+        activate the resolver to discover it, but its mere presence is enough
+        to mark the Bag as non-empty.
         """
         from genro_bag.resolvers import BagCbResolver
         bag = Bag()
         bag["data"] = BagCbResolver(lambda: "computed")
-        # is_empty non deve triggerare il resolver, ma comunque ritorna False
+        # is_empty must not trigger the resolver, but still returns False
         assert bag.is_empty() is False
 
 
@@ -176,11 +176,11 @@ class TestIsEmpty:
 
 class TestGetNodes:
     def test_empty_bag_returns_empty_list(self):
-        """get_nodes() su Bag vuoto ritorna lista vuota."""
+        """get_nodes() on empty Bag returns empty list."""
         assert Bag().get_nodes() == []
 
     def test_returns_all_first_level_nodes(self):
-        """get_nodes() senza filtro ritorna tutti i nodi di primo livello."""
+        """get_nodes() without filter returns all first-level nodes."""
         bag = Bag({"a": 1, "b": 2})
         nodes = bag.get_nodes()
         assert len(nodes) == 2
@@ -188,7 +188,7 @@ class TestGetNodes:
         assert [n.label for n in nodes] == ["a", "b"]
 
     def test_filter_by_condition(self):
-        """get_nodes(condition=...) applica un filtro callable sui nodi."""
+        """get_nodes(condition=...) applies a callable filter on nodes."""
         bag = Bag({"a": 1, "b": 2, "c": 3})
         nodes = bag.get_nodes(condition=lambda n: n.value > 1)
         assert [n.label for n in nodes] == ["b", "c"]
@@ -201,7 +201,7 @@ class TestGetNodes:
 
 class TestGetNodeByAttr:
     def test_finds_first_level_by_attribute(self):
-        """Trova un nodo di primo livello per attr=value."""
+        """Finds a first-level node by attr=value."""
         bag = Bag()
         bag.set_item("a", 1, _attributes={"id": "target"})
         bag.set_item("b", 2, _attributes={"id": "other"})
@@ -210,23 +210,23 @@ class TestGetNodeByAttr:
         assert node.label == "a"
 
     def test_returns_none_if_not_found(self):
-        """Ritorna None se nessun nodo matcha."""
+        """Returns None if no node matches."""
         bag = Bag()
         bag.set_item("a", 1, _attributes={"id": "x"})
         assert bag.get_node_by_attr("id", "missing") is None
 
     def test_level_priority_over_depth(self):
-        """Un match a livello corrente batte un match piu' profondo."""
+        """A match at current level beats a deeper match."""
         bag = Bag()
         bag.set_item("outer.inner", 1, _attributes={"id": "T"})
-        # 'top' e' un nodo di primo livello con id=T -> deve vincere
+        # 'top' is a first-level node with id=T -> must win
         bag.set_item("top", 2, _attributes={"id": "T"})
         node = bag.get_node_by_attr("id", "T")
         assert isinstance(node, BagNode)
         assert node.label == "top"
 
     def test_descends_into_subbags(self):
-        """Cerca anche dentro sub-Bag se non trova al livello corrente."""
+        """Searches inside sub-Bags if not found at current level."""
         bag = Bag()
         bag.set_item("nest.target", 42, _attributes={"id": "X"})
         node = bag.get_node_by_attr("id", "X")
@@ -242,7 +242,7 @@ class TestGetNodeByAttr:
 
 class TestGetNodeByValue:
     def test_finds_node_whose_value_contains_key(self):
-        """Trova un nodo la cui value (Bag/dict) ha key=value."""
+        """Finds a node whose value (Bag/dict) has key=value."""
         outer = Bag()
         outer["row1.name"] = "alice"
         outer["row2.name"] = "bob"
@@ -251,7 +251,7 @@ class TestGetNodeByValue:
         assert node.label == "row2"
 
     def test_returns_none_if_no_match(self):
-        """Ritorna None se nessuna sub-Bag contiene la coppia."""
+        """Returns None if no sub-Bag contains the pair."""
         outer = Bag()
         outer["row1.name"] = "alice"
         assert outer.get_node_by_value("name", "charlie") is None
@@ -264,11 +264,11 @@ class TestGetNodeByValue:
 
 class TestWalkGenerator:
     def test_empty_bag_yields_nothing(self):
-        """walk() su Bag vuoto non produce nulla."""
+        """walk() on empty Bag yields nothing."""
         assert list(Bag().walk()) == []
 
     def test_flat_bag_yields_each_node(self):
-        """walk() su Bag flat yield una tupla per nodo."""
+        """walk() on flat Bag yields one tuple per node."""
         bag = Bag({"a": 1, "b": 2})
         result = list(bag.walk())
         paths = [p for p, _n in result]
@@ -276,7 +276,7 @@ class TestWalkGenerator:
         assert all(isinstance(n, BagNode) for _p, n in result)
 
     def test_deep_tree_yields_depth_first_paths(self):
-        """walk() attraversa depth-first con path puntati."""
+        """walk() traverses depth-first with dot-separated paths."""
         bag = Bag()
         bag["a.x"] = 1
         bag["a.y"] = 2
@@ -293,20 +293,20 @@ class TestWalkGenerator:
 
 class TestWalkCallback:
     def test_callback_invoked_per_node(self):
-        """walk(callback) chiama callback per ogni nodo visitato."""
+        """walk(callback) calls callback for each visited node."""
         bag = Bag({"a": 1, "b": 2})
         visited = []
         bag.walk(lambda n: visited.append(n.label))
         assert visited == ["a", "b"]
 
     def test_callback_truthy_return_exits_early(self):
-        """Se il callback ritorna truthy, walk termina restituendo quel valore."""
+        """If callback returns truthy, walk terminates returning that value."""
         bag = Bag({"a": 1, "b": 2, "c": 3})
         result = bag.walk(lambda n: n.value if n.value == 2 else None)
         assert result == 2
 
     def test_callback_with_pathlist_tracks_path(self):
-        """Con _pathlist=[] il callback riceve il path corrente come lista."""
+        """With _pathlist=[], callback receives current path as list."""
         bag = Bag()
         bag["outer.inner"] = 42
         captured = []
@@ -315,7 +315,7 @@ class TestWalkCallback:
             captured.append(list(_pathlist))
 
         bag.walk(cb, _pathlist=[])
-        # primo nodo 'outer' ha path ['outer'], secondo 'inner' ha ['outer', 'inner']
+        # first node 'outer' has path ['outer'], second 'inner' has ['outer', 'inner']
         assert captured == [["outer"], ["outer", "inner"]]
 
 
@@ -334,24 +334,24 @@ class TestQuery:
         assert result == [("a", 1, {"x": 10}), ("b", 2, {"x": 20})]
 
     def test_query_labels_only(self):
-        """query('#k') ritorna solo le label."""
+        """query('#k') returns only labels."""
         bag = Bag({"a": 1, "b": 2})
         assert bag.query("#k") == ["a", "b"]
 
     def test_query_values_only(self):
-        """query('#v') ritorna solo i valori."""
+        """query('#v') returns only values."""
         bag = Bag({"a": 1, "b": 2})
         assert bag.query("#v") == [1, 2]
 
     def test_query_attribute_only(self):
-        """query('#a.type') ritorna il valore dell'attributo 'type' per ogni nodo."""
+        """query('#a.type') returns the 'type' attribute value for each node."""
         bag = Bag()
         bag.set_item("a", 1, _attributes={"type": "int"})
         bag.set_item("b", 2, _attributes={"type": "str"})
         assert bag.query("#a.type") == ["int", "str"]
 
     def test_query_deep_paths(self):
-        """query('#p', deep=True) ritorna tutti i path in modalita' ricorsiva."""
+        """query('#p', deep=True) returns all paths in recursive mode."""
         bag = Bag()
         bag["a.b"] = 1
         bag["a.c"] = 2
@@ -360,17 +360,17 @@ class TestQuery:
         assert result == ["a", "a.b", "a.c", "d"]
 
     def test_query_leaves_only(self):
-        """query(deep=True, branch=False) esclude i nodi branch."""
+        """query(deep=True, branch=False) excludes branch nodes."""
         bag = Bag()
         bag["a.b"] = 1
         bag["a.c"] = 2
         bag["d"] = 3
         result = bag.query("#p", deep=True, branch=False)
-        # 'a' e' branch ed e' escluso
+        # 'a' is a branch and is excluded
         assert result == ["a.b", "a.c", "d"]
 
     def test_query_branches_only(self):
-        """query(deep=True, leaf=False) esclude i nodi leaf."""
+        """query(deep=True, leaf=False) excludes leaf nodes."""
         bag = Bag()
         bag["a.b"] = 1
         bag["c"] = 2
@@ -378,31 +378,31 @@ class TestQuery:
         assert result == ["a"]
 
     def test_query_with_condition(self):
-        """query(condition=...) filtra i nodi."""
+        """query(condition=...) filters nodes."""
         bag = Bag({"a": 1, "b": 2, "c": 3})
         result = bag.query("#k", condition=lambda n: n.value > 1)
         assert result == ["b", "c"]
 
     def test_query_limit(self):
-        """query(limit=N) tronca il risultato a N elementi."""
+        """query(limit=N) truncates result to N items."""
         bag = Bag({"a": 1, "b": 2, "c": 3, "d": 4})
         assert bag.query("#k", limit=2) == ["a", "b"]
 
     def test_query_iter_returns_generator(self):
-        """query(iter=True) ritorna un generatore, non una lista."""
+        """query(iter=True) returns a generator, not a list."""
         bag = Bag({"a": 1, "b": 2})
         result = bag.query("#k", iter=True)
         assert not isinstance(result, list)
         assert list(result) == ["a", "b"]
 
     def test_query_callable_what(self):
-        """query(what=[callable]) applica il callable a ogni nodo."""
+        """query(what=[callable]) applies callable to each node."""
         bag = Bag({"a": 1, "b": 2})
         result = bag.query([lambda n: n.label.upper()])
         assert result == ["A", "B"]
 
     def test_query_node_node(self):
-        """query('#n') ritorna i BagNode stessi."""
+        """query('#n') returns the BagNode instances themselves."""
         bag = Bag({"a": 1})
         result = bag.query("#n")
         assert len(result) == 1
@@ -410,14 +410,14 @@ class TestQuery:
         assert result[0].label == "a"
 
     def test_query_static_value(self):
-        """query('#__v') ritorna lo static_value (mai triggera resolver)."""
+        """query('#__v') returns static_value (never triggers resolver)."""
         bag = Bag({"a": 1})
         assert bag.query("#__v") == [1]
 
     def test_query_where_colon_what_syntax(self):
-        """query('subpath:what') esegue la query su una sotto-Bag.
+        """query('subpath:what') executes query on a sub-Bag.
 
-        Scenario: utente vuole query solo un sottoramo senza navigarlo prima.
+        Scenario: user wants to query only a subtree without navigating it first.
         """
         bag = Bag()
         bag.set_item("users.alice", "a@x.com")
@@ -427,9 +427,9 @@ class TestQuery:
         assert result == [("alice", "a@x.com"), ("bob", "b@x.com")]
 
     def test_query_inner_value_path_on_bag_value(self):
-        """query('#v.key') estrae chiave specifica dal value quando e' dict-like.
+        """query('#v.key') extracts specific key from value when dict-like.
 
-        Scenario: collezione di record, si vuole una sola colonna.
+        Scenario: collection of records, want only one column.
         """
         bag = Bag()
         bag.set_item("r1", Bag({"name": "alice", "age": 30}))
@@ -437,9 +437,9 @@ class TestQuery:
         assert bag.query("#v.name") == ["alice", "bob"]
 
     def test_query_custom_key_reads_from_value_dict(self):
-        """query('keyname') su value __getitem__-able estrae value[keyname].
+        """query('keyname') on __getitem__-able value extracts value[keyname].
 
-        Nota: sintassi senza '#' prefix → chiave diretta sul value.
+        Note: syntax without '#' prefix → direct key on value.
         """
         bag = Bag()
         bag.set_item("r1", {"name": "alice", "city": "Rome"})
@@ -448,9 +448,9 @@ class TestQuery:
         assert bag.query("city") == ["Rome", "Milan"]
 
     def test_query_deep_limit_stops_across_branches(self):
-        """limit tronca il risultato anche se in mezzo a una ricorsione deep.
+        """limit truncates result even mid-recursion in deep mode.
 
-        Scenario: bag con molti nodi, utente vuole solo i primi N in pre-order.
+        Scenario: bag with many nodes, user wants only first N in pre-order.
         """
         bag = Bag()
         bag["a.b.c"] = 1
@@ -458,7 +458,7 @@ class TestQuery:
         bag["a.e"] = 3
         bag["f"] = 4
         result = bag.query("#p", deep=True, limit=2)
-        # pre-order: 'a', 'a.b', ... fermato a 2
+        # pre-order: 'a', 'a.b', ... stopped at 2
         assert len(result) == 2
         assert result == ["a", "a.b"]
 
@@ -470,12 +470,12 @@ class TestQuery:
 
 class TestDigest:
     def test_digest_default_matches_query_default(self):
-        """digest() senza args equivale a query() non-deep non-iter."""
+        """digest() without args equals query() non-deep non-iter."""
         bag = Bag({"a": 1, "b": 2})
         assert bag.digest() == bag.query()
 
     def test_digest_as_columns_transposes(self):
-        """digest(as_columns=True) trasforma in colonne (list of lists)."""
+        """digest(as_columns=True) transposes to columns (list of lists)."""
         bag = Bag()
         bag.set_item("a", 1, _attributes={"x": 10})
         bag.set_item("b", 2, _attributes={"x": 20})
@@ -483,18 +483,18 @@ class TestDigest:
         assert result == [["a", "b"], [1, 2]]
 
     def test_digest_as_columns_on_empty_bag(self):
-        """digest(as_columns=True) su Bag vuoto ritorna liste vuote per ogni col."""
+        """digest(as_columns=True) on empty Bag returns empty lists for each col."""
         result = Bag().digest("#k,#v", as_columns=True)
         assert result == [[], []]
 
     def test_digest_as_columns_single_column(self):
-        """digest(what='#k', as_columns=True) ritorna una singola lista wrappata.
+        """digest(what='#k', as_columns=True) returns single list wrapped.
 
-        Scenario: utente chiede una sola colonna con as_columns=True.
+        Scenario: user requests single column with as_columns=True.
         """
         bag = Bag({"a": 1, "b": 2})
         result = bag.digest("#k", as_columns=True)
-        # singola colonna: result[0] e' la lista di labels
+        # single column: result[0] is the label list
         assert result == [["a", "b"]]
 
 
@@ -505,7 +505,7 @@ class TestDigest:
 
 class TestColumns:
     def test_columns_from_string(self):
-        """columns('a,b') ritorna le colonne per i campi 'a' e 'b'."""
+        """columns('a,b') returns columns for fields 'a' and 'b'."""
         bag = Bag()
         bag["row1.name"] = "alice"
         bag["row1.age"] = 30
@@ -515,7 +515,7 @@ class TestColumns:
         assert result == [["alice", "bob"], [30, 25]]
 
     def test_columns_attr_mode(self):
-        """columns(cols, attr_mode=True) legge dagli attributi."""
+        """columns(cols, attr_mode=True) reads from attributes."""
         bag = Bag()
         bag.set_item("a", 1, _attributes={"price": 10, "qty": 2})
         bag.set_item("b", 2, _attributes={"price": 20, "qty": 3})
@@ -530,37 +530,37 @@ class TestColumns:
 
 class TestSum:
     def test_sum_values_default(self):
-        """sum() senza args somma i valori di primo livello."""
+        """sum() without args sums first-level values."""
         bag = Bag({"a": 1, "b": 2, "c": 3})
         assert bag.sum() == 6
 
     def test_sum_none_values_are_zero(self):
-        """Valori None sono trattati come 0 dalla somma."""
+        """None values are treated as 0 by sum."""
         bag = Bag({"a": 1, "b": None, "c": 2})
         assert bag.sum() == 3
 
     def test_sum_attribute(self):
-        """sum('#a.price') somma l'attributo 'price' di ogni nodo."""
+        """sum('#a.price') sums the 'price' attribute of each node."""
         bag = Bag()
         bag.set_item("a", 1, _attributes={"price": 10})
         bag.set_item("b", 2, _attributes={"price": 20})
         assert bag.sum("#a.price") == 30
 
     def test_sum_multiple_returns_list(self):
-        """sum('#v,#a.qty') ritorna [sum_values, sum_qty]."""
+        """sum('#v,#a.qty') returns [sum_values, sum_qty]."""
         bag = Bag()
         bag.set_item("a", 1, _attributes={"qty": 5})
         bag.set_item("b", 2, _attributes={"qty": 7})
         assert bag.sum("#v,#a.qty") == [3, 12]
 
     def test_sum_with_condition(self):
-        """sum con condition filtra prima di sommare."""
+        """sum with condition filters before summing."""
         bag = Bag({"a": 1, "b": 2, "c": 3})
         total = bag.sum("#v", condition=lambda n: n.value > 1)
         assert total == 5
 
     def test_sum_deep(self):
-        """sum('#a.qty', deep=True) somma ricorsivamente su sub-Bag."""
+        """sum('#a.qty', deep=True) sums recursively over sub-Bags."""
         bag = Bag()
         bag.set_item("outer.a", 0, _attributes={"qty": 10})
         bag.set_item("outer.b", 0, _attributes={"qty": 20})
@@ -575,7 +575,7 @@ class TestSum:
 
 class TestSort:
     def test_sort_by_label_ascending_default(self):
-        """sort('#k') ordina per label ascendente (default)."""
+        """sort('#k') sorts by label ascending (default)."""
         bag = Bag()
         bag["c"] = 1
         bag["a"] = 2
@@ -584,7 +584,7 @@ class TestSort:
         assert bag.keys() == ["a", "b", "c"]
 
     def test_sort_by_label_descending(self):
-        """sort('#k:d') ordina per label discendente."""
+        """sort('#k:d') sorts by label descending."""
         bag = Bag()
         bag["a"] = 1
         bag["c"] = 2
@@ -593,7 +593,7 @@ class TestSort:
         assert bag.keys() == ["c", "b", "a"]
 
     def test_sort_by_value_ascending(self):
-        """sort('#v') ordina per valore."""
+        """sort('#v') sorts by value."""
         bag = Bag()
         bag["a"] = 3
         bag["b"] = 1
@@ -602,13 +602,13 @@ class TestSort:
         assert bag.values() == [1, 2, 3]
 
     def test_sort_by_value_descending(self):
-        """sort('#v:d') ordina per valore discendente."""
+        """sort('#v:d') sorts by value descending."""
         bag = Bag({"a": 1, "b": 3, "c": 2})
         bag.sort("#v:d")
         assert bag.values() == [3, 2, 1]
 
     def test_sort_by_attribute(self):
-        """sort('#a.name') ordina per attributo 'name'."""
+        """sort('#a.name') sorts by 'name' attribute."""
         bag = Bag()
         bag.set_item("a", 1, _attributes={"name": "charlie"})
         bag.set_item("b", 2, _attributes={"name": "alice"})
@@ -617,31 +617,31 @@ class TestSort:
         assert bag.keys() == ["b", "c", "a"]
 
     def test_sort_by_callable(self):
-        """sort(callable) usa il callable come key function."""
+        """sort(callable) uses callable as key function."""
         bag = Bag({"a": 3, "b": 1, "c": 2})
         bag.sort(lambda n: n.value)
         assert bag.values() == [1, 2, 3]
 
     def test_sort_returns_self(self):
-        """sort ritorna self per chaining."""
+        """sort returns self for chaining."""
         bag = Bag({"a": 1})
         assert bag.sort("#k") is bag
 
     def test_multi_level_sort(self):
-        """sort('#a.g:a,#v:d' applica sort multi-livello."""
+        """sort('#a.g:a,#v:d') applies multi-level sort."""
         bag = Bag()
-        # stesso gruppo 'g=A', valori diversi -> devono ordinarsi per valore desc
+        # same group 'g=A', different values -> must sort by value desc
         bag.set_item("n1", 1, _attributes={"g": "A"})
         bag.set_item("n2", 3, _attributes={"g": "A"})
         bag.set_item("n3", 2, _attributes={"g": "B"})
         bag.sort("#a.g:a,#v:d")
-        # dentro 'A' discendente per valore -> n2(3), n1(1); poi gruppo 'B' -> n3(2)
+        # within 'A' descending by value -> n2(3), n1(1); then group 'B' -> n3(2)
         assert bag.keys() == ["n2", "n1", "n3"]
 
     def test_sort_by_field_inside_value_dict(self):
-        """sort('fieldname') ordina per valore di una chiave nel value dict.
+        """sort('fieldname') sorts by value of a key in value dict.
 
-        Scenario: collezione di record (value = dict), sort per 'age'.
+        Scenario: collection of records (value = dict), sort by 'age'.
         """
         bag = Bag()
         bag.set_item("r1", {"age": 30, "name": "alice"})

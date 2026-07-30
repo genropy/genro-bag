@@ -1,42 +1,42 @@
-"""Spec test: BagNode - API pubblica dei nodi in place.
+"""Spec test: BagNode - public node API in place.
 
-Dipende da test_basic.py (set_item, get_item, get_node, ecc.).
+Depends on test_basic.py (set_item, get_item, get_node, etc.).
 
-## Principio
+## Principle
 
-Un BagNode NON si istanzia da solo nei test (da solo non ha senso:
-serve una Bag che lo contenga). Lo si OTTIENE sempre tramite la Bag:
+A BagNode is NOT instantiated alone in tests (alone it makes no sense:
+needs a Bag to contain it). It is ALWAYS obtained via Bag:
 
-    node = bag.set_item(path, value, ...)       # ritorno
+    node = bag.set_item(path, value, ...)       # return
     node = bag.get_node(path)                   # lookup
-    node = bag.pop_node(path)                   # rimozione
-    node = bag.node(label)                      # accesso diretto
+    node = bag.pop_node(path)                   # removal
+    node = bag.node(label)                      # direct access
 
-Una volta in place, i metodi pubblici (no underscore) del BagNode
-sono API pubblica e vanno esercitati.
+Once in place, public methods (no underscore) of BagNode
+are public API and must be exercised.
 
-## Scala
+## Scale
 
-1.  Identita' del nodo                          label / __str__ / __repr__ / __eq__
+1.  Node identity                               label / __str__ / __repr__ / __eq__
 2.  value / value setter / get_value
-3.  static_value                                valore cached senza trigger
+3.  static_value                                cached value without trigger
 4.  attr property / set_attr / get_attr / del_attr / has_attr
-5.  is_branch                                   valore Bag vs scalare
-6.  is_valid                                    default True (senza invalid_reasons)
-7.  position                                    indice nel container parent
-8.  parent_bag / parent_node                    navigazione
-9.  fullpath (con backref)                      path puntato al nodo
-10. get_inherited_attributes                    merge lungo catena parent
-11. attribute_owner_node                        ricerca ascendente per attributo
-12. diff                                        confronto label/attr/value
+5.  is_branch                                   Bag value vs scalar
+6.  is_valid                                    default True (no invalid_reasons)
+7.  position                                    index in parent container
+8.  parent_bag / parent_node                    navigation
+9.  fullpath (with backref)                     path pointed to node
+10. get_inherited_attributes                    merge along parent chain
+11. attribute_owner_node                        ascending search for attribute
+12. diff                                        compare label/attr/value
 13. as_tuple                                    (label, value, attr, resolver)
-14. to_json                                     dict serializzabile
-15. subscribe / unsubscribe                     notifiche node-level
-16. reset_resolver                              rimuove il resolver
-17. compiled                                    dict esterno compilato (inizializzato lazy)
-18. orphaned                                    detach recursive dal parent
-19. property _ (underscore)                     ritorna parent_bag o solleva
-20. xml_tag                                     preservato da parsing XML
+14. to_json                                     serializable dict
+15. subscribe / unsubscribe                     node-level notifications
+16. reset_resolver                              removes resolver
+17. compiled                                    external compiled dict (lazy initialized)
+18. orphaned                                    recursive detach from parent
+19. property _ (underscore)                     returns parent_bag or raises
+20. xml_tag                                     preserved from XML parsing
 """
 
 from __future__ import annotations
@@ -47,25 +47,25 @@ from genro_bag import Bag, BagNode
 
 
 # =============================================================================
-# 1. Identita' del nodo
+# 1. Node identity
 # =============================================================================
 
 
 class TestNodeIdentity:
     def test_label_attribute(self):
-        """node.label espone il label usato per l'inserimento."""
+        """node.label exposes label used for insertion."""
         bag = Bag()
         node = bag.set_item("foo", 1)
         assert node.label == "foo"
 
     def test_str_contains_label(self):
-        """str(node) include il label."""
+        """str(node) includes label."""
         bag = Bag()
         node = bag.set_item("x", 1)
         assert "x" in str(node)
 
     def test_repr_contains_label_and_id(self):
-        """repr(node) include label e id dell'oggetto."""
+        """repr(node) includes label and object id."""
         bag = Bag()
         node = bag.set_item("x", 1)
         r = repr(node)
@@ -73,7 +73,7 @@ class TestNodeIdentity:
         assert str(id(node)) in r
 
     def test_equal_nodes_have_same_label_attr_value(self):
-        """Due nodi con stessi label, attr, value sono uguali (via __eq__)."""
+        """Two nodes with same label, attr, value are equal (via __eq__)."""
         a = Bag()
         b = Bag()
         n1 = a.set_item("x", 1, _attributes={"k": "v"})
@@ -81,7 +81,7 @@ class TestNodeIdentity:
         assert n1 == n2
 
     def test_different_value_not_equal(self):
-        """Nodi con valori diversi non sono uguali."""
+        """Nodes with different values are not equal."""
         a = Bag()
         b = Bag()
         n1 = a.set_item("x", 1)
@@ -89,14 +89,14 @@ class TestNodeIdentity:
         assert n1 != n2
 
     def test_different_label_not_equal(self):
-        """Nodi con label diversi non sono uguali."""
+        """Nodes with different labels are not equal."""
         bag = Bag()
         n1 = bag.set_item("x", 1)
         n2 = bag.set_item("y", 1)
         assert n1 != n2
 
     def test_ne_with_non_bagnode(self):
-        """__eq__ con oggetto non-BagNode ritorna False."""
+        """__eq__ with non-BagNode object returns False."""
         bag = Bag()
         node = bag.set_item("x", 1)
         assert node != "not a node"
@@ -110,20 +110,20 @@ class TestNodeIdentity:
 
 class TestNodeValue:
     def test_value_property_reads_value(self):
-        """node.value legge il valore del nodo."""
+        """node.value reads node value."""
         bag = Bag()
         node = bag.set_item("x", 42)
         assert node.value == 42
 
     def test_value_setter_updates_value(self):
-        """node.value = X aggiorna il valore, visibile anche da bag[x]."""
+        """node.value = X updates value, visible also from bag[x]."""
         bag = Bag()
         node = bag.set_item("x", 1)
         node.value = 99
         assert bag.get_item("x") == 99
 
     def test_get_value_static_true_reads_static(self):
-        """get_value(static=True) ritorna il valore cached senza trigger."""
+        """get_value(static=True) returns cached value without trigger."""
         bag = Bag()
         node = bag.set_item("x", 7)
         assert node.get_value(static=True) == 7
@@ -136,20 +136,20 @@ class TestNodeValue:
 
 class TestStaticValue:
     def test_static_value_property(self):
-        """static_value espone il valore cached senza triggerare il resolver."""
+        """static_value exposes cached value without triggering resolver."""
         bag = Bag()
         node = bag.set_item("x", 10)
         assert node.static_value == 10
 
     def test_static_value_on_node_with_resolver_before_load(self):
-        """static_value su nodo con resolver prima di una lettura e' None."""
+        """static_value on node with resolver before read is None."""
         from genro_bag.resolvers import UuidResolver
 
         bag = Bag()
         bag["id"] = UuidResolver()
         node = bag.get_node("id")
         assert isinstance(node, BagNode)
-        # mai letto -> static_value None
+        # never read -> static_value None
         assert node.static_value is None
 
 
@@ -160,20 +160,20 @@ class TestStaticValue:
 
 class TestNodeAttr:
     def test_attr_property_returns_dict(self):
-        """node.attr ritorna il dict degli attributi."""
+        """node.attr returns dict of attributes."""
         bag = Bag()
         node = bag.set_item("x", 1, _attributes={"k": "v"})
         assert node.attr == {"k": "v"}
 
     def test_set_attr_via_kwargs(self):
-        """node.set_attr(k=v) aggiunge l'attributo."""
+        """node.set_attr(k=v) adds attribute."""
         bag = Bag()
         node = bag.set_item("x", 1)
         node.set_attr(k="v")
         assert node.get_attr("k") == "v"
 
     def test_set_attr_via_dict(self):
-        """node.set_attr(attr={...}) accetta un dict."""
+        """node.set_attr(attr={...}) accepts dict."""
         bag = Bag()
         node = bag.set_item("x", 1)
         node.set_attr(attr={"a": 1, "b": 2})
@@ -181,26 +181,26 @@ class TestNodeAttr:
         assert node.get_attr("b") == 2
 
     def test_get_attr_single(self):
-        """get_attr(label) ritorna un attributo specifico."""
+        """get_attr(label) returns specific attribute."""
         bag = Bag()
         node = bag.set_item("x", 1, _attributes={"k": "v"})
         assert node.get_attr("k") == "v"
 
     def test_get_attr_missing_returns_default(self):
-        """get_attr(missing, default=X) ritorna X."""
+        """get_attr(missing, default=X) returns X."""
         bag = Bag()
         node = bag.set_item("x", 1)
         assert node.get_attr("nope", default="fallback") == "fallback"
 
     def test_get_attr_no_label_returns_all(self):
-        """get_attr() senza label ritorna tutti gli attributi."""
+        """get_attr() without label returns all attributes."""
         bag = Bag()
         node = bag.set_item("x", 1, _attributes={"a": 1, "b": 2})
         result = node.get_attr()
         assert result == {"a": 1, "b": 2}
 
     def test_del_attr_removes_key(self):
-        """del_attr(key) rimuove un attributo."""
+        """del_attr(key) removes attribute."""
         bag = Bag()
         node = bag.set_item("x", 1, _attributes={"a": 1, "b": 2})
         node.del_attr("a")
@@ -208,7 +208,7 @@ class TestNodeAttr:
         assert node.has_attr("b")
 
     def test_del_attr_comma_separated(self):
-        """del_attr('a,b') rimuove piu' attributi da stringa comma-separated."""
+        """del_attr('a,b') removes multiple attributes from comma-separated string."""
         bag = Bag()
         node = bag.set_item(
             "x", 1, _attributes={"a": 1, "b": 2, "c": 3}
@@ -219,14 +219,14 @@ class TestNodeAttr:
         assert node.has_attr("c")
 
     def test_has_attr_without_value(self):
-        """has_attr(key) ritorna True se l'attributo esiste."""
+        """has_attr(key) returns True if attribute exists."""
         bag = Bag()
         node = bag.set_item("x", 1, _attributes={"k": "v"})
         assert node.has_attr("k") is True
         assert node.has_attr("missing") is False
 
     def test_has_attr_with_value_match(self):
-        """has_attr(key, value) ritorna True solo se match."""
+        """has_attr(key, value) returns True only if match."""
         bag = Bag()
         node = bag.set_item("x", 1, _attributes={"kind": "int"})
         assert node.has_attr("kind", "int") is True
@@ -240,15 +240,15 @@ class TestNodeAttr:
 
 class TestIsBranch:
     def test_is_branch_true_for_bag_value(self):
-        """Nodo con valore Bag ha is_branch=True."""
+        """Node with Bag value has is_branch=True."""
         bag = Bag()
-        bag["outer.inner"] = 1  # crea sub-bag 'outer'
+        bag["outer.inner"] = 1  # create sub-bag 'outer'
         outer = bag.get_node("outer")
         assert isinstance(outer, BagNode)
         assert outer.is_branch is True
 
     def test_is_branch_false_for_scalar(self):
-        """Nodo con valore scalare ha is_branch=False."""
+        """Node with scalar value has is_branch=False."""
         bag = Bag()
         node = bag.set_item("x", 42)
         assert node.is_branch is False
@@ -261,7 +261,7 @@ class TestIsBranch:
 
 class TestIsValid:
     def test_fresh_node_is_valid(self):
-        """Un nodo appena creato ha is_valid=True (nessun errore)."""
+        """Fresh node has is_valid=True (no error)."""
         bag = Bag()
         node = bag.set_item("x", 1)
         assert node.is_valid is True
@@ -274,7 +274,7 @@ class TestIsValid:
 
 class TestPosition:
     def test_position_returns_index(self):
-        """position ritorna l'indice 0-based nel parent."""
+        """position returns 0-based index in parent."""
         bag = Bag()
         n0 = bag.set_item("a", 1)
         n1 = bag.set_item("b", 2)
@@ -284,7 +284,7 @@ class TestPosition:
         assert n2.position == 2
 
     def test_position_reflects_reordering(self):
-        """Dopo un riordino, position riflette la nuova posizione."""
+        """After reordering, position reflects new position."""
         bag = Bag()
         bag.set_item("a", 1)
         bag.set_item("b", 2)
@@ -292,10 +292,10 @@ class TestPosition:
         assert n.position == 0
 
     def test_position_negative_on_popped_node(self):
-        """Un nodo estratto con pop_node non e' piu' nel container: position -1.
+        """Node extracted with pop_node is no longer in container: position -1.
 
-        pop_node non chiama orphaned(), quindi parent_bag resta referenziato
-        ma il nodo non e' piu' indicizzabile nel container (label assente).
+        pop_node does not call orphaned(), so parent_bag remains referenced
+        but node is no longer indexable in container (label absent).
         """
         bag = Bag()
         bag.set_item("x", 1)
@@ -311,35 +311,35 @@ class TestPosition:
 
 class TestParentLinks:
     def test_parent_bag_returns_containing_bag(self):
-        """node.parent_bag e' la Bag che contiene il nodo."""
+        """node.parent_bag is Bag containing node."""
         bag = Bag()
         node = bag.set_item("x", 1)
         assert node.parent_bag is bag
 
     def test_parent_bag_none_after_orphaned_call(self):
-        """orphaned() azzera parent_bag; pop_node da solo no."""
+        """orphaned() zeros parent_bag; pop_node alone does not."""
         bag = Bag()
         bag.set_item("x", 1)
         node = bag.pop_node("x")
         assert isinstance(node, BagNode)
-        # pop_node non chiama orphaned: parent_bag resta
+        # pop_node does not call orphaned: parent_bag remains
         assert node.parent_bag is bag
-        # orphaned() azzera il riferimento
+        # orphaned() zeros reference
         node.orphaned()
         assert node.parent_bag is None
 
     def test_parent_node_with_backref(self):
-        """Con backref, il nodo dentro una sub-Bag vede il parent_node."""
+        """With backref, node inside sub-Bag sees parent_node."""
         root = Bag()
         root["outer.inner"] = 1
-        root.subscribe("w", update=lambda **kw: None)  # abilita backref
+        root.subscribe("w", update=lambda **kw: None)  # enable backref
         inner = root.get_node("outer.inner")
         assert isinstance(inner, BagNode)
         assert inner.parent_node is not None
         assert inner.parent_node.label == "outer"
 
     def test_parent_node_none_for_top_level(self):
-        """Un nodo top-level non ha parent_node."""
+        """Top-level node has no parent_node."""
         root = Bag()
         root.set_backref()
         node = root.set_item("x", 1)
@@ -347,23 +347,23 @@ class TestParentLinks:
 
 
 # =============================================================================
-# 9. fullpath (con backref)
+# 9. fullpath (with backref)
 # =============================================================================
 
 
 class TestNodeFullpath:
     def test_fullpath_none_without_backref(self):
-        """Senza backref, fullpath del nodo e' None (top-level non annidato)."""
+        """Without backref, node fullpath is None (non-nested top-level)."""
         bag = Bag()
         node = bag.set_item("x", 1)
-        # il parent_bag e' root, fullpath del bag e' None -> nodo none
+        # parent_bag is root, fullpath of bag is None -> node none
         assert node.fullpath is None
 
     def test_fullpath_reports_path_with_backref(self):
-        """Con backref, il nodo annidato ha fullpath dot-separated dalla root."""
+        """With backref, nested node has dot-separated fullpath from root."""
         root = Bag()
         root["outer.inner"] = 1
-        root.subscribe("w", update=lambda **kw: None)  # abilita backref
+        root.subscribe("w", update=lambda **kw: None)  # enable backref
         inner = root.get_node("outer.inner")
         assert isinstance(inner, BagNode)
         assert inner.fullpath == "outer.inner"
@@ -376,13 +376,13 @@ class TestNodeFullpath:
 
 class TestInheritedAttributes:
     def test_inherited_merges_ancestors_attributes(self):
-        """inherited ritorna attributi mergiati dalla catena parent (con backref)."""
+        """inherited returns attributes merged from parent chain (with backref)."""
         root = Bag()
         root["outer.inner"] = 1
         root.subscribe("w", update=lambda **kw: None)
-        # attributo sul nodo outer (container)
+        # attribute on outer node (container)
         root.set_attr("outer", env="prod")
-        # attributo sul nodo inner (foglia)
+        # attribute on inner node (leaf)
         root.set_attr("outer.inner", role="worker")
         inner = root.get_node("outer.inner")
         assert isinstance(inner, BagNode)
@@ -391,7 +391,7 @@ class TestInheritedAttributes:
         assert inherited.get("role") == "worker"
 
     def test_inherited_own_overrides_ancestor(self):
-        """Se il nodo ha un attributo gia' presente nell'antenato, vince il nodo."""
+        """If node has attribute already in ancestor, node wins."""
         root = Bag()
         root["outer.inner"] = 1
         root.subscribe("w", update=lambda **kw: None)
@@ -409,7 +409,7 @@ class TestInheritedAttributes:
 
 class TestAttributeOwnerNode:
     def test_finds_ancestor_with_attribute(self):
-        """attribute_owner_node trova l'ascendente che possiede l'attributo."""
+        """attribute_owner_node finds ancestor owning attribute."""
         root = Bag()
         root["outer.inner"] = 1
         root.subscribe("w", update=lambda **kw: None)
@@ -421,7 +421,7 @@ class TestAttributeOwnerNode:
         assert owner.label == "outer"
 
     def test_finds_ancestor_with_attr_value_match(self):
-        """attribute_owner_node con value fa match su (key, value)."""
+        """attribute_owner_node with value matches on (key, value)."""
         root = Bag()
         root["outer.inner"] = 1
         root.subscribe("w", update=lambda **kw: None)
@@ -433,7 +433,7 @@ class TestAttributeOwnerNode:
         assert owner.label == "outer"
 
     def test_returns_none_when_not_found(self):
-        """attribute_owner_node ritorna None se l'attributo non esiste."""
+        """attribute_owner_node returns None if attribute not found."""
         root = Bag()
         root["outer.inner"] = 1
         root.subscribe("w", update=lambda **kw: None)
@@ -449,7 +449,7 @@ class TestAttributeOwnerNode:
 
 class TestDiff:
     def test_diff_none_when_equal(self):
-        """diff ritorna None se i nodi sono equivalenti."""
+        """diff returns None if nodes are equivalent."""
         a = Bag()
         b = Bag()
         n1 = a.set_item("x", 1, _attributes={"k": "v"})
@@ -457,7 +457,7 @@ class TestDiff:
         assert n1.diff(n2) is None
 
     def test_diff_reports_label_difference(self):
-        """diff segnala label diverso."""
+        """diff reports different label."""
         a = Bag()
         b = Bag()
         n1 = a.set_item("x", 1)
@@ -467,7 +467,7 @@ class TestDiff:
         assert "label" in result.lower()
 
     def test_diff_reports_value_difference(self):
-        """diff segnala value diverso."""
+        """diff reports different value."""
         a = Bag()
         b = Bag()
         n1 = a.set_item("x", 1)
@@ -477,7 +477,7 @@ class TestDiff:
         assert "value" in result.lower()
 
     def test_diff_reports_attr_difference(self):
-        """diff segnala attr diversi."""
+        """diff reports different attributes."""
         a = Bag()
         b = Bag()
         n1 = a.set_item("x", 1, _attributes={"k": "v1"})
@@ -494,7 +494,7 @@ class TestDiff:
 
 class TestAsTuple:
     def test_returns_label_value_attr_resolver(self):
-        """as_tuple ritorna (label, value, attr, resolver)."""
+        """as_tuple returns (label, value, attr, resolver)."""
         bag = Bag()
         node = bag.set_item("x", 42, _attributes={"k": "v"})
         label, value, attr, resolver = node.as_tuple()
@@ -504,7 +504,7 @@ class TestAsTuple:
         assert resolver is None
 
     def test_tuple_has_resolver_when_set(self):
-        """Se il nodo ha un resolver, compare nella tupla."""
+        """If node has resolver, it appears in tuple."""
         from genro_bag.resolvers import UuidResolver
 
         bag = Bag()
@@ -522,7 +522,7 @@ class TestAsTuple:
 
 class TestNodeToJson:
     def test_returns_dict_with_label_value_attr(self):
-        """to_json ritorna dict con chiavi 'label', 'value', 'attr'."""
+        """to_json returns dict with keys 'label', 'value', 'attr'."""
         bag = Bag()
         node = bag.set_item("x", 42, _attributes={"k": "v"})
         data = node.to_json()
@@ -538,7 +538,7 @@ class TestNodeToJson:
 
 class TestNodeSubscription:
     def test_node_subscribe_receives_update_notifications(self):
-        """node.subscribe registra un callback invocato su cambio valore."""
+        """node.subscribe registers callback invoked on value change."""
         events: list = []
         bag = Bag()
         node = bag.set_item("x", 1)
@@ -549,7 +549,7 @@ class TestNodeSubscription:
         assert events[0]["evt"] == "upd_value"
 
     def test_node_unsubscribe_stops_notifications(self):
-        """Dopo unsubscribe non arrivano piu' eventi node-level."""
+        """After unsubscribe, no more node-level events arrive."""
         events: list = []
         bag = Bag()
         node = bag.set_item("x", 1)
@@ -567,22 +567,22 @@ class TestNodeSubscription:
 
 class TestResetResolver:
     def test_reset_resolver_clears_value_and_invalidates_cache(self):
-        """reset_resolver() invalida la cache e azzera il valore corrente.
+        """reset_resolver() invalidates cache and zeros current value.
 
-        Non rimuove il resolver: il nome si riferisce a "reset del resolver",
-        cioe' reset dello stato cached, non all'eliminazione dell'oggetto.
+        Does not remove resolver: the name refers to "reset of resolver",
+        i.e. reset of cached state, not deletion of object.
         """
         from genro_bag.resolvers import UuidResolver
 
         bag = Bag()
         bag["id"] = UuidResolver()
-        first = bag["id"]  # triggera load -> UUID generato e cached
+        first = bag["id"]  # triggers load -> UUID generated and cached
         node = bag.get_node("id")
         assert isinstance(node, BagNode)
         assert node.resolver is not None
         node.reset_resolver()
-        # il resolver resta, ma la cache e' invalidata: ri-accedere genera
-        # un NUOVO uuid (cache_time=False -> non si ricarica finche' non e' azzerata)
+        # resolver remains, but cache is invalidated: re-access generates
+        # new uuid (cache_time=False -> not reloaded until cleared)
         second = bag["id"]
         assert node.resolver is not None
         assert first != second
@@ -595,14 +595,14 @@ class TestResetResolver:
 
 class TestCompiled:
     def test_compiled_returns_dict_lazy_init(self):
-        """compiled espone un dict per dati esterni, inizializzato al primo accesso."""
+        """compiled exposes dict for external data, initialized at first access."""
         bag = Bag()
         node = bag.set_item("x", 1)
         c = node.compiled
         assert isinstance(c, dict)
 
     def test_compiled_same_instance_across_calls(self):
-        """Due letture di compiled restituiscono lo stesso dict (stesso oggetto)."""
+        """Two reads of compiled return same dict (same object)."""
         bag = Bag()
         node = bag.set_item("x", 1)
         c1 = node.compiled
@@ -617,7 +617,7 @@ class TestCompiled:
 
 class TestOrphaned:
     def test_orphaned_clears_parent_bag(self):
-        """orphaned() azzera parent_bag sul nodo e ritorna self per chaining."""
+        """orphaned() zeros parent_bag on node and returns self for chaining."""
         bag = Bag()
         node = bag.set_item("x", 1)
         assert node.parent_bag is bag
@@ -627,22 +627,22 @@ class TestOrphaned:
 
 
 # =============================================================================
-# 19. _ property (underscore) - parent_bag getter con raise
+# 19. _ property (underscore) - parent_bag getter with raise
 # =============================================================================
 
 
 class TestUnderscoreProperty:
     def test_returns_parent_bag(self):
-        """node._ ritorna la parent Bag quando il nodo e' attached."""
+        """node._ returns parent Bag when node is attached."""
         bag = Bag()
         node = bag.set_item("x", 1)
         assert node._ is bag
 
     def test_raises_when_no_parent(self):
-        """node._ su nodo senza parent_bag solleva ValueError.
+        """node._ on node without parent_bag raises ValueError.
 
-        Per avere un nodo veramente orfano serve pop_node seguito da
-        orphaned() (pop_node da solo preserva parent_bag).
+        To have truly orphan node, need pop_node followed by
+        orphaned() (pop_node alone preserves parent_bag).
         """
         bag = Bag()
         bag.set_item("x", 1)
@@ -660,27 +660,27 @@ class TestUnderscoreProperty:
 
 class TestXmlTag:
     def test_xml_tag_preserved_from_parsing(self):
-        """Dopo parse XML, node.xml_tag preserva il tag originale dell'elemento."""
+        """After XML parse, node.xml_tag preserves original element tag."""
         bag = Bag.from_xml("<root><item>v</item></root>")
         node = bag.get_node("root.item")
         assert isinstance(node, BagNode)
         assert node.xml_tag == "item"
 
     def test_xml_tag_none_when_not_from_parsing(self):
-        """Un nodo creato via set_item non ha xml_tag."""
+        """A node created via set_item has no xml_tag."""
         bag = Bag()
         node = bag.set_item("x", 1)
         assert node.xml_tag is None
 
 
 # =============================================================================
-# 21. set_value con _attributes: evento 'upd_value_attr' sul parent
+# 21. set_value with _attributes: 'upd_value_attr' event on parent
 # =============================================================================
 
 
 class TestSetValueWithAttributes:
     def test_set_value_with_attributes_fires_upd_value_attr_on_parent(self):
-        """set_value(v, _attributes={...}) con backref emette 'upd_value_attr'."""
+        """set_value(v, _attributes={...}) with backref emits 'upd_value_attr'."""
         events: list[str] = []
         bag = Bag()
         bag["x"] = 1
@@ -691,25 +691,25 @@ class TestSetValueWithAttributes:
         node.set_value(99, _attributes={"kind": "int"})
 
         assert "upd_value_attr" in events
-        # il valore e l'attributo sono entrambi aggiornati
+        # value and attribute are both updated
         assert bag.get_item("x") == 99
         assert bag.get_attr("x", "kind") == "int"
 
     def test_set_value_with_updattr_false_replaces_attributes(self):
-        """set_value(v, _attributes={...}, _updattr=False) sostituisce gli attr."""
+        """set_value(v, _attributes={...}, _updattr=False) replaces attributes."""
         bag = Bag()
         node = bag.set_item("x", 1, _attributes={"a": 1, "b": 2})
-        # _updattr=False: sostituzione completa, non merge
+        # _updattr=False: complete replacement, not merge
         node.set_value(99, _attributes={"c": 3}, _updattr=False)
 
-        # gli attributi vecchi sono spariti
+        # old attributes are gone
         assert not node.has_attr("a")
         assert not node.has_attr("b")
-        # solo il nuovo attributo resta
+        # only new attribute remains
         assert node.get_attr("c") == 3
 
     def test_set_value_does_not_fire_when_unchanged(self):
-        """set_value con lo stesso valore e stessi attr non emette evento."""
+        """set_value with same value and same attr emits no event."""
         events: list[str] = []
         bag = Bag()
         bag.set_item("x", 1, _attributes={"k": "v"})
@@ -717,12 +717,12 @@ class TestSetValueWithAttributes:
 
         node = bag.get_node("x")
         assert isinstance(node, BagNode)
-        # stesso valore, stessi attr -> nessun cambio
+        # same value, same attr -> no change
         node.set_value(1, _attributes={"k": "v"})
         assert events == []
 
     def test_set_value_trigger_false_suppresses_events(self):
-        """set_value(v, trigger=False) non notifica i subscribers."""
+        """set_value(v, trigger=False) does not notify subscribers."""
         events: list = []
         bag = Bag()
         bag["x"] = 1
@@ -733,22 +733,22 @@ class TestSetValueWithAttributes:
         node.set_value(42, trigger=False)
 
         assert events == []
-        # ma il valore e' cambiato
+        # but value is changed
         assert bag.get_item("x") == 42
 
 
 # =============================================================================
-# 22. set_value con BagNode come value: estrae valore e merge attr
+# 22. set_value with BagNode as value: extract value and merge attr
 # =============================================================================
 
 
 class TestSetValueWithBagNode:
     def test_set_value_with_bagnode_extracts_value_and_replaces_attrs(self):
-        """set_value(other_node) estrae value e rimpiazza gli attr con quelli di other.
+        """set_value(other_node) extracts value and replaces attr with other's.
 
-        Con _updattr non specificato (default None in set_value), set_attr
-        va in modalita' replace: gli attr preesistenti vengono sostituiti
-        da quelli dell'altro nodo.
+        With _updattr not specified (default None in set_value), set_attr
+        goes in replace mode: pre-existing attr are replaced
+        by those of other node.
         """
         src = Bag()
         other = src.set_item("src", 42, _attributes={"origin": "lab"})
@@ -757,22 +757,22 @@ class TestSetValueWithBagNode:
         node = dst.set_item("x", 0, _attributes={"target": "prod"})
         node.set_value(other)
 
-        # il valore di 'x' diventa 42 (estratto da other)
+        # value of 'x' becomes 42 (extracted from other)
         assert dst.get_item("x") == 42
-        # attr di other presenti
+        # other's attr present
         assert dst.get_attr("x", "origin") == "lab"
-        # attr preesistente 'target' sostituito (replace mode)
+        # pre-existing attr 'target' replaced (replace mode)
         assert dst.get_attr("x", "target") is None
 
 
 # =============================================================================
-# 23. set_attr senza trigger
+# 23. set_attr without trigger
 # =============================================================================
 
 
 class TestSetAttrTriggerFalse:
     def test_set_attr_trigger_false_does_not_notify(self):
-        """node.set_attr(trigger=False) aggiorna gli attr ma non notifica."""
+        """node.set_attr(trigger=False) updates attr but does not notify."""
         events: list = []
         bag = Bag()
         bag["x"] = 1

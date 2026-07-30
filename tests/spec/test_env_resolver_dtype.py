@@ -1,21 +1,21 @@
-"""Spec test: ``EnvResolver`` con kwarg ``dtype`` converte il valore
-letto da ``os.environ`` in un tipo Python via ``tytx_decode``.
+"""Spec test: ``EnvResolver`` with ``dtype`` kwarg converts the value
+read from ``os.environ`` to a Python type via ``tytx_decode``.
 
-Dipende da test_resolvers.py (resolver di base).
+Depends on test_resolvers.py (base resolver).
 
-Contratto: se ``dtype`` e' impostato e la variabile e' presente, il
-resolver compone internamente la stringa ``value::dtype`` e la passa a
-``tytx_decode``. Senza ``dtype`` (default) il comportamento e' quello
-storico: ritorna la stringa grezza o il ``default``.
+Contract: if ``dtype`` is set and the variable is present, the
+resolver internally composes the string ``value::dtype`` and passes it to
+``tytx_decode``. Without ``dtype`` (default), the behavior is the
+historical one: returns the raw string or the ``default``.
 
-## Scala
+## Scale
 
-1. dtype='L' su intero valido            ritorna int
-2. dtype='B' su boolean                  ritorna bool
-3. dtype='R' su float                    ritorna float
-4. nessun dtype                          ritorna stringa (comportamento attuale)
-5. variabile assente con dtype           ritorna None, niente conversione
-6. valore non parsabile per il dtype     solleva eccezione
+1. dtype='L' on valid integer              returns int
+2. dtype='B' on boolean                    returns bool
+3. dtype='R' on float                      returns float
+4. no dtype                                returns string (current behavior)
+5. missing variable with dtype             returns None, no conversion
+6. value not parsable for the dtype        raises exception
 """
 
 from __future__ import annotations
@@ -73,7 +73,7 @@ class TestDtypeReal:
 
 
 # =============================================================================
-# 4. nessun dtype: comportamento attuale (stringa)
+# 4. no dtype: current behaviour (string)
 # =============================================================================
 
 
@@ -93,8 +93,8 @@ class TestNoDtype:
 
 class TestMissingVariable:
     def test_missing_var_with_dtype_returns_none(self, monkeypatch):
-        """Se la variabile non e' settata e default=None, ritorna None
-        senza tentare la conversione."""
+        """If the variable is not set and default=None, returns None
+        without attempting conversion."""
         monkeypatch.delenv("X_MISSING", raising=False)
         bag = Bag()
         bag["x"] = EnvResolver("X_MISSING", dtype="L")
@@ -102,15 +102,15 @@ class TestMissingVariable:
 
 
 # =============================================================================
-# 6. valore non parsabile per il dtype
+# 6. value not parsable for the dtype
 # =============================================================================
 
 
 class TestUnparsableValue:
     def test_unparsable_value_raises(self, monkeypatch):
-        """Una stringa non convertibile per il dtype richiesto solleva
-        ValueError: il chiamante che dichiara il tipo si assume la
-        responsabilita' della forma del valore."""
+        """A string not convertible to the requested dtype raises
+        ValueError: the caller who declares the type assumes responsibility
+        for the form of the value."""
         monkeypatch.setenv("X_BAD", "not_a_number")
         bag = Bag()
         bag["x"] = EnvResolver("X_BAD", dtype="L")
