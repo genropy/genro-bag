@@ -376,8 +376,9 @@ class BagPopulate:
         """Update this Bag with nodes from source.
 
         Merges nodes from source into this Bag. For existing labels,
-        updates the value and merges attributes. For new labels, adds
-        the node.
+        updates the value, merges attributes and carries ``node_tag`` /
+        ``xml_tag`` (an incoming non-None tag wins, mirroring
+        ``set_item``). For new labels, adds the node with its tags.
 
         Args:
             source: A Bag or dict to merge from.
@@ -389,17 +390,24 @@ class BagPopulate:
             >>> bag['a'], bag['b'], bag['c']
             (10, 2, 3)
         """
-        # Normalize to list of (label, value, attr)
-        items: list[tuple[Any, Any, dict[str, Any]]]
+        # Normalize to list of (label, value, attr, node_tag, xml_tag)
+        items: list[tuple[Any, Any, dict[str, Any], str | None, str | None]]
         if isinstance(source, dict):
-            items = [(k, v, {}) for k, v in source.items()]
+            items = [(k, v, {}, None, None) for k, v in source.items()]
         else:
-            items = list(source.query(what="#k,#v,#a"))
+            items = [
+                (n.label, n.get_value(static=True), n.attr, n.node_tag, n.xml_tag)
+                for n in list(source)
+            ]
 
-        for label, value, attr in items:
+        for label, value, attr, node_tag, xml_tag in items:
             if label in self._nodes:
                 curr_node = self._nodes[label]
                 curr_node.attr.update(attr)
+                if node_tag is not None:
+                    curr_node.node_tag = node_tag
+                if xml_tag is not None:
+                    curr_node.xml_tag = xml_tag
                 curr_value = curr_node.static_value
                 if safe_is_instance(value, _IS_BAG) and safe_is_instance(curr_value, _IS_BAG):
                     curr_value.update(value, ignore_none=ignore_none)
@@ -407,4 +415,8 @@ class BagPopulate:
                     if not ignore_none or value is not None:
                         curr_node.value = value
             else:
-                self.set_item(label, value, _attributes=attr)
+                new_node = self.set_item(
+                    label, value, _attributes=attr, node_tag=node_tag,
+                )
+                if xml_tag is not None:
+                    new_node.xml_tag = xml_tag

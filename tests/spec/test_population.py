@@ -404,6 +404,54 @@ class TestUpdate:
         assert dst.get_item("outer.b") == 2
         assert dst.get_item("outer.c") == 3
 
+    def test_update_carries_node_tag_on_new_nodes(self):
+        """A node added by update keeps its node_tag and xml_tag."""
+        dst = Bag()
+        src = Bag()
+        node = src.set_item("a", 1, node_tag="alpha")
+        node.xml_tag = "alphaXml"
+        dst.update(src)
+        added = dst.get_node("a")
+        assert added.node_tag == "alpha"
+        assert added.xml_tag == "alphaXml"
+
+    def test_update_incoming_tag_wins_on_collision(self):
+        """On label collision a non-None incoming tag wins (as in set_item)."""
+        dst = Bag()
+        dst.set_item("a", 1, node_tag="old")
+        src = Bag()
+        src.set_item("a", 2, node_tag="new")
+        dst.update(src)
+        assert dst.get_node("a").node_tag == "new"
+
+    def test_update_none_incoming_tag_keeps_existing(self):
+        """On label collision an incoming None tag leaves the target's tag."""
+        dst = Bag()
+        dst.set_item("a", 1, node_tag="kept")
+        src = Bag({"a": 2})
+        dst.update(src)
+        assert dst.get_node("a").node_tag == "kept"
+        assert dst.get_item("a") == 2
+
+    def test_update_carries_tags_in_nested_recursion(self):
+        """Tags travel on nodes added inside a recursive bag-bag merge."""
+        dst = Bag()
+        dst.set_item("outer", Bag(), node_tag="outer")
+        src = Bag()
+        src.set_item("outer", Bag(), node_tag="outer")
+        src["outer"].set_item("inner", 1, node_tag="inner")
+        dst.update(src)
+        assert dst.get_node("outer").node_tag == "outer"
+        assert dst["outer"].get_node("inner").node_tag == "inner"
+
+    def test_update_from_dict_leaves_tags_untouched(self):
+        """A dict source carries no tags: existing tags survive, new nodes have none."""
+        bag = Bag()
+        bag.set_item("a", 1, node_tag="alpha")
+        bag.update({"a": 10, "c": 3})
+        assert bag.get_node("a").node_tag == "alpha"
+        assert bag.get_node("c").node_tag is None
+
 
 # =============================================================================
 # 17. pickle roundtrip
