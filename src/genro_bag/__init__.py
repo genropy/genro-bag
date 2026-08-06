@@ -24,7 +24,7 @@ from genro_bag.bagnode import BagNode, BagNodeContainer, BagNodeException
 from genro_bag.datachange import DataChangeCollector
 from genro_bag.resolver import BagResolver, BagSyncResolver
 
-__version__ = "0.20.2"
+__version__ = "0.21.0"
 
 # Bag is a TYTX custom type under suffix "X", its historical GenroPy datatype.
 # This makes a Bag carried inside a plain dict or list value survive to_tytx /
