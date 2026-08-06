@@ -202,6 +202,28 @@ Decimal('19.99')
 | `time` | `time(12, 30)` |
 | `list/tuple` | `[1, 2, 3]` |
 
+### Bags nested in plain values
+
+`Bag` is registered with genro-tytx as a custom type under the suffix `X`,
+so a Bag sitting **inside** a plain dict or list value survives `to_tytx` /
+`from_tytx` round-trips like any other supported type.
+
+Two boundaries apply on that path, because the type registry matches the
+exact class and its hooks take no arguments:
+
+- **Subclasses are not carried.** Only `Bag` itself is registered: a
+  `Bag` subclass inside a plain value raises `TypeError` at encode. This is
+  intended — each registered class needs its own suffix, and the suffix
+  space is shared. Subclass fidelity is preserved on the parse side
+  (`Bag.from_tytx` builds `cls()`), not inside plain values.
+- **Signing does not reach it.** The registry hooks cannot carry
+  `sign_key`, so a resolver inside such a nested Bag could be neither
+  signed nor verified. Both sides refuse instead, on every slot the
+  registry serves — node values and attribute values, on `to_tytx` and
+  `to_json` alike: the writers raise `BagSerializationError`, the readers
+  (`from_tytx`, `from_json`) raise `SignatureError`. Keep resolvers on
+  Bag-valued nodes, where signing works, or serialize without a key.
+
 ## Resolvers
 
 A `BagResolver` survives every format, whether it is the node's value or

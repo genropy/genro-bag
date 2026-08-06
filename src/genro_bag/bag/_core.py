@@ -93,10 +93,16 @@ class Bag(BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer
         _container_class: Factory class for creating the internal
             BagNodeContainer. Same convention as _node_class: subclasses may
             override to inject a custom container, user code does not touch it.
+        __tytx_suffix__: TYTX type suffix ("X", Bag's historical GenroPy
+            datatype). Read by genro_tytx.register_class together with
+            to_tytx()/from_tytx(), so a Bag nested inside a plain dict or list
+            value travels on the wire as "<payload>::X". The registration call
+            lives in genro_bag/__init__.py.
     """
 
     _node_class: type[BagNode] = BagNode
     _container_class: type[BagNodeContainer] = BagNodeContainer
+    __tytx_suffix__ = "X"
 
     def __init__(self, source: dict[str, Any] | None = None):
         """Create a new Bag.

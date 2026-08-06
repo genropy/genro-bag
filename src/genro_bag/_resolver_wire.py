@@ -27,7 +27,7 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from genro_toolbox import safe_is_instance, sign, verify
+from genro_toolbox import SignatureError, safe_is_instance, sign, verify
 
 from genro_bag.bag._exceptions import BagSerializationError
 from genro_bag.resolver import BagResolver
@@ -40,6 +40,33 @@ _IS_RESOLVER = "genro_bag.resolver.BagResolver"
 def is_resolver(value: Any) -> bool:
     """True if value is a BagResolver, without importing it eagerly."""
     return safe_is_instance(value, _IS_RESOLVER)
+
+
+def has_nested_resolver(value: Any) -> bool:
+    """True if a Bag nested in a plain container value carries a resolver.
+
+    A Bag inside a plain dict/list travels through the TYTX type registry,
+    whose hooks (``to_tytx()`` / ``from_tytx``) take no ``sign_key``: a
+    resolver in there would go on the wire unsigned and come back
+    unverified. Serializer and parser share this scan to refuse both
+    directions whenever a sign_key is in force.
+    """
+    if isinstance(value, dict):
+        return any(has_nested_resolver(v) for v in value.values())
+    if isinstance(value, (list, tuple)):
+        return any(has_nested_resolver(v) for v in value)
+    if hasattr(value, "walk") and hasattr(value, "_nodes"):
+        for _path, node in value.walk():
+            if node.resolver is not None:
+                return True
+            if node.attr and any(is_resolver(v) for v in node.attr.values()):
+                return True
+            node_value = node.static_value
+            if isinstance(node_value, (dict, list, tuple)) and has_nested_resolver(
+                node_value
+            ):
+                return True
+    return False
 
 
 def encode_resolver(
@@ -109,20 +136,44 @@ def encode_attrs(
 ) -> dict:
     """Return a copy of attr with every BagResolver encoded.
 
-    Attributes that hold no resolver are copied untouched.
+    Attributes that hold no resolver are copied untouched. With a key, an
+    attribute value hiding a Bag that carries a resolver is refused: it
+    would travel through the type registry, out of the signature's reach.
     """
     if not attr:
         return {}
-    return {
-        k: encode_resolver(v, key, expires_in, f"{where} attribute {k!r}".strip())
-        if is_resolver(v)
-        else v
-        for k, v in attr.items()
-    }
+    encoded = {}
+    for k, v in attr.items():
+        if is_resolver(v):
+            encoded[k] = encode_resolver(
+                v, key, expires_in, f"{where} attribute {k!r}".strip()
+            )
+        else:
+            if key is not None and has_nested_resolver(v):
+                raise BagSerializationError(
+                    f"{where} attribute {k!r}: a Bag nested in the attribute "
+                    "value carries a resolver, which cannot be signed on this "
+                    "path — move it to a Bag-valued node or drop sign_key"
+                )
+            encoded[k] = v
+    return encoded
 
 
 def decode_attrs(attr: dict | None, key: str | None = None) -> dict:
-    """Return a copy of attr with every marked string rebuilt as a resolver."""
+    """Return a copy of attr with every marked string rebuilt as a resolver.
+
+    With a key, an attribute value hiding a Bag that carries a live resolver
+    is refused: it was hydrated by the type registry, which verifies nothing.
+    """
     if not attr:
         return {}
-    return {k: (decode_resolver(v, key) or v) for k, v in attr.items()}
+    decoded = {}
+    for k, v in attr.items():
+        if key is not None and has_nested_resolver(v):
+            raise SignatureError(
+                f"attribute {k!r}: a Bag nested in the attribute value "
+                "carries a resolver whose signature cannot be verified on "
+                "this path"
+            )
+        decoded[k] = decode_resolver(v, key) or v
+    return decoded

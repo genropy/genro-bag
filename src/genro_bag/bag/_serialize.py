@@ -17,7 +17,8 @@ from xml.sax import saxutils
 
 from genro_tytx import to_tytx as tytx_encode
 
-from genro_bag._resolver_wire import encode_attrs, encode_resolver
+from genro_bag._resolver_wire import encode_attrs, encode_resolver, has_nested_resolver
+from genro_bag.bag._exceptions import BagSerializationError
 
 if TYPE_CHECKING:
     from genro_bag.bagnode import BagNode
@@ -270,7 +271,10 @@ class BagSerializer:
 
         Raises:
             ImportError: If genro-tytx package is not installed.
-            BagSerializationError: If a resolver cannot be written as JSON.
+            BagSerializationError: If a resolver cannot be written as JSON,
+                or, with sign_key, if a Bag nested in a plain container
+                value (node value or attribute) carries a resolver — that
+                path goes through the type registry and cannot be signed.
         """
         if compact:
             paths: dict[int, str] = {}
@@ -362,6 +366,15 @@ class BagSerializer:
             elif node_value is None:
                 value = "::NN"
             else:
+                # A Bag inside a plain container travels through the TYTX type
+                # registry, whose hooks take no sign_key: a resolver in there
+                # cannot be signed, so refuse instead of emitting it unsigned.
+                if sign_key is not None and has_nested_resolver(node_value):
+                    raise BagSerializationError(
+                        f"{where}: a Bag nested in a plain container value "
+                        "carries a resolver, which cannot be signed on this "
+                        "path — move it to a Bag-valued node or drop sign_key"
+                    )
                 value = node_value
 
             attr = encode_attrs(node.attr, sign_key, expires_in, where)
@@ -403,7 +416,10 @@ class BagSerializer:
             JSON string representation.
 
         Raises:
-            BagSerializationError: If a resolver cannot be written as JSON.
+            BagSerializationError: If a resolver cannot be written as JSON,
+                or, with sign_key, if a Bag nested in a plain container
+                value (node value or attribute) carries a resolver — that
+                path goes through the type registry and cannot be signed.
         """
         result = [self._node_to_json_dict(node, typed, sign_key, expires_in) for node in self]
 
@@ -421,10 +437,18 @@ class BagSerializer:
         """Convert a BagNode to JSON-serializable dict."""
         # Use static=True to avoid triggering resolvers during serialization
         value = node.get_value(static=True)
+        where = f"node {node.label!r}"
         # Check if value is a Bag using duck typing
         if hasattr(value, "_nodes") and hasattr(value, "walk"):
             value = [value._node_to_json_dict(n, typed, sign_key, expires_in) for n in value]
-        where = f"node {node.label!r}"
+        elif sign_key is not None and has_nested_resolver(value):
+            # A Bag inside a plain container travels through the TYTX type
+            # registry, whose hooks take no sign_key — same refusal as to_tytx.
+            raise BagSerializationError(
+                f"{where}: a Bag nested in a plain container value carries a "
+                "resolver, which cannot be signed on this path — move it to "
+                "a Bag-valued node or drop sign_key"
+            )
         result = {
             "label": node.label,
             "value": value,

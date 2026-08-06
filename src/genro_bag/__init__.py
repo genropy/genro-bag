@@ -17,11 +17,20 @@
 genro-bag: Modernized bag system for the Genropy framework.
 """
 
+from genro_tytx import register_class as _register_class
+
 from genro_bag.bag import Bag, BagException, BagSerializationError
 from genro_bag.bagnode import BagNode, BagNodeContainer, BagNodeException
+from genro_bag.datachange import DataChangeCollector
 from genro_bag.resolver import BagResolver, BagSyncResolver
 
-__version__ = "0.20.1"
+__version__ = "0.20.2"
+
+# Bag is a TYTX custom type under suffix "X", its historical GenroPy datatype.
+# This makes a Bag carried inside a plain dict or list value survive to_tytx /
+# from_tytx round-trips, and it is what turns the "::X" branch-node marker into
+# a real Bag when Bag.from_tytx reads back its own rows.
+_register_class(Bag)
 
 __all__ = [
     "Bag",
@@ -32,4 +41,5 @@ __all__ = [
     "BagResolver",
     "BagSerializationError",
     "BagSyncResolver",
+    "DataChangeCollector",
 ]

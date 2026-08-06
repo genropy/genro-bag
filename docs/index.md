@@ -134,6 +134,17 @@ subscriptions/architecture
 ```
 
 ```{toctree}
+:maxdepth: 2
+:caption: Data Changes
+:hidden:
+
+datachanges/README
+datachanges/examples
+datachanges/faq
+datachanges/architecture
+```
+
+```{toctree}
 :maxdepth: 1
 :caption: Reference
 :hidden:

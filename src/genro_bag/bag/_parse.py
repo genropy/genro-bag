@@ -20,9 +20,10 @@ from xml import sax
 from xml.sax import saxutils
 from xml.sax.handler import ContentHandler
 
+from genro_toolbox import SignatureError
 from genro_tytx import from_tytx as tytx_decode
 
-from genro_bag._resolver_wire import decode_attrs, decode_resolver
+from genro_bag._resolver_wire import decode_attrs, decode_resolver, has_nested_resolver
 
 if TYPE_CHECKING:
     from genro_bag.bag._core import Bag
@@ -144,7 +145,9 @@ class BagParser:
         reads the value.
 
         Args:
-            data: Serialized data from to_tytx().
+            data: Serialized data from to_tytx(). An empty payload is the
+                branch-node marker "::X" stripped of its suffix and decodes
+                to an empty Bag.
             transport: Input format matching how data was serialized:
                 - 'json': JSON string
                 - 'msgpack': Binary bytes
@@ -157,9 +160,21 @@ class BagParser:
 
         Raises:
             ImportError: If genro-tytx package is not installed.
+            TypeError: If data is neither str nor bytes (only the empty
+                payload means a branch node).
             SignatureError: Signature missing, forged or expired, when
-                sign_key was given.
+                sign_key was given — including a resolver inside a Bag
+                nested in a plain container value, which the type registry
+                hydrates without any signature check.
         """
+        # An empty payload is the branch-node marker "::X" stripped of its
+        # suffix: a node that is a Bag but has no children yet. TYTX hands it
+        # here as "" once Bag is a registered custom type. Only the empty
+        # payload means that; anything else (None included) is a caller error.
+        if data == "" or data == b"":
+            return cls()  # type: ignore[return-value]
+        if not isinstance(data, (str, bytes)):
+            raise TypeError(f"from_tytx() requires str or bytes, got {type(data).__name__}")
         parsed = tytx_decode(data, transport=transport if transport != "json" else None)
         rows = parsed["rows"]
         paths_raw = parsed.get("paths")
@@ -183,8 +198,13 @@ class BagParser:
             full_path = f"{parent_path}.{label}" if parent_path else label
             attr = decode_attrs(attr, sign_key)
 
-            # Decode value
-            if value == "::X":
+            # Decode value. On the json transport TYTX owns the "X" suffix, so
+            # the row's "::X" marker arrives already hydrated as a Bag; on
+            # msgpack, strings are not re-scanned for suffixes, so the marker
+            # arrives as the literal string "::X". Either way the branch is
+            # always empty (the flattener emits the marker with no payload),
+            # so cls() is used instead, keeping subclass fidelity.
+            if value == "::X" or (hasattr(value, "walk") and hasattr(value, "_nodes")):
                 child_bag = cls()
                 parent_bag.set_item(label, child_bag, _attributes=attr)
                 path_to_bag[full_path] = child_bag
@@ -195,6 +215,16 @@ class BagParser:
                 if resolver is not None:
                     parent_bag.set_item(label, None, _attributes=attr, resolver=resolver)
                 else:
+                    # A Bag hydrated inside a plain container came through the
+                    # TYTX type registry, whose hooks take no sign_key: a
+                    # resolver in there was never signature-checked, so refuse
+                    # it — the mirror of the same refusal on the encode side.
+                    if sign_key is not None and has_nested_resolver(value):
+                        raise SignatureError(
+                            f"node {full_path!r}: a Bag nested in a plain "
+                            "container value carries a resolver whose "
+                            "signature cannot be verified on this path"
+                        )
                     parent_bag.set_item(label, value, _attributes=attr)
 
             # Set tag if present
@@ -238,6 +268,16 @@ class BagParser:
         """
         if isinstance(source, str):
             source = tytx_decode(source)
+            # A Bag hydrated by the TYTX type registry inside the decoded
+            # structure carries live resolvers that were never signature-
+            # checked — same refusal as from_tytx. Legitimate signed
+            # resolvers are still ::RSLV: strings at this point, so any
+            # live resolver found here came through the unsigned path.
+            if sign_key is not None and has_nested_resolver(source):
+                raise SignatureError(
+                    "a Bag nested in a plain value carries a resolver whose "
+                    "signature cannot be verified on this path"
+                )
 
         if not isinstance(source, (list, dict)):
             # Wrap scalar in a dict

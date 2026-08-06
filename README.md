@@ -86,6 +86,7 @@ Bag provides four layers—use only what you need:
 | **Core Bag** | Paths, values, attributes, serialization | Always |
 | **Resolvers** | Lazy-loaded, computed values | API calls, DB queries, expensive computations |
 | **Subscriptions** | React to changes | Validation, logging, sync, computed properties |
+| **Data Changes** | Accumulate what changed, drain it later | Stores, replicas, push rails |
 
 ## Interactive Notebooks
 
