@@ -21,9 +21,11 @@ from xml.sax import saxutils
 from xml.sax.handler import ContentHandler
 
 from genro_toolbox import SignatureError
+from genro_tytx import SUFFIX_TO_TYPE
 from genro_tytx import from_tytx as tytx_decode
 
 from genro_bag._resolver_wire import decode_attrs, decode_resolver, has_nested_resolver
+from genro_bag.bag._exceptions import BagSerializationError
 
 if TYPE_CHECKING:
     from genro_bag.bag._core import Bag
@@ -159,6 +161,7 @@ class BagParser:
             Reconstructed Bag with all nodes, values, and attributes.
 
         Raises:
+            BagSerializationError: If a parent reference cannot be resolved.
             ImportError: If genro-tytx package is not installed.
             TypeError: If data is neither str nor bytes (only the empty
                 payload means a branch node).
@@ -179,7 +182,7 @@ class BagParser:
         rows = parsed["rows"]
         paths_raw = parsed.get("paths")
         code_to_path: dict[int, str] | None = (
-            {int(k): v for k, v in paths_raw.items()} if paths_raw else None
+            {int(k): v for k, v in paths_raw.items()} if paths_raw is not None else None
         )
 
         bag = cls()
@@ -190,22 +193,33 @@ class BagParser:
 
             # Resolve parent path
             if code_to_path is not None:
-                parent_path = code_to_path.get(parent_ref, "") if parent_ref is not None else ""
+                if parent_ref is not None and parent_ref not in code_to_path:
+                    raise BagSerializationError(f"Unknown TYTX parent reference: {parent_ref!r}")
+                parent_path = code_to_path[parent_ref] if parent_ref is not None else ""
             else:
-                parent_path = parent_ref if parent_ref else ""
+                parent_path = parent_ref if parent_ref is not None else ""
 
-            parent_bag = path_to_bag.get(parent_path, bag)
+            if parent_path not in path_to_bag:
+                raise BagSerializationError(
+                    f"Missing or undecodable TYTX parent branch: {parent_path!r}"
+                )
+            parent_bag = path_to_bag[parent_path]
             full_path = f"{parent_path}.{label}" if parent_path else label
             attr = decode_attrs(attr, sign_key)
 
-            # Decode value. On the json transport TYTX owns the "X" suffix, so
-            # the row's "::X" marker arrives already hydrated as a Bag; on
-            # msgpack, strings are not re-scanned for suffixes, so the marker
-            # arrives as the literal string "::X". Either way the branch is
-            # always empty (the flattener emits the marker with no payload),
-            # so cls() is used instead, keeping subclass fidelity.
-            if value == "::X" or (hasattr(value, "walk") and hasattr(value, "_nodes")):
-                child_bag = cls()
+            # JSON already hydrates registered branches. MessagePack preserves
+            # text: only exact empty markers owned by Bag types are structural.
+            if transport == "msgpack" and isinstance(value, str) and value.startswith("::"):
+                entry = SUFFIX_TO_TYPE.get(value[2:])
+                if entry is not None and issubclass(entry[0], BagParser):
+                    value = tytx_decode(value)
+            if hasattr(value, "walk") and hasattr(value, "_nodes"):
+                # Rows carry empty branches; descendants are populated below.
+                # Legacy X subclasses keep the historical root-class factory.
+                child_class = type(value)
+                if child_class.__tytx_suffix__ == "X" and cls.__tytx_suffix__ == "X":
+                    child_class = cls
+                child_bag = child_class()
                 parent_bag.set_item(label, child_bag, _attributes=attr)
                 path_to_bag[full_path] = child_bag
             elif value == "::NN":

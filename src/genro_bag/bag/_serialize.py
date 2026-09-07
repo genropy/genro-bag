@@ -323,7 +323,7 @@ class BagSerializer:
         is done later by the serializer.
 
         Special value markers:
-            - "::X" for Bag (branch nodes)
+            - "::<suffix>" for registered Bag branches ("::X" for ordinary Bags)
             - "::NN" for None values
             - "::RSLV:<payload>" for a node's own resolver
 
@@ -340,7 +340,7 @@ class BagSerializer:
                 - parent: path string or int code (None for root-level)
                 - label: node's label
                 - tag: node's tag or None
-                - value: "::X" for Bag, "::NN" for None, "::RSLV:..." for a
+                - value: "::<suffix>" for Bag branches, "::NN" for None, "::RSLV:..." for a
                   resolver, else raw value
                 - attr: dict of node attributes, resolvers encoded
         """
@@ -362,7 +362,7 @@ class BagSerializer:
             if node.resolver is not None:
                 value = encode_resolver(node.resolver, sign_key, expires_in, where)
             elif hasattr(node_value, "walk") and hasattr(node_value, "_nodes"):
-                value = "::X"
+                value = f"::{type(node_value).__tytx_suffix__}"
             elif node_value is None:
                 value = "::NN"
             else:

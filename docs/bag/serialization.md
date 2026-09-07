@@ -211,11 +211,9 @@ so a Bag sitting **inside** a plain dict or list value survives `to_tytx` /
 Two boundaries apply on that path, because the type registry matches the
 exact class and its hooks take no arguments:
 
-- **Subclasses are not carried.** Only `Bag` itself is registered: a
-  `Bag` subclass inside a plain value raises `TypeError` at encode. This is
-  intended — each registered class needs its own suffix, and the suffix
-  space is shared. Subclass fidelity is preserved on the parse side
-  (`Bag.from_tytx` builds `cls()`), not inside plain values.
+- **Subclasses need registration.** A subclass inside a plain value must
+  declare its own `__tytx_suffix__` and use `genro_tytx.register_class`.
+  Unregistered subclasses inside plain values raise `TypeError` at encode.
 - **Signing does not reach it.** The registry hooks cannot carry
   `sign_key`, so a resolver inside such a nested Bag could be neither
   signed nor verified. Both sides refuse instead, on every slot the
@@ -330,3 +328,24 @@ bag.fill_from('/path/to/data.bag.mp')
 | Data exchange with types | TYTX JSON |
 | Storage/cache | TYTX MessagePack |
 | Web APIs | JSON |
+
+### Mixed branch types and legacy subclasses
+
+Each registered Bag branch travels with its own suffix, including empty
+branches. A registered subclass with its own suffix can contain ordinary
+`Bag` data branches (`X`) and other registered subclasses without changing
+their types during JSON or MessagePack round-trips, with compact paths on
+or off. The same rule applies inside a typed dict/list envelope.
+
+Subclasses that still inherit `X` keep the historical behavior:
+`LegacyBag.from_tytx(...)` reconstructs `X` branches as `LegacyBag`.
+To distinguish ordinary data Bags from specialized branches, declare a
+unique suffix and register the specialized class. Existing serialized `X`
+branches contain no information identifying a specialized class; serialize
+again from the original typed tree when migrating.
+
+Unknown parent references and missing or undecodable parent branches raise
+`BagSerializationError`; descendants are never moved to the root. Parent
+rows must precede their children. MessagePack text such as `::RAW` and `::D`
+remains text. Only exact empty markers for registered Bag types are treated
+as structural branch markers by the Bag decoder.
