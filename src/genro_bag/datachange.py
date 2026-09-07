@@ -31,9 +31,10 @@ rather than sent unsigned. The change shape::
 coalesce when ``new["key"] == old["key"]`` — the dict's own equality, no
 custom ``__eq__`` anywhere. ``delete`` stays outside the key because a
 delete must coalesce over a previous set on the same path. ``attributes``
-stays outside because merging fuses it: if it discriminated, two writes to
-the same path carrying different attributes would never coalesce and there
-would be nothing left to fuse.
+stays outside so changes with different attributes can still coalesce.
+With ``replace=True``, the latest change replaces the previous one in full,
+including its attributes. Captured attributes describe the complete state;
+merging them would restore attributes removed by a later write.
 
 ``fired`` marks a one-shot event change. The plain rail cannot observe it:
 ``set_item(..., _fired=True)`` resets the node value with ``trigger=False``
@@ -268,7 +269,8 @@ class DataChangeCollector:
         Args:
             change: The change dict, forwarded from elsewhere.
             replace: True removes the pending change with an equal ``key``
-                first, so the two coalesce into the appended one.
+                first, so the appended change replaces it in full, including
+                attributes. Supply complete attributes, not a partial update.
         """
         if replace:
             self.changes = [c for c in self.changes if c["key"] != change["key"]]

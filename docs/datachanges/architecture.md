@@ -73,8 +73,10 @@ flowchart LR
 
 `delete` and `attributes` sit outside the key on purpose: `delete` so a removal
 coalesces over a previous set on the same path and only the removal survives;
-`attributes` because merging fuses it, and a discriminating `attributes` would
-mean two writes to one path with different metadata never coalesce.
+`attributes` so changes to one path can coalesce even when their metadata
+differs. The latest change replaces the previous one in full. Its attributes
+represent the complete state, so an attribute absent from the latest change
+is not carried over from an earlier one.
 
 The coalesced change gets a **new** `change_idx` and moves to the tail, so
 drain order reflects when the last write happened.

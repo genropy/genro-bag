@@ -407,6 +407,27 @@ class TestAppend:
         assert len(drained) == 1
         assert drained[0]["value"] == 9
 
+    def test_replace_preserves_attribute_removal(self):
+        """Contract: coalescing captured states must not restore removed attributes."""
+        bag = Bag()
+        bag.set_item("x", 1, color="red", size=10)
+        capture = DataChangeCollector(bag)
+        node = bag.get_node("x")
+        node.set_attr(color="blue")
+        node.set_attr({"size": 20}, _updattr=False)
+        changes = capture.drain()
+        assert [change["attributes"] for change in changes] == [
+            {"color": "blue", "size": 10}, {"size": 20}
+        ]
+
+        forwarded = DataChangeCollector(Bag())
+        for change in changes:
+            forwarded.append(change, replace=True)
+        drained = forwarded.drain()
+        assert len(drained) == 1
+        assert drained[0]["attributes"] == {"size": 20}
+        assert changes[0]["attributes"] == {"color": "blue", "size": 10}
+
     def test_coalesced_change_goes_to_the_tail_with_a_new_idx(self):
         """Drain order reflects when the last write happened."""
         bag = Bag()

@@ -56,9 +56,14 @@ the only survivor — which is what actually happened.
 
 ### Why are `attributes` outside `key` too?
 
-Merging fuses them. If `attributes` discriminated, two writes to the same path
-carrying different attributes would never coalesce, and there would be nothing
-left to fuse.
+Changes to the same path must be able to coalesce even when their attributes
+differ. With `replace=True`, the latest change replaces the previous one in
+full; attributes are not merged. The collector captures all attributes, so
+merging would restore attributes that a later write removed. Forwarded changes
+used with `replace=True` must also carry the complete attribute state.
+
+For example, replacing `{color: "red", size: 10}` with `{size: 20}` leaves
+only `{size: 20}`. The old `color` must not reappear.
 
 ### What is `fired`?
 
