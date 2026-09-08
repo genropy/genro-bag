@@ -86,7 +86,6 @@ Bag provides four layers—use only what you need:
 | **Core Bag** | Paths, values, attributes, serialization | Always |
 | **Resolvers** | Lazy-loaded, computed values | API calls, DB queries, expensive computations |
 | **Subscriptions** | React to changes | Validation, logging, sync, computed properties |
-| **Data Changes** | Accumulate what changed, drain it later | Stores, replicas, push rails |
 
 ## Interactive Notebooks
 
@@ -134,3 +133,14 @@ pytest
 Apache License 2.0 — see [LICENSE](LICENSE) for details.
 
 Copyright 2025 Softwell S.r.l. — Genropy Team
+
+## Migration to 0.22.0
+
+`DataChangeCollector` and `genro_bag.datachange` have been removed. Consumers
+that need to accumulate or replicate changes should own that policy and use
+Bag subscriptions as needed. Importing the removed class or module is no
+longer supported.
+
+Bag subscriptions, transactions and TYTX registration remain available,
+including serialization of Bags nested in ordinary dict/list values and
+registered branch types.
