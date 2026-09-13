@@ -143,3 +143,10 @@ reference/architecture
 reference/benchmarks
 reference/full-faq
 ```
+
+```{toctree}
+:maxdepth: 1
+:caption: Releases
+
+releases/0.23.0
+```

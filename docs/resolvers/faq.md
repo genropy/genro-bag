@@ -57,7 +57,7 @@ except Exception as e:
 |--------------|----------|
 | `0` | No caching, compute every time |
 | `> 0` | Passive cache for N seconds (reload on next access after expiry) |
-| `< 0` | Active cache — background refresh every abs(N) seconds (async only) |
+| `< 0` | Legacy cache convention; no background refresh |
 | `False` | Cache forever (until manual reset) |
 
 ### Why is my value not updating?
@@ -78,39 +78,14 @@ Yes, each resolver has its own cache:
 
 ```python
 bag['static'] = UrlResolver('...', cache_time=False)  # Forever
-bag['live'] = UrlResolver('...', cache_time=-20)    # Background refresh every 20s (async only)
 bag['dynamic'] = UrlResolver('...', cache_time=30)  # 30 seconds
 bag['realtime'] = UrlResolver('...', cache_time=0)  # Never cache
 ```
 
-## Async
+## Execution context
 
-### How do I use resolvers in async code?
-
-Use `smartawait`:
-
-```python
-from genro_toolbox import smartawait
-
-async def get_data():
-    return await smartawait(bag.get_item('api'))
-```
-
-### Why do I get a coroutine instead of the value?
-
-In async context, `get_item()` may return a coroutine:
-
-```python
-# This might return a coroutine
-result = bag.get_item('api')
-
-# Always safe:
-result = await smartawait(bag.get_item('api'))
-```
-
-### Can I use sync resolvers in async code?
-
-Yes, they work automatically. The `@smartasync` decorator handles it.
+Resolvers always execute synchronously and return the final value, including
+inside an event loop. Async callbacks and loaders are rejected.
 
 ## Serialization
 
@@ -260,12 +235,6 @@ def bad_resolver():
 bag['data'] = BagCbResolver(bad_resolver)
 ```
 
-### Forgetting async context
+### Execution context
 
-```python
-# WRONG in async code
-result = bag['api']  # Might be a coroutine!
-
-# RIGHT
-result = await smartawait(bag.get_item('api'))
-```
+Use `result = bag["api"]` in every context. No await is needed.

@@ -127,19 +127,8 @@ Callbacks returning `None` (the default) propagate normally.
 
 ### How do I use timer subscriptions?
 
-Subscribe with `timer=` and `interval=`:
-
-```python
-def poll(**kw):
-    print(f"Tick! bag={kw['bag']}")
-
-bag.subscribe('poller', timer=poll, interval=10)  # Every 10 seconds
-
-# Stop the timer
-bag.unsubscribe('poller', timer=True)
-```
-
-Note: `any=callback` does **not** include timer events.
+Timer subscriptions are unsupported and raise `ValueError`. The application
+owns scheduling and calls synchronous Bag operations when needed.
 
 ### Can I prevent event firing temporarily?
 

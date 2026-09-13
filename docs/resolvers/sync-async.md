@@ -1,223 +1,29 @@
-# Sync and Async
+# Synchronous resolvers
 
-Resolvers work seamlessly in both synchronous and asynchronous contexts. This guide explains how.
-
-## The Four Cases
-
-When you access a resolver value, the system handles four possible combinations:
-
-| Resolver Type | Execution Context | What Happens |
-|--------------|-------------------|--------------|
-| Sync (`load()`) | Sync | Direct call to `load()` |
-| Sync (`load()`) | Async | `load()` wrapped with `@smartasync` |
-| Async (`async_load()`) | Sync | `async_load()` run synchronously via `smartasync` |
-| Async (`async_load()`) | Async | `await async_load()` |
-
-**Key point:** You don't need to worry about this. The resolver handles it automatically.
-
-## Writing Resolvers
-
-### Sync Resolver
-
-Override `load()` for synchronous operations:
-
-```python
-from genro_bag.resolver import BagResolver
-
-class SimpleTextReader(BagResolver):
-    class_args = ['path']
-
-    def load(self):
-        with open(self.kw['path']) as f:
-            return f.read()
-```
-
-### Async Resolver
-
-Override `async_load()` for asynchronous operations:
-
-```python
-from genro_bag.resolver import BagResolver
-import httpx
-
-class ApiResolver(BagResolver):
-    class_args = ['url']
-    class_kwargs = {'cache_time': 300}
-
-    async def async_load(self):
-        async with httpx.AsyncClient() as client:
-            response = await client.get(self.kw['url'])
-            return response.json()
-```
-
-## Accessing Values
-
-### In Sync Code
+Bag access and resolver loading are synchronous in every execution context,
+including inside a running event loop. A resolver implements `def load(self)`
+and returns its final value. Nested path traversal and legacy `getItem()` obey
+the same contract; no thread, task, or coroutine is created automatically.
 
 ```python
 from genro_bag import Bag
-from genro_bag.resolvers import UrlResolver
+from genro_bag.resolvers import BagCbResolver
 
-bag = Bag()
-bag['api'] = UrlResolver('https://api.example.com/data')
+bag = Bag({'answer': BagCbResolver(lambda: 42)})
+assert bag['answer'] == 42
 
-# Just access the value - works with both sync and async resolvers
-data = bag['api']
+async def handler():
+    assert bag['answer'] == 42  # still a direct synchronous access
 ```
 
-### In Async Code
+`async def load`, `async_load`-only resolvers, async callbacks, and awaitable
+loader results are rejected. `BagAsyncCbResolver` remains importable only to
+raise an explicit migration error when constructed. Move asynchronous I/O
+outside the Bag and store its completed result as ordinary data.
 
-Use `get_item()` with `smartawait`:
+`reset()` invalidates the cache lazily. `reset(refresh=True)` reloads inline;
+reactive attribute changes also refresh inline. Their errors propagate to the
+caller. There is no next-tick coalescing or background execution.
 
-```python
-from genro_bag import Bag
-from genro_bag.resolvers import UrlResolver
-from genro_toolbox import smartawait
-
-bag = Bag()
-bag['api'] = UrlResolver('https://api.example.com/data')
-
-async def fetch_data():
-    # Use get_item + smartawait for async access
-    data = await smartawait(bag.get_item('api'))
-    return data
-```
-
-## Why `smartawait`?
-
-In async context, `bag.get_item('api')` may return:
-- The value directly (if cached)
-- A coroutine (if resolver needs to load)
-
-`smartawait` handles both cases:
-
-```python
-from genro_toolbox import smartawait
-
-# Always safe - works whether result is value or coroutine
-result = await smartawait(bag.get_item('api'))
-```
-
-## The `static` Parameter
-
-By default, accessing a value triggers the resolver if needed. Use `static=True` to check the cache without triggering:
-
-```python
-# Check if value is cached without triggering load
-cached = bag.get_item('api', static=True)
-if cached is None:
-    print("Not loaded yet")
-
-# Normal access triggers resolver (default behavior)
-data = bag.get_item('api')
-```
-
-## Complete Example
-
-```python
-from genro_bag import Bag
-from genro_bag.resolver import BagResolver
-from genro_toolbox import smartawait
-import httpx
-
-# Define an async resolver
-class WeatherResolver(BagResolver):
-    class_args = ['city']
-    class_kwargs = {'cache_time': 600}  # Cache for 10 minutes
-
-    async def async_load(self):
-        url = f'https://api.weather.com/{self.kw["city"]}'
-        async with httpx.AsyncClient() as client:
-            response = await client.get(url)
-            return response.json()
-
-# Setup
-bag = Bag()
-bag['weather'] = WeatherResolver('rome')
-
-# === SYNC CONTEXT ===
-# Works! Resolver runs synchronously via smartasync
-weather = bag['weather']
-print(weather['temperature'])
-
-# === ASYNC CONTEXT ===
-async def main():
-    # Use get_item + smartawait
-    weather = await smartawait(bag.get_item('weather'))
-    print(weather['temperature'])
-
-import asyncio
-asyncio.run(main())
-```
-
-## How It Works Internally
-
-The resolver's `_dispatch_load()` method detects the context:
-
-```
-is_async?        in_async_context?        Action
-─────────────────────────────────────────────────────
-False            False                    → load()
-False            True                     → @smartasync load()
-True             False                    → smartasync(async_load)()
-True             True                     → await async_load()
-```
-
-- `is_async`: True if resolver overrides `async_load()`
-- `in_async_context`: True if running inside an event loop
-
-## Best Practices
-
-### 1. Choose the Right Type
-
-```python
-# Use sync (load) for:
-# - File system operations
-# - CPU-bound computations
-# - Libraries without async support
-
-# Use async (async_load) for:
-# - HTTP requests
-# - Database queries with async drivers
-# - Any I/O that benefits from concurrency
-```
-
-### 2. In Async Code, Always Use smartawait
-
-```python
-# ❌ WRONG - might get a coroutine
-data = bag['api']
-
-# ✅ CORRECT
-data = await smartawait(bag.get_item('api'))
-```
-
-### 3. Use static=True to Check Cache
-
-```python
-# Check without triggering load
-if bag.get_item('api', static=True) is None:
-    print("Will need to fetch")
-```
-
-### 4. Leverage Caching
-
-```python
-# First access triggers load
-data1 = bag['api']  # HTTP request happens
-
-# Second access returns cached value
-data2 = bag['api']  # No request, instant return
-```
-
-## Summary
-
-| Context | How to Access |
-|---------|--------------|
-| Sync code | `bag['key']` or `bag.get_item('key')` |
-| Async code | `await smartawait(bag.get_item('key'))` |
-
-The resolver system automatically bridges sync/async boundaries, so you can:
-
-- Use async resolvers in sync code (they run synchronously)
-- Use sync resolvers in async code (they're wrapped appropriately)
+Resolver intervals and Bag timer subscriptions are unsupported. The application
+owns any scheduler and calls synchronous Bag operations when work is due.

@@ -49,6 +49,19 @@ class BagSerializer:
         self_closed_tags: list[str] | None = None,
         sign_key: str | None = None,
         expires_in: int | None = None,
+        *,
+        legacy_mode: bool = False,
+        catalog: Any = None,
+        typeattrs: bool = True,
+        typevalue: bool = True,
+        unresolved: bool = False,
+        add_bag_type_attr: bool = True,
+        output_encoding: str | None = None,
+        autocreate: bool = False,
+        translate_cb: Any = None,
+        omit_unknown_types: bool = False,
+        omit_root: bool = False,
+        forced_tag_attr: str | None = None,
     ) -> str | None:
         """Serialize to XML format.
 
@@ -82,6 +95,34 @@ class BagSerializer:
             >>> bag.to_xml()
             '<name>test</name><count>42</count>'
         """
+        if legacy_mode:
+            if sign_key is not None or expires_in is not None:
+                raise ValueError(
+                    "Legacy XML does not support resolver signatures; use "
+                    "modern XML/TYTX or omit sign_key and expires_in"
+                )
+            from genro_bag._legacy_codec import legacy_to_xml
+
+            return legacy_to_xml(
+                self,
+                filename=filename,
+                encoding=encoding,
+                catalog=catalog,
+                typeattrs=typeattrs,
+                typevalue=typevalue,
+                unresolved=unresolved,
+                add_bag_type_attr=add_bag_type_attr,
+                output_encoding=output_encoding,
+                autocreate=autocreate,
+                doc_header=doc_header,
+                self_closed_tags=self_closed_tags,
+                translate_cb=translate_cb,
+                omit_unknown_types=omit_unknown_types,
+                omit_root=omit_root,
+                forced_tag_attr=forced_tag_attr,
+                pretty=pretty,
+            )
+
         content = self._bag_to_xml(
             namespaces=[],
             self_closed_tags=self_closed_tags,
@@ -398,7 +439,11 @@ class BagSerializer:
         typed: bool = True,
         sign_key: str | None = None,
         expires_in: int | None = None,
-    ) -> str:
+        *,
+        legacy_mode: bool = False,
+        nested: bool = False,
+        catalog: Any = None,
+    ) -> str | list[dict[str, Any]]:
         """Serialize Bag to JSON string.
 
         Each node becomes {"label": ..., "value": ..., "attr": {...}}.
@@ -421,6 +466,18 @@ class BagSerializer:
                 value (node value or attribute) carries a resolver — that
                 path goes through the type registry and cannot be signed.
         """
+        if legacy_mode:
+            if sign_key is not None or expires_in is not None:
+                raise ValueError(
+                    "Legacy JSON does not support resolver signatures; use "
+                    "modern JSON/TYTX or omit sign_key and expires_in"
+                )
+            from genro_bag._legacy_codec import legacy_to_json
+
+            return legacy_to_json(
+                self, typed=typed, nested=nested, catalog=catalog
+            )
+
         result = [self._node_to_json_dict(node, typed, sign_key, expires_in) for node in self]
 
         if typed:

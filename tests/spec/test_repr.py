@@ -24,7 +24,6 @@ from __future__ import annotations
 
 from genro_bag import Bag
 
-
 # =============================================================================
 # __str__
 # =============================================================================
@@ -146,8 +145,8 @@ class TestToString:
         out = bag.to_string()
         lines = out.split("\n")
         # line with 'inner' is more indented than line with 'outer'
-        outer_line = next(l for l in lines if "outer" in l)
-        inner_line = next(l for l in lines if "inner" in l)
+        outer_line = next(line for line in lines if "outer" in line)
+        inner_line = next(line for line in lines if "inner" in line)
         # count leading spaces
         outer_indent = len(outer_line) - len(outer_line.lstrip(" │"))
         inner_indent = len(inner_line) - len(inner_line.lstrip(" │"))

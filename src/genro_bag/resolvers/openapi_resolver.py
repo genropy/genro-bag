@@ -69,7 +69,7 @@ class OpenApiResolver(BagResolver):
         >>> # Invoke an endpoint
         >>> op = api['api']['pet']['findPetsByStatus']
         >>> op['qs']['status'] = 'available'
-        >>> result = await op['value']()  # calls the API
+        >>> result = op['value']()  # calls the API
     """
 
     class_kwargs = {
@@ -80,12 +80,12 @@ class OpenApiResolver(BagResolver):
     }
     class_args = ["url"]
 
-    async def async_load(self) -> Bag:
+    def load(self) -> Bag:
         url = self.kw["url"]
         timeout = self.kw["timeout"]
 
-        async with httpx.AsyncClient() as client:
-            response = await client.get(url, timeout=timeout)
+        with httpx.Client() as client:
+            response = client.get(url, timeout=timeout)
             response.raise_for_status()
 
         spec_bag = Bag.from_json(response.text)

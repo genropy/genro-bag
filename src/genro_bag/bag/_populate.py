@@ -6,9 +6,9 @@ Provides fill_from, from_url, deepcopy, pickle support, and update methods.
 
 from __future__ import annotations
 
-import asyncio
+import copy
 import os
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Self
 
@@ -48,14 +48,17 @@ class BagPopulate:
         Populates the bag with data from various sources:
         - None: No-op, returns self unchanged
         - dict: Keys become labels, values become node values
-        - list: Items become numbered nodes (0, 1, 2, ...).
+        - tuple: A (label, value) or (label, value, attributes) node specification.
+        - list/tuple of node tuples: Named nodes in source order.
+        - list: Other items become numbered nodes (0, 1, 2, ...).
             Dict items in the list are converted to Bag.
         - Bag: Copy nodes from another Bag
         - str (file path): Load from file based on extension
         - str (XML inline): Detected by leading '<', parsed as XML
         - str (JSON inline): Detected by leading '{' or '[', parsed as JSON
         - bytes: Decoded to str, then detected as XML or JSON
-        - Path: Load from file
+        - directory path: Mount a lazy DirectoryResolver under its basename
+        - Path: Load from file or mount a directory
 
         Atomic semantics (issue #44):
             The new content is built into an offline orphan Bag first; the
@@ -124,8 +127,14 @@ class BagPopulate:
         """
         if safe_is_instance(source, _IS_BAG):
             self._fill_from_bag(source, target)
-        elif isinstance(source, dict):
+        elif callable(getattr(source, "items", None)):
             self._fill_from_dict(source, target)
+        elif isinstance(source, tuple) and self._is_node_spec(source):
+            self._fill_from_node_specs([source], target)
+        elif isinstance(source, (list, tuple)) and source and all(
+            self._is_node_spec(item) for item in source
+        ):
+            self._fill_from_node_specs(source, target)
         elif isinstance(source, list):
             self._fill_from_list(source, target)
         elif isinstance(source, bytes):
@@ -146,6 +155,21 @@ class BagPopulate:
             raise TypeError(
                 f"fill_from: unsupported source type {type(source).__name__}"
             )
+
+    @staticmethod
+    def _is_node_spec(item: Any) -> bool:
+        """Tuples distinguish explicit nodes from ordinary positional lists."""
+        return isinstance(item, tuple) and len(item) in (2, 3) and isinstance(item[0], str)
+
+    def _fill_from_node_specs(self, specs: Any, target: Bag) -> None:
+        """Populate named nodes from (label, value[, attributes]) tuples."""
+        for spec in specs:
+            attributes = spec[2] if len(spec) == 3 else None
+            if attributes is not None and not isinstance(attributes, Mapping):
+                raise TypeError("Node tuple attributes must be a mapping or None")
+            target.set_item(spec[0], spec[1], _attributes=(
+                dict(attributes) if attributes is not None else None
+            ))
 
     def _fill_from_list(self, data: list, target: Bag) -> None:
         """Populate target from a list. Items become numbered nodes."""
@@ -174,6 +198,13 @@ class BagPopulate:
             FileNotFoundError: If file does not exist.
             ValueError: If file extension is not recognized and format not specified.
         """
+        if os.path.isdir(path):
+            from genro_bag.resolvers.directory_resolver import DirectoryResolver
+
+            label = os.path.basename(path.rstrip(os.sep))
+            target.set_item(label, DirectoryResolver(path))
+            return
+
         if not os.path.isfile(path):
             raise FileNotFoundError(f"File not found: {path}")
 
@@ -223,15 +254,22 @@ class BagPopulate:
         target.clear()
         for node in other:
             # Deep copy the value if it's a Bag
-            value = node.value
+            value = node.get_value(static=True)
             if safe_is_instance(value, _IS_BAG):
                 value = value.deepcopy()
-            target.set_item(node.label, value, **dict(node.attr))
+            new_node = target.set_item(
+                node.label,
+                value,
+                _attributes=dict(node.attr),
+                resolver=copy.deepcopy(node.resolver),
+                node_tag=node.node_tag,
+            )
+            new_node.xml_tag = node.xml_tag
 
     def _fill_from_dict(
-        self, data: dict[str, Any], target: Bag
+        self, data: Any, target: Bag
     ) -> None:
-        """Populate target from a dictionary.
+        """Populate target from a dictionary-like source.
 
         Clears target's current contents first and creates nodes from dict items.
         Nested dicts are converted to nested Bags.
@@ -250,7 +288,7 @@ class BagPopulate:
 
     @classmethod
     def from_url(cls, url: str, timeout: int = 30) -> Bag:
-        """Load Bag from URL (classmethod, sync/async capable).
+        """Load Bag from URL synchronously.
 
         Fetches content from URL and parses based on HTTP content-type header.
         Uses UrlResolver internally for DRY implementation.
@@ -269,24 +307,12 @@ class BagPopulate:
             ValueError: If content-type is not supported.
 
         Example:
-            >>> # Sync context
             >>> bag = Bag.from_url('https://example.com/data.xml')
-            >>>
-            >>> # Async context
-            >>> bag = await Bag.from_url('https://example.com/data.xml')
         """
         from genro_bag.resolvers import UrlResolver
 
         resolver = UrlResolver(url, timeout=timeout, as_bag=False)
         result = resolver()
-
-        if asyncio.iscoroutine(result):
-            async def _async_from_url():
-                data = await result
-                bag = cls()
-                bag.fill_from(data)
-                return bag
-            return _async_from_url()  # type: ignore[return-value]
 
         bag = cls()
         bag.fill_from(result)
@@ -338,26 +364,26 @@ class BagPopulate:
     # -------------------- pickle support --------------------------------
 
     def __getstate__(self) -> dict:
-        """Return state for pickling."""
-        self._make_picklable()
-        return self.__dict__
+        """Return detached pickle state without mutating the live Bag graph."""
+        state = dict(self.__dict__)
+        for name in (
+            "_upd_subscribers",
+            "_ins_subscribers",
+            "_del_subscribers",
+            "_tmr_subscribers",
+            "_txn_subscribers",
+        ):
+            state[name] = {}
+        state["_parent"] = None
+        state["_parent_node"] = None
+        if state.get("_backref"):
+            state["_backref"] = "x"
+        return state
 
     def __setstate__(self, state: dict) -> None:
         """Restore state after unpickling."""
         self.__dict__.update(state)
         self._restore_from_picklable()
-
-    def _make_picklable(self) -> None:
-        """Prepare Bag for pickling (internal)."""
-        if self._backref:
-            self._backref = "x"
-        self.parent = None
-        self.parent_node = None
-        for node in self:
-            node._parent_bag = None
-            value = node.static_value
-            if safe_is_instance(value, _IS_BAG):
-                value._make_picklable()
 
     def _restore_from_picklable(self) -> None:
         """Restore Bag from its picklable form (internal)."""
@@ -372,7 +398,15 @@ class BagPopulate:
 
     # -------------------- update --------------------------------
 
-    def update(self, source: Bag | dict, ignore_none: bool = False) -> None:
+    def update(
+        self,
+        source: Bag | dict,
+        ignore_none: bool = False,
+        *,
+        resolved: bool = False,
+        ignoreNone: bool | None = None,
+        preservePattern: Any = None,
+    ) -> None:
         """Update this Bag with nodes from source.
 
         Merges nodes from source into this Bag. For existing labels,
@@ -383,6 +417,9 @@ class BagPopulate:
         Args:
             source: A Bag or dict to merge from.
             ignore_none: If True, don't overwrite existing values with None.
+            resolved: Resolve incoming resolver values before copying.
+            ignoreNone: Legacy spelling of ``ignore_none``.
+            preservePattern: Compiled pattern protecting matching strings.
 
         Example:
             >>> bag = Bag({'a': 1, 'b': 2})
@@ -390,29 +427,54 @@ class BagPopulate:
             >>> bag['a'], bag['b'], bag['c']
             (10, 2, 3)
         """
+        if ignoreNone is not None:
+            if ignore_none and not ignoreNone:
+                raise TypeError("conflicting ignore_none and ignoreNone values")
+            ignore_none = ignoreNone
+
+        def updatable(value: Any) -> bool:
+            return not (
+                preservePattern is not None
+                and isinstance(value, str)
+                and preservePattern.search(value) is not None
+            )
+
         # Normalize to list of (label, value, attr, node_tag, xml_tag)
         items: list[tuple[Any, Any, dict[str, Any], str | None, str | None]]
         if isinstance(source, dict):
             items = [(k, v, {}, None, None) for k, v in source.items()]
         else:
             items = [
-                (n.label, n.get_value(static=True), n.attr, n.node_tag, n.xml_tag)
+                (
+                    n.label,
+                    n.get_value(static=not resolved),
+                    n.attr,
+                    n.node_tag,
+                    n.xml_tag,
+                )
                 for n in list(source)
             ]
 
         for label, value, attr, node_tag, xml_tag in items:
             if label in self._nodes:
                 curr_node = self._nodes[label]
-                curr_node.attr.update(attr)
+                for attr_name, attr_value in attr.items():
+                    if updatable(curr_node.attr.get(attr_name)):
+                        curr_node.attr[attr_name] = attr_value
                 if node_tag is not None:
                     curr_node.node_tag = node_tag
                 if xml_tag is not None:
                     curr_node.xml_tag = xml_tag
                 curr_value = curr_node.static_value
                 if safe_is_instance(value, _IS_BAG) and safe_is_instance(curr_value, _IS_BAG):
-                    curr_value.update(value, ignore_none=ignore_none)
+                    curr_value.update(
+                        value,
+                        ignore_none=ignore_none,
+                        resolved=resolved,
+                        preservePattern=preservePattern,
+                    )
                 else:
-                    if not ignore_none or value is not None:
+                    if (not ignore_none or value is not None) and updatable(curr_value):
                         curr_node.value = value
             else:
                 new_node = self.set_item(

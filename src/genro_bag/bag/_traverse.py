@@ -2,16 +2,12 @@
 """BagTraverse mixin - hierarchical path traversal engine for Bag.
 
 Provides the core _htraverse mechanism that resolves dot-separated paths
-like 'a.b.c' into (container, label) tuples, handling both sync and async
-contexts transparently.
+like 'a.b.c' into (container, label) tuples using synchronous resolver loads.
 """
 
 from __future__ import annotations
 
-import asyncio
 from typing import TYPE_CHECKING, Any
-
-from genro_toolbox import is_async_context, smartawait, smartcontinuation
 
 from genro_bag.bag._exceptions import BagException
 
@@ -24,7 +20,7 @@ class BagTraverse:
     """Mixin providing hierarchical path traversal for Bag.
 
     Resolves dot-separated paths (e.g. 'a.b.c') into (container, label) tuples,
-    transparently triggering resolver loads in both sync and async contexts.
+    triggering synchronous resolver loads when requested.
     """
 
     _nodes: Any
@@ -66,11 +62,7 @@ class BagTraverse:
     def _htraverse(
         self, path: str | list, write_mode: bool = False, static: bool = True
     ) -> tuple[Any, str]:
-        """Traverse a hierarchical path - unified sync/async version.
-
-        Single method that handles both sync and async contexts:
-        - In sync context: returns tuple directly
-        - In async context with static=False: may return coroutine
+        """Traverse a hierarchical path synchronously.
 
         Args:
             path: Path as dot-separated string 'a.b.c' or list ['a', 'b', 'c'].
@@ -79,7 +71,7 @@ class BagTraverse:
             static: If True, don't trigger resolvers during traversal.
 
         Returns:
-            Tuple of (container, label) OR coroutine that resolves to tuple.
+            Tuple of (container, label).
         """
         if write_mode:
             static = True
@@ -112,11 +104,7 @@ class BagTraverse:
             return curr, pathlist[0]
 
         result = self._traverse_inner(curr, pathlist, write_mode, static)
-        return smartcontinuation(result, finalize)  # type: ignore[no-any-return, return-value]
-
-    def _is_coroutine(self, value: Any) -> bool:
-        """Check if value is a coroutine (only possible in async context)."""
-        return is_async_context() and asyncio.iscoroutine(value)
+        return finalize(result)  # type: ignore[return-value]
 
     def _get_new_curr(self, node: BagNode, value: Any, write_mode: bool) -> Bag | None:
         """Get next curr for traversal, creating Bag if needed in write_mode."""
@@ -131,7 +119,7 @@ class BagTraverse:
     def _traverse_inner(
         self, curr: Bag, pathlist: list, write_mode: bool, static: bool
     ) -> tuple[Bag, list[Any]] | Any:
-        """Traverse path segments - unified sync/async version.
+        """Traverse path segments synchronously.
 
         Args:
             curr: Starting Bag position.
@@ -140,7 +128,7 @@ class BagTraverse:
             static: If True, don't trigger resolvers.
 
         Returns:
-            Tuple of (container, remaining_path) OR coroutine.
+            Tuple of (container, remaining_path).
         """
         while len(pathlist) > 1 and hasattr(curr, "_nodes"):
             segment = pathlist[0]  # read without removing
@@ -163,33 +151,10 @@ class BagTraverse:
 
             value = node.get_value(static=static)
 
-            if not self._is_coroutine(value):
-                new_curr = self._get_new_curr(node, value, write_mode)
-                if new_curr is None:
-                    break
-                pathlist.pop(0)  # traversal succeeded, now remove
-                curr = new_curr
-                continue
-
-            # coroutine case
-            pathlist.pop(0)  # remove before creating continuation
-            remaining = pathlist[:]
-
-            async def cont(
-                value=value,
-                node=node,
-                curr=curr,
-                segment=segment,
-                remaining=remaining,
-            ):
-                resolved = await value
-                new_curr = self._get_new_curr(node, resolved, write_mode)
-                if new_curr is None:
-                    return (curr, [segment] + remaining)
-                return await smartawait(
-                    self._traverse_inner(new_curr, remaining, write_mode, static)
-                )
-
-            return cont()
+            new_curr = self._get_new_curr(node, value, write_mode)
+            if new_curr is None:
+                break
+            pathlist.pop(0)
+            curr = new_curr
 
         return (curr, pathlist)

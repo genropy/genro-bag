@@ -16,6 +16,47 @@ pip install genro-bag
 >>> bag = Bag()
 ```
 
+### Create named nodes with tuples
+
+A tuple describes one node: `(label, value)` or `(label, value, attributes)`.
+A list or tuple of these node tuples creates multiple named nodes in order.
+This syntax is available directly, without enabling legacy mode.
+
+```python
+project = Bag(('project', None, {'name': 'demo', 'language': 'en'}))
+rows = Bag([
+    ('first', 10, {'caption': 'First'}),
+    ('second', 20),
+])
+```
+
+Labels must be strings. Attributes must be a mapping or `None`; the mapping
+is copied. Values, including resolvers, are passed to normal `set_item`
+semantics. Paths and repeated labels behave as repeated `set_item` calls.
+
+Other lists remain positional: `Bag(['first', 10])` has labels `"0"` and
+`"1"`. Lists of lists also remain positional. A list of named node tuples is
+now interpreted as node specifications; use an explicit mapping such as
+`Bag({'0': ('first', 10)})` to store such a tuple as a value instead.
+The same syntax is supported by `fill_from`, with its atomic failure behavior.
+
+### Mount a directory
+
+```python
+bag = Bag('/srv/config')
+# The directory node is named after the directory, and remains lazy.
+value = bag['config.environment_xml.setting']
+```
+
+An existing directory path, supplied as a string or `pathlib.Path`, mounts a
+`DirectoryResolver` under its basename. Subdirectories and supported files are
+loaded synchronously on demand. `fill_from(directory)` supports the same input.
+Node labels follow normal Bag path semantics, as in the historical constructor.
+
+For compatibility, `_template_kargs` passed alongside a source is ignored,
+matching the historical constructor's treatment of that misspelled option.
+It does not perform environment substitution.
+
 ## Store Values with Paths
 
 Use dot-separated paths. Intermediate nodes are created automatically.

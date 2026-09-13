@@ -11,8 +11,6 @@ from __future__ import annotations
 from contextvars import ContextVar
 from typing import TYPE_CHECKING, Any
 
-from genro_toolbox import cancel_timer, set_interval
-
 if TYPE_CHECKING:
     from genro_bag.bagnode import BagNode
 
@@ -176,31 +174,23 @@ class BagEvents:
             update: Callback for update events.
             insert: Callback for insert events.
             delete: Callback for delete events.
-            timer: Callback for timer events (requires interval).
-            interval: Seconds between timer ticks (required if timer is set).
+            timer: Unsupported compatibility argument.
+            interval: Unsupported compatibility argument.
             any: Callback for update, insert, and delete events (not timer/transaction).
             transaction: Callback for transaction events (separate category,
                 not covered by ``any``). Receives ``bag=<bag>, mutations=<list>``.
 
         Raises:
-            ValueError: If timer is set without interval.
+            ValueError: If timer or interval is supplied.
         """
+        if timer is not None or interval is not None:
+            raise ValueError("Timer subscriptions are not supported; schedule work outside the Bag")
         if not self.backref:
             self.set_backref()
         self._subscribe(subscriber_id, self._upd_subscribers, update or any)
         self._subscribe(subscriber_id, self._ins_subscribers, insert or any)
         self._subscribe(subscriber_id, self._del_subscribers, delete or any)
         self._subscribe(subscriber_id, self._txn_subscribers, transaction)
-
-        if timer is not None:
-            if interval is None:
-                raise ValueError("interval is required when timer is set")
-            timer_id = set_interval(interval, self._on_timer_tick, subscriber_id)
-            self._tmr_subscribers[subscriber_id] = {
-                "timer_id": timer_id,
-                "callback": timer,
-                "interval": interval,
-            }
 
     def unsubscribe(
         self,
@@ -231,8 +221,6 @@ class BagEvents:
         if delete or any:
             self._del_subscribers.pop(subscriber_id, None)
         if timer or any:
-            entry = self._tmr_subscribers.pop(subscriber_id, None)
-            if entry:
-                cancel_timer(entry["timer_id"])
+            self._tmr_subscribers.pop(subscriber_id, None)
         if transaction:
             self._txn_subscribers.pop(subscriber_id, None)

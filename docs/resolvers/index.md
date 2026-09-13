@@ -62,24 +62,12 @@ bag['cached'] = BagCbResolver(func, cache_time=300)
 # Cache forever (until manual reset)
 bag['permanent'] = BagCbResolver(func, cache_time=False)
 
-# Active cache — background refresh every 30 seconds (async only)
-bag['live'] = BagCbResolver(func, cache_time=-30)
 ```
 
-### Async Support
+### Synchronous execution
 
-Resolvers work in both sync and async contexts:
-
-```python
-# Sync - just works
-result = bag['data']
-
-# Async - use smartawait
-from genro_toolbox import smartawait
-result = await smartawait(bag.get_item('data'))
-```
-
-→ [Sync and Async Guide](sync-async.md)
+Access returns the final value in all contexts: `result = bag["data"]`.
+See [synchronous resolvers](sync-async.md) for migration details.
 
 ### Serialization
 

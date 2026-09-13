@@ -121,7 +121,6 @@ classDiagram
     class BagResolver {
         <<abstract>>
         +load() Any
-        +async_load() Any
         +cache_time: int | float | bool
     }
 
@@ -153,7 +152,7 @@ Resolvers support caching to avoid repeated expensive operations.
 flowchart TB
     A[Access resolver] --> B{Cache valid?}
     B -->|Yes| C[Return cached value]
-    B -->|No| D[Call load/async_load]
+    B -->|No| D[Call load]
     D --> E[Store in cache with timestamp]
     E --> F[Return value]
 ```
@@ -312,7 +311,7 @@ flowchart TB
 Recommended approach:
 - Use a threading.Lock for write operations
 - Or use separate Bag instances per thread
-- Or use async with proper await patterns
+- Keep asynchronous I/O outside the Bag
 
 ## Complete Data Flow
 

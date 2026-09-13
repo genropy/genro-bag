@@ -487,7 +487,7 @@ class TestFromXmlExtra:
 
     def test_raise_on_error_true_propagates(self):
         """raise_on_error=True raises on values that cannot be converted."""
-        with pytest.raises(Exception):
+        with pytest.raises(ValueError):
             Bag.from_xml(
                 '<GenRoBag><x _T="L">not_a_number</x></GenRoBag>',
                 raise_on_error=True,

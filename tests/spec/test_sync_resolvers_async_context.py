@@ -1,27 +1,4 @@
-"""Spec test: CPU-only resolvers (subclass of BagSyncResolver) do not
-return coroutines when resolved inside an active event loop.
-
-Regression of the bug documented in issue #59: EnvResolver extended
-BagResolver and in async context the base class policy wrapped
-load() in asyncio.to_thread, returning a coroutine instead of the value.
-
-Contract:
-- EnvResolver, UuidResolver, BagCbResolver (with sync callback) are
-  sync-only: the resolved value is always the direct value, never a
-  coroutine, even inside an event loop.
-- BagAsyncCbResolver is async by design: returns a coroutine to await.
-- BagCbResolver rejects async callback at constructor (TypeError).
-- BagAsyncCbResolver rejects sync callback at constructor (TypeError).
-
-## Scale
-
-1. EnvResolver in async context                     returns str/value, not coroutine
-2. UuidResolver in async context                    returns str, not coroutine
-3. BagCbResolver (sync callback) in async context   returns value, not coroutine
-4. BagCbResolver with async callback                TypeError at constructor
-5. BagAsyncCbResolver with sync callback            TypeError at constructor
-6. BagAsyncCbResolver in async context              awaited returns the value
-"""
+"""Resolvers always return synchronous values, including inside an event loop."""
 
 from __future__ import annotations
 
@@ -102,7 +79,7 @@ class TestConstructorRejections:
             BagCbResolver(async_cb)
 
     def test_async_cb_resolver_rejects_sync_callback(self):
-        with pytest.raises(TypeError, match="requires an async"):
+        with pytest.raises(TypeError, match="no longer supported"):
             BagAsyncCbResolver(lambda: 1)
 
 
@@ -113,14 +90,72 @@ class TestConstructorRejections:
 
 class TestBagAsyncCbResolverInAsyncContext:
     @pytest.mark.asyncio
-    async def test_async_callback_awaited_returns_value(self):
-        async def async_cb():
-            return "async-value"
+    async def test_async_callback_rejected_in_event_loop(self):
+        async def callback():
+            return 1
+        with pytest.raises(TypeError, match="no longer supported"):
+            BagAsyncCbResolver(callback)
 
-        bag = Bag()
-        bag["v"] = BagAsyncCbResolver(async_cb)
-        result = bag["v"]
-        # In async context the resolver returns a coroutine to be awaited.
-        if asyncio.iscoroutine(result):
-            result = await result
-        assert result == "async-value"
+
+@pytest.mark.asyncio
+async def test_base_resolver_runs_on_callers_thread():
+    import threading
+
+    from genro_bag.resolver import BagResolver
+
+    class Resolver(BagResolver):
+        def load(self):
+            return threading.get_ident()
+
+    assert Resolver()() == threading.get_ident()
+
+
+def test_async_only_resolver_rejected_before_coroutine_creation():
+    from genro_bag.resolver import BagResolver
+
+    class Resolver(BagResolver):
+        async def async_load(self):
+            return 1
+
+    with pytest.raises(TypeError, match="synchronous load"):
+        Resolver()
+
+
+def test_awaitable_result_rejected_and_closed():
+    import inspect
+
+    async def callback():
+        return 1
+
+    value = callback()
+    with pytest.raises(TypeError, match="awaitable results"):
+        BagCbResolver(lambda: value)()
+    assert inspect.getcoroutinestate(value) == inspect.CORO_CLOSED
+
+
+@pytest.mark.parametrize("method", ["load", "on_loading", "on_loaded"])
+def test_async_hooks_fail_without_leaking_coroutines(method):
+    import inspect
+
+    from genro_bag.resolver import BagResolver
+
+    created = []
+
+    async def value():
+        return 1
+
+    def invalid(*args):
+        result = value()
+        created.append(result)
+        return result
+
+    class Resolver(BagResolver):
+        def load(self):
+            return self.kw["value"]
+
+    setattr(Resolver, method, invalid)
+    resolver = Resolver(value=1, cache_time=False)
+    with pytest.raises(TypeError, match="awaitable results"):
+        resolver()
+    assert resolver.expired
+    assert all(inspect.getcoroutinestate(item) == inspect.CORO_CLOSED for item in created)

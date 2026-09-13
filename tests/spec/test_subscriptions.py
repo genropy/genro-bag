@@ -11,7 +11,7 @@ an id, Bag notifies when update/insert/delete occur. In sync context we test:
 - propagation blocking (callback returns False)
 - transaction() as coalescing mechanism
 
-Timer and reset(refresh=True) require event loop -> test_async_reactive.
+Synchronous refresh and rejected timer subscriptions -> test_async_reactive.
 
 ## Scale
 
@@ -39,7 +39,6 @@ from __future__ import annotations
 import pytest
 
 from genro_bag import Bag, BagNode
-
 
 # =============================================================================
 # 1. subscribe(update=...)
@@ -394,10 +393,9 @@ class TestTransaction:
         bag = Bag()
         bag.subscribe("s1", transaction=lambda **kw: txn_received.append(kw))
 
-        with pytest.raises(RuntimeError):
-            with bag.transaction():
-                bag["a"] = 1
-                raise RuntimeError("boom")
+        with pytest.raises(RuntimeError), bag.transaction():
+            bag["a"] = 1
+            raise RuntimeError("boom")
 
         assert txn_received == []
         # already-applied mutation remains (no rollback documented)
@@ -559,7 +557,7 @@ class TestBagGetInheritedAttributes:
         root["outer.inner"] = "v"
         root.set_attr("outer", permission="read")
         root.subscribe("w", update=lambda **kw: None)
-        inner_bag = root.get_item("outer.inner")
+        root.get_item("outer.inner")
         # 'outer.inner' is not Bag but scalar value; requires that
         # we test mechanism at internal container level
         # Restart: create true sub-Bag as value

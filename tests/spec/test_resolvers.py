@@ -42,8 +42,6 @@ public methods/properties of the resolver are testable API.
 
 from __future__ import annotations
 
-import asyncio
-
 import pytest
 
 from genro_bag import Bag, BagResolver
@@ -197,39 +195,11 @@ class TestBagCbResolverCache:
 
 
 class TestBagAsyncCbResolverAsync:
-    @pytest.mark.asyncio
-    async def test_async_callback_awaited_in_async_context(self):
-        """Async callback via BagAsyncCbResolver: bag[path] returns a
-        coroutine to await in async context."""
-
-        async def async_cb():
-            return "async-value"
-
-        bag = Bag()
-        bag["a"] = BagAsyncCbResolver(async_cb)
-        result = bag["a"]
-        if asyncio.iscoroutine(result):
-            result = await result
-        assert result == "async-value"
-
-    @pytest.mark.asyncio
-    async def test_async_callback_with_kwargs(self):
-        """The async callback receives the defined kwargs."""
-
-        async def async_add(x, y):
-            return x + y
-
-        bag = Bag()
-        bag["s"] = BagAsyncCbResolver(async_add, x=10, y=32)
-        result = bag["s"]
-        if asyncio.iscoroutine(result):
-            result = await result
-        assert result == 42
-
-    def test_sync_callback_rejected(self):
-        """BagAsyncCbResolver rejects a sync callback with TypeError."""
-        with pytest.raises(TypeError, match="requires an async"):
-            BagAsyncCbResolver(lambda: 42)
+    def test_async_api_rejected(self):
+        async def callback():
+            return 1
+        with pytest.raises(TypeError, match="no longer supported"):
+            BagAsyncCbResolver(callback)
 
 
 class TestBagCbResolverRejectsAsync:
@@ -707,17 +677,6 @@ class TestResolverInPlaceProperties:
         assert resolver is not None
         assert resolver.is_async is False
 
-    def test_is_async_true_for_async_callback(self):
-        """is_async is True for BagAsyncCbResolver."""
-
-        async def async_cb():
-            return 1
-
-        bag = Bag()
-        bag["c"] = BagAsyncCbResolver(async_cb)
-        resolver = bag.get_resolver("c")
-        assert resolver is not None
-        assert resolver.is_async is True
 
 
 # =============================================================================
@@ -882,7 +841,7 @@ class TestDirectoryResolverBasics:
         bag["docs"] = DirectoryResolver(str(tmp_path))
         result = bag["docs"]
         # default label: name + '_' + ext
-        assert "config_xml" in result.keys()
+        assert "config_xml" in result
 
     def test_directory_with_multiple_extensions(self, tmp_path):
         """ext='xml,txt' processes both extensions."""
@@ -891,8 +850,8 @@ class TestDirectoryResolverBasics:
         bag = Bag()
         bag["docs"] = DirectoryResolver(str(tmp_path), ext="xml,txt")
         result = bag["docs"]
-        assert "config_xml" in result.keys()
-        assert "notes_txt" in result.keys()
+        assert "config_xml" in result
+        assert "notes_txt" in result
 
     def test_subdirectory_becomes_nested_directory_resolver(self, tmp_path):
         """A subdirectory produces a node with a DirectoryResolver."""
@@ -903,11 +862,11 @@ class TestDirectoryResolverBasics:
         bag["docs"] = DirectoryResolver(str(tmp_path))
         result = bag["docs"]
         # 'sub' is present as a node
-        assert "sub" in result.keys()
+        assert "sub" in result
         # accessing it triggers the resolver and returns the sub Bag
         sub_bag = result["sub"]
         assert isinstance(sub_bag, Bag)
-        assert "inner_xml" in sub_bag.keys()
+        assert "inner_xml" in sub_bag
 
 
 class TestDirectoryResolverAttributes:
@@ -1103,7 +1062,7 @@ class TestDirectoryResolverProcessors:
         )
         result = bag["docs"]
         # the node exists, but the value comes from processor_default
-        assert "doc_xml" in result.keys()
+        assert "doc_xml" in result
 
 
 class TestDirectoryResolverExtMapping:
@@ -1113,7 +1072,7 @@ class TestDirectoryResolverExtMapping:
         bag = Bag()
         bag["docs"] = DirectoryResolver(str(tmp_path), ext="dat:xml")
         result = bag["docs"]
-        assert "data_dat" in result.keys()
+        assert "data_dat" in result
 
 
 class TestDirectoryResolverContent:

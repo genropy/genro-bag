@@ -27,7 +27,7 @@ class UrlResolver(BagResolver):
     """Resolver that fetches content from an HTTP URL.
 
     Supports all HTTP methods and can convert responses to Bag automatically.
-    Uses httpx.AsyncClient for async HTTP operations.
+    Uses httpx.Client for synchronous HTTP operations.
 
     Hooks for subclasses:
         prepare_headers(): Return extra headers for the request.
@@ -79,7 +79,7 @@ class UrlResolver(BagResolver):
     }
     class_args = ["url"]
 
-    async def async_load(self) -> Any:
+    def load(self) -> Any:
         """Fetch URL content and optionally parse as Bag.
 
         Builds the full URL with query string, makes the HTTP request,
@@ -145,7 +145,7 @@ class UrlResolver(BagResolver):
             separator = "&" if "?" in url else "?"
             url = f"{url}{separator}{urlencode(merged_qs)}"
 
-        async with httpx.AsyncClient() as client:
+        with httpx.Client() as client:
             request_method = getattr(client, method)
             headers = dict(self.kw["headers"] or {})
             headers.update(self.prepare_headers())
@@ -157,7 +157,7 @@ class UrlResolver(BagResolver):
                 else:
                     kwargs["json"] = body
 
-            response = await request_method(url, **kwargs)
+            response = request_method(url, **kwargs)
             return self.process_response(response)
 
     def prepare_headers(self) -> dict[str, str]:

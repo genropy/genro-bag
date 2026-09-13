@@ -175,29 +175,13 @@ BagCbResolver(func, cache_time=60)
 # Cache forever (until manual reset)
 BagCbResolver(func, cache_time=False)
 
-# Active cache — background refresh every 30 seconds (async only)
-BagCbResolver(func, cache_time=-30)
 ```
 
 ### Can I use async functions with resolvers?
 
-Yes. Resolvers detect the execution context automatically:
-
-```python
-async def fetch_data():
-    async with aiohttp.ClientSession() as session:
-        async with session.get(url) as resp:
-            return await resp.json()
-
-bag['data'] = BagCbResolver(fetch_data)
-
-# Works in sync context
-data = bag['data']
-
-# Works in async context
-async def main():
-    data = bag['data']
-```
+No. Use synchronous callbacks and `load()` methods. Bag access returns the
+resolved value even inside an event loop. Perform asynchronous I/O outside
+the Bag and store its completed result.
 
 ### How do I reset a resolver's cache?
 

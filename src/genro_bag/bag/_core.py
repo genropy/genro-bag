@@ -19,33 +19,17 @@ Example:
     >>> print(bag['config.database.host'])
     localhost
 
-Async Usage with Resolvers:
-    By default, accessing values triggers resolvers. Use ``static=True`` to
-    access cached values without triggering:
-
-        cached = bag.get_item("path", static=True)  # No resolver trigger
-
-    In **sync context**, no special handling is needed - async resolvers are
-    automatically awaited via ``@smartasync``.
-
-    In **async context**, the result may be a coroutine. Use ``smartawait``::
-
-        from genro_toolbox import smartawait
-
-        async def get_data():
-            result = await smartawait(bag.get_item("path"))
-            return result
+Resolver access is synchronous, including inside an active event loop.
+Use ``static=True`` to inspect cached values without triggering a resolver.
 """
 
 from __future__ import annotations
 
-import inspect
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from typing import Any
 
-from genro_toolbox import smartcontinuation
-
+from genro_bag._camel_names import BagNamesMixin
 from genro_bag.bag._events import BagEvents, _current_transaction
 from genro_bag.bag._exceptions import (  # noqa: F401 — re-export
     BagException,
@@ -58,10 +42,10 @@ from genro_bag.bag._repr import BagRepr
 from genro_bag.bag._serialize import BagSerializer
 from genro_bag.bag._traverse import BagTraverse
 from genro_bag.bagnode import BagNode, BagNodeContainer
-from genro_bag.resolver import BagAsyncCbResolver, BagCbResolver
+from genro_bag.resolver import BagCbResolver
 
 
-class Bag(BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer, BagQuery):
+class Bag(BagNamesMixin, BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer, BagQuery):
     """Hierarchical data container with path-based access.
 
     A Bag is an ordered container of BagNodes, accessible by label, numeric index,
@@ -104,12 +88,12 @@ class Bag(BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer
     _container_class: type[BagNodeContainer] = BagNodeContainer
     __tytx_suffix__ = "X"
 
-    def __init__(self, source: dict[str, Any] | None = None):
+    def __init__(self, source: Any = None, **legacy_items: Any):
         """Create a new Bag.
 
         Args:
-            source: Optional dict to initialize from. Keys become labels,
-                values become node values.
+            source: Optional supported source passed to ``fill_from``.
+            **legacy_items: Legacy ``Bag(key=value)`` item construction.
 
         Example:
             >>> bag = Bag({'a': 1, 'b': 2})
@@ -127,6 +111,14 @@ class Bag(BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer
         self._txn_subscribers: dict = {}
         self._root_attributes: dict | None = None
 
+        if source is not None:
+            # Historical getGnrConfig passes this misspelled, unused option.
+            # With a source it is metadata, not an additional Bag item.
+            legacy_items.pop('_template_kargs', None)
+        if source is not None and legacy_items:
+            raise TypeError("Bag accepts either source or keyword items, not both")
+        if legacy_items:
+            source = legacy_items
         if source:
             self.fill_from(source)
 
@@ -310,6 +302,10 @@ class Bag(BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer
             >>> bag.get('x?type&size')  # get multiple attributes
             ('int', 4)
         """
+        if "mode" in kwargs:
+            mode = kwargs.pop("mode")
+            static = isinstance(mode, str) and "static" in mode
+
         if not label:
             return self
         if label == "#parent":
@@ -355,9 +351,6 @@ class Bag(BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer
             >>> cached = bag.get_item('path', static=True)
             >>> # Pass params to resolver:
             >>> result = bag.get_item('calc', a=10, b=20)
-            >>> # In async context use smartawait:
-            >>> from genro_toolbox import smartawait
-            >>> result = await smartawait(bag.get_item('path.with.resolver'))
         """
         if not path:
             return self
@@ -370,7 +363,7 @@ class Bag(BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer
                 return obj.get(label, default, static=static, **kwargs)
             return default
 
-        return smartcontinuation(result, finalize)
+        return finalize(result)
 
     def __getitem__(self, path: str) -> Any:
         """Get value at path, triggering resolvers.
@@ -804,13 +797,11 @@ class Bag(BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer
         """Set a callback resolver at the given path.
 
         Shortcut for creating a callback-based resolver and setting it on a
-        node. Picks :class:`BagCbResolver` for sync callbacks and
-        :class:`BagAsyncCbResolver` for coroutine functions.
+        node. Uses :class:`BagCbResolver` and requires a synchronous callback.
 
         Args:
             path: Path to the node.
-            callback: Callable that returns the value. Can be sync or async;
-                the appropriate resolver class is chosen automatically.
+            callback: Synchronous callable that returns the value.
             **kwargs: Arguments passed to the resolver constructor. Common
                 kwargs:
 
@@ -821,12 +812,7 @@ class Bag(BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer
             The resolver is passed directly to set_item, which handles it
             via the resolver parameter (not as value).
         """
-        resolver_cls = (
-            BagAsyncCbResolver
-            if inspect.iscoroutinefunction(callback)
-            else BagCbResolver
-        )
-        resolver = resolver_cls(callback, **kwargs)
+        resolver = BagCbResolver(callback, **kwargs)
         self.set_item(path, resolver)
 
     # -------------------- __iter__, __len__, __contains__, __call__ --------------------------------
@@ -1028,7 +1014,7 @@ class Bag(BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser, BagSerializer
                 return node
             return None
 
-        return smartcontinuation(result, finalize)  # type: ignore[no-any-return]
+        return finalize(result)  # type: ignore[no-any-return]
 
     # -------------------- backref management --------------------------------
 

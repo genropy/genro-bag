@@ -37,7 +37,7 @@ With Bag you get, in the same object:
 | Dot notation | munch/addict | Built-in |
 | Configuration | omegaconf, hydra | Bag + paths |
 | Structural validation | Custom code | Bag + genro-builders |
-| Lazy/computed values | @property, custom decorators | Transparent resolvers (sync/async) |
+| Lazy/computed values | @property, custom decorators | Transparent resolvers (synchronous) |
 | Reactivity | rxpy, signals, custom events | Location-based subscriptions |
 | XML/JSON handling | lxml, xmltodict, json | Unified serialization |
 | Glue code / adapters | Many custom utils | Almost none |
@@ -57,7 +57,7 @@ Bag solves a **different problem**:
 | Structure | Fixed at definition | Dynamic, can grow |
 | Access pattern | Attribute access on models | Path-based access anywhere |
 | Reactivity | None built-in | Subscriptions on any node |
-| Lazy loading | Not built-in | Resolvers (sync/async) |
+| Lazy loading | Not built-in | Resolvers (synchronous) |
 | Serialization | JSON primarily | XML, JSON, MessagePack |
 | Type preservation | Yes, via schema | Yes, via TYTX format |
 

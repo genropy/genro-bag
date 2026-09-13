@@ -36,7 +36,6 @@ import pytest
 
 from genro_bag import Bag, BagException, BagNode, BagNodeException
 
-
 # =============================================================================
 # 1. Empty construction
 # =============================================================================

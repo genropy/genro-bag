@@ -10,8 +10,8 @@ Approach:
 - httpx is not mocked — the request really happens, over loopback
 - the server is stdlib only (http.server on a thread): one less test
   dependency to declare, and one less to forget
-- the resolvers are async at the core, so the tests carry
-  @pytest.mark.asyncio and the result of bag[path] is awaited
+- the tests run inside an event loop and assert HTTP resolution still
+  returns a direct value on the caller thread
 
 Scale:
 1.  UrlResolver GET plus as_bag=True
@@ -43,9 +43,8 @@ from genro_bag.resolvers import OpenApiResolver, UrlResolver
 
 
 async def _drain(value):
-    """Await repeatedly until the result is no longer a coroutine."""
-    while asyncio.iscoroutine(value):
-        value = await value
+    """Assert the synchronous contract while running in an event loop."""
+    assert not asyncio.iscoroutine(value), "HTTP resolver must return a synchronous value"
     return value
 
 

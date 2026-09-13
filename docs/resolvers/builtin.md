@@ -46,33 +46,10 @@ bag['data']  # {'result': 42, 'calls': 1}
 bag['data']  # {'result': 42, 'calls': 1} - cached
 ```
 
-## BagAsyncCbResolver (Async Callback)
+## BagAsyncCbResolver (removed behavior)
 
-Execute an **async** (coroutine) callable on demand. The resolver
-returns a coroutine that the caller awaits.
-
-```python
-from genro_bag import Bag
-from genro_bag.resolvers import BagAsyncCbResolver
-
-async def fetch_async():
-    async with aiohttp.ClientSession() as session:
-        async with session.get('https://api.example.com') as resp:
-            return await resp.json()
-
-bag = Bag()
-bag['api'] = BagAsyncCbResolver(fetch_async)
-
-# Inside an event loop:
-data = await bag['api']
-```
-
-Passing a plain (non-coroutine) function raises `TypeError` at
-construction — the error message points at `BagCbResolver`.
-
-The `Bag.set_callback_item(path, callback, **kwargs)` shortcut picks the
-right class automatically based on whether the callback is a coroutine
-function.
+Construction raises `TypeError`. Use `BagCbResolver` with a synchronous
+callback. Async work belongs outside the Bag.
 
 ## UrlResolver
 
@@ -377,7 +354,7 @@ All resolvers support three independent parameters:
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `cache_time` | varies | Cache: 0=none, >0=passive TTL (int or float seconds), <0=active refresh (async only), False=infinite |
+| `cache_time` | varies | Cache: 0=none, >0=passive TTL (int or float seconds), <0=legacy cache convention; no background refresh, False=infinite |
 | `read_only` | False | If True, value is NOT stored in `node._value` |
 | `as_bag` | None | If True, convert result to Bag; if None, follows `read_only` |
 

@@ -51,6 +51,12 @@ class BagParser:
         raise_on_error: bool = False,
         tag_attribute: str | None = None,
         sign_key: str | None = None,
+        *,
+        legacy_mode: bool = False,
+        catalog: Any = None,
+        bag_class: type | None = None,
+        attr_in_value: str | bool | None = None,
+        avoid_duplicate_label: bool | None = None,
     ) -> Bag:
         """Deserialize from XML format.
 
@@ -105,6 +111,23 @@ class BagParser:
             >>> 'section' in bag['grammar']  # dot creates hierarchy
             True
         """
+        if legacy_mode:
+            if sign_key is not None:
+                raise ValueError(
+                    "Legacy XML does not carry resolver signatures; "
+                    "sign_key is supported only by the modern wire"
+                )
+            from genro_bag._legacy_codec import legacy_from_xml
+
+            return legacy_from_xml(
+                bag_class or cls,
+                source,
+                catalog=catalog,
+                empty=empty,
+                attr_in_value=attr_in_value,
+                avoid_duplicate_label=avoid_duplicate_label,
+            )
+
         handler = _BagXmlHandler(
             cls,
             empty=empty,
@@ -257,6 +280,9 @@ class BagParser:
         source: str | dict | list,
         list_joiner: str | None = None,
         sign_key: str | None = None,
+        *,
+        legacy_mode: bool = False,
+        catalog: Any = None,
     ) -> Bag:
         """Deserialize JSON to Bag.
 
@@ -280,6 +306,18 @@ class BagParser:
             SignatureError: Signature missing, forged or expired, when
                 sign_key was given.
         """
+        if legacy_mode:
+            if sign_key is not None:
+                raise ValueError(
+                    "Legacy JSON does not carry resolver signatures; "
+                    "sign_key is supported only by the modern wire"
+                )
+            from genro_bag._legacy_codec import legacy_from_json
+
+            return legacy_from_json(
+                cls, source, list_joiner=list_joiner, catalog=catalog
+            )
+
         if isinstance(source, str):
             source = tytx_decode(source)
             # A Bag hydrated by the TYTX type registry inside the decoded

@@ -22,6 +22,8 @@ from typing import TYPE_CHECKING, Any
 from genro_toolbox import safe_is_instance, smartsplit
 from genro_tytx import from_tytx
 
+from genro_bag._camel_names import BagNodeNamesMixin
+
 if TYPE_CHECKING:
     from .bag import Bag
     from .resolver import BagResolver
@@ -36,7 +38,7 @@ class BagNodeException(Exception):
     pass
 
 
-class BagNode:
+class BagNode(BagNodeNamesMixin):
     """BagNode is the element type which a Bag is composed of.
 
     A BagNode gathers within itself three main things:
@@ -149,6 +151,31 @@ class BagNode:
 
     def __repr__(self) -> str:
         return f"BagNode : {self.label} at {id(self)}"
+
+    def __getstate__(self) -> dict[str, Any]:
+        """Return detached pickle state without live parent or subscribers."""
+        state: dict[str, Any] = {}
+        for cls in type(self).__mro__:
+            slots = cls.__dict__.get("__slots__", ())
+            if isinstance(slots, str):
+                slots = (slots,)
+            for name in slots:
+                if name not in {"__dict__", "__weakref__"} and hasattr(self, name):
+                    state[name] = getattr(self, name)
+        instance_dict = getattr(self, "__dict__", None)
+        if instance_dict is not None:
+            state["__dict__"] = dict(instance_dict)
+        state["_parent_bag"] = None
+        state["_node_subscribers"] = {}
+        return state
+
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        """Restore slot and optional subclass dictionary state."""
+        instance_dict = state.pop("__dict__", None)
+        for name, value in state.items():
+            setattr(self, name, value)
+        if instance_dict is not None:
+            self.__dict__.update(instance_dict)
 
 
     # -------------------------------------------------------------------------
@@ -334,9 +361,13 @@ class BagNode:
             _attributes.update(value._attr)
             value = value._value
 
-        # Handle objects with rootattributes (dict only, not callables from __getattr__)
-        if hasattr(value, "rootattributes"):
-            rootattributes = value.rootattributes
+        # Read real instance/class attributes without invoking a dynamic
+        # __getattr__ fallback on arbitrary values.
+        try:
+            rootattributes = object.__getattribute__(value, "rootattributes")
+        except AttributeError:
+            pass
+        else:
             if isinstance(rootattributes, dict) and rootattributes:
                 _attributes = dict(_attributes or {})
                 _attributes.update(rootattributes)
@@ -515,6 +546,7 @@ class BagNode:
         """
         new_attr = (attr or {}) | kwargs
 
+        refresh_resolver = False
         # Invalidate resolver cache if a resolver parameter's effective value changes
         # Effective value = node.attr if set, else resolver._kw
         # If resolver.reactive is True, switch from lazy reset() to eager
@@ -531,7 +563,7 @@ class BagNode:
                     effective_old = self._attr.get(key, resolver_kw[key])
                     if effective_old != value:
                         if self._resolver.reactive:
-                            self._resolver.reset(refresh=True)
+                            refresh_resolver = True
                         else:
                             self._resolver.reset()
                         break
@@ -547,6 +579,10 @@ class BagNode:
 
         if _remove_null_attributes:
             self._attr = {k: v for k, v in self._attr.items() if v is not None}
+
+        # Synchronous refresh must see the new attributes, not the previous inputs.
+        if refresh_resolver:
+            self._resolver.reset(refresh=True)
 
         if trigger and oldattr is not None:
             diff = self._build_attr_diff(oldattr, self._attr)
@@ -670,7 +706,13 @@ class BagNode:
     # Subscription Methods
     # -------------------------------------------------------------------------
 
-    def subscribe(self, subscriber_id: str, callback: NodeSubscriberCallback) -> None:
+    def subscribe(
+        self,
+        subscriber_id: str | None = None,
+        callback: NodeSubscriberCallback | None = None,
+        *,
+        subscriberId: str | None = None,
+    ) -> None:  # noqa: N803
         """Subscribe to changes on this specific node.
 
         Args:
@@ -683,14 +725,29 @@ class BagNode:
             - info: oldvalue (for 'upd_value') or list of changed attrs
             - evt: Event type ('upd_value' or 'upd_attrs')
         """
+        if subscriber_id is not None and subscriberId is not None:
+            raise TypeError("pass only one of subscriber_id and subscriberId")
+        subscriber_id = subscriber_id if subscriber_id is not None else subscriberId
+        if subscriber_id is None or callback is None:
+            raise TypeError("subscriber id and callback are required")
         self._node_subscribers[subscriber_id] = callback
 
-    def unsubscribe(self, subscriber_id: str) -> None:
+    def unsubscribe(
+        self,
+        subscriber_id: str | None = None,
+        *,
+        subscriberId: str | None = None,
+    ) -> None:  # noqa: N803
         """Unsubscribe from changes on this node.
 
         Args:
             subscriber_id: The subscription identifier to remove.
         """
+        if subscriber_id is not None and subscriberId is not None:
+            raise TypeError("pass only one of subscriber_id and subscriberId")
+        subscriber_id = subscriber_id if subscriber_id is not None else subscriberId
+        if subscriber_id is None:
+            raise TypeError("subscriber id is required")
         self._node_subscribers.pop(subscriber_id, None)
 
     # -------------------------------------------------------------------------

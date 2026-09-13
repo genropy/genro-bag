@@ -9,17 +9,14 @@ as a Bag.
 The resolver is intentionally simple — it only fetches data. Business logic
 (versioning, deduplication, notifications) belongs in subscriptions.
 
-Example (async only — interval requires an event loop):
-    import asyncio
+Example:
     from genro_bag import Bag
     from genro_bag.resolvers.contrib import EarthquakeResolver
 
-    async def main():
-        bag = Bag()
-        bag['feed'] = EarthquakeResolver(interval=60)
-        print(bag['feed.count'])
+    bag = Bag()
+    bag['feed'] = EarthquakeResolver(cache_time=60)
+    print(bag['feed.count'])
 
-    asyncio.run(main())
 """
 
 from __future__ import annotations

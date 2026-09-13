@@ -7,7 +7,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "genro-bag"
-version = "0.22.0"
+version = "0.23.0"
 description = "Modernized bag system for the Genropy framework - hierarchical data container with XML serialization"
 readme = "README.md"
 license = "Apache-2.0"
@@ -75,6 +75,9 @@ Homepage = "https://github.com/genropy/genro-bag"
 Documentation = "https://genro-bag.readthedocs.io"
 Repository = "https://github.com/genropy/genro-bag"
 Issues = "https://github.com/genropy/genro-bag/issues"
+
+[tool.hatch.build.targets.sdist]
+include = ["/src", "/tests", "/docs", "/README.md", "/LICENSE", "/pyproject.toml"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/genro_bag"]

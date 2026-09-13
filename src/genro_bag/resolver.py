@@ -16,8 +16,7 @@ Caching Semantics:
     - cache_time > 0      -> passive cache for N seconds (TTL, reload on next access)
     - cache_time = False  -> INFINITE cache (until manual reset())
 
-Active triggers (async only):
-    - interval = N        -> timer-driven refresh every N seconds
+Synchronous active triggers:
     - reactive = True     -> auto-refresh when a non-internal param changes
     - reset(refresh=True) -> explicit eager refresh + notify subscribers
 
@@ -29,8 +28,6 @@ Retry Policy:
 
 from __future__ import annotations
 
-import asyncio
-import contextlib
 import functools
 import importlib
 import inspect
@@ -38,18 +35,15 @@ from collections.abc import Callable
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
-from genro_toolbox import (
-    RETRY_PRESETS,
-    cancel_timer,
-    is_async_context,
-    retry_call,
-    set_interval,
-    smartasync,
-)
+from genro_toolbox import RETRY_PRESETS, retry_call
 
 # =============================================================================
 # RETRY POLICIES - backward-compatible alias for genro_toolbox.RETRY_PRESETS
 # =============================================================================
+from genro_bag._camel_names import (
+    BagResolverNamesMixin,
+    translate_legacy_resolver_kwargs,
+)
 
 RETRY_POLICIES = RETRY_PRESETS
 
@@ -92,7 +86,7 @@ if TYPE_CHECKING:
     from .bagnode import BagNode
 
 
-class BagResolver:
+class BagResolver(BagResolverNamesMixin):
     """BagResolver is an abstract class for dynamically computed values.
 
     A resolver allows a BagNode to have a value that is computed on-demand
@@ -125,15 +119,15 @@ class BagResolver:
 
     Reactive Mode:
         - reactive=True: When a non-internal param changes via set_attr, the
-          resolver schedules a coalesced refresh at the next event loop tick
-          (emits update event). Enables dataflow cascades.
-        - Requires async context at trigger time. Incompatible with read_only.
+          resolver refreshes immediately on the caller thread and emits an update
+          event. Enables synchronous dataflow cascades.
+        - Incompatible with read_only.
 
     Class Attributes:
         class_kwargs: dict of {param_name: default_value}
             Parameters with defaults, passable as keyword args.
             - 'cache_time': 0 = no cache, >0 = passive TTL, False = infinite
-            - 'interval': None = passive, N>0 = background refresh every N s
+            - 'interval': only None is supported; scheduling belongs outside the Bag
             - 'reactive': False = lazy, True = push-refresh on param change
             - 'read_only': if True, value is NOT saved in node._value
             - 'retry_policy': retry config or preset name ('network', 'aggressive')
@@ -182,11 +176,10 @@ class BagResolver:
         "_kw",  # dict: all parameters from class_kwargs/class_args
         "_init_args",  # list: original positional args (for serialize)
         "_init_kwargs",  # dict: original keyword args (for serialize)
+        "_legacy_init_kwargs",  # dict: original spellings for legacy serialization
         "_parent_node",  # BagNode | None: bidirectional link to parent
         "_cache_last_update",  # datetime | None: last load() timestamp
         "_cached_value",  # Any: cached result when standalone (no parent node)
-        "_timer_id",  # str | None: smarttimer ID for active cache
-        "_refresh_pending",  # bool: a refresh is scheduled for next tick
         "_refresh_running",  # bool: a refresh is currently executing
     )
 
@@ -200,8 +193,10 @@ class BagResolver:
 
         At the end calls self.init() as a hook for subclasses.
         """
-        # Save original args/kwargs to enable re-serialization
+        # Save original args/kwargs to enable re-serialization.
         self._init_args: list[Any] = list(args)
+        self._legacy_init_kwargs: dict[str, Any] = dict(kwargs)
+        kwargs = translate_legacy_resolver_kwargs(kwargs)
         self._init_kwargs: dict[str, Any] = dict(kwargs)
 
         # Parent node reference - set by BagNode when resolver is assigned
@@ -210,10 +205,8 @@ class BagResolver:
         # Cache state
         self._cache_last_update: datetime | None = None
         self._cached_value: Any = None
-        self._timer_id: str | None = None
 
-        # Refresh coalescing state (used by reset(refresh=True))
-        self._refresh_pending: bool = False
+        # Prevent recursive synchronous refresh.
         self._refresh_running: bool = False
 
         # Build _kw dict from class_args and class_kwargs
@@ -240,16 +233,15 @@ class BagResolver:
         if isinstance(ct, (int, float)) and not isinstance(ct, bool) and ct < 0:
             raise ValueError(
                 f"cache_time={ct!r} is no longer supported. "
-                f"Use interval={abs(ct)} for background refresh."
+                "Use cache_time=False for infinite caching."
             )
 
-        if self._kw.get("interval") is not None and self._init_kwargs.get("read_only") is True:
-            raise ValueError(
-                "read_only=True is incompatible with interval: the active "
-                "refresh writes the value to the node for subscribers to observe, "
-                "but read_only prevents that write. Use read_only=False or "
-                "drop the interval."
-            )
+        if self._kw.get("interval") is not None:
+            raise ValueError("interval is not supported; schedule refresh outside the Bag")
+        if inspect.iscoroutinefunction(self.load) or (
+            type(self).load is BagResolver.load and hasattr(type(self), "async_load")
+        ):
+            raise TypeError("BagResolver requires synchronous load(); async_load() is not supported")
 
         if self._kw.get("reactive") and self._init_kwargs.get("read_only") is True:
             raise ValueError(
@@ -283,7 +275,7 @@ class BagResolver:
 
     @parent_node.setter
     def parent_node(self, parent_node: BagNode | None) -> None:
-        """Set the parent node. Starts/stops interval timer as needed."""
+        """Set the parent node and validate scheduling options."""
         if self._parent_node is not None and parent_node is None:
             self._stop_interval()
         self._parent_node = parent_node
@@ -304,8 +296,7 @@ class BagResolver:
             False: infinite cache (until manual reset()).
 
         Note:
-            For background refresh (timer-driven), use the `interval` parameter
-            instead. cache_time is only for expiration policy.
+            Refresh scheduling belongs outside the Bag.
         """
         return self._kw.get("cache_time", 0)  # type: ignore[no-any-return]
 
@@ -315,32 +306,15 @@ class BagResolver:
 
     @property
     def interval(self) -> int | float | None:
-        """Get interval setting (background refresh period, in seconds).
-
-        Returns:
-            None: no active refresh.
-            N>0: refresh every N seconds (requires async context when running).
-        """
+        """Compatibility setting; only None is supported."""
         return self._kw.get("interval")
 
     @interval.setter
     def interval(self, value: int | float | None) -> None:
-        """Set interval and reconfigure the timer.
-
-        Assigning a new value stops the current timer (if any) and starts
-        a fresh one matching the new value. Assigning None stops the timer.
-        Rejects the read_only + interval combination as at construction.
-        """
-        if value is not None and self._init_kwargs.get("read_only") is True:
-            raise ValueError(
-                "read_only=True is incompatible with interval: the active "
-                "refresh writes the value to the node for subscribers to observe, "
-                "but read_only prevents that write."
-            )
-        self._kw["interval"] = value
-        self._stop_interval()
-        if value is not None and self._parent_node is not None:
-            self._start_interval()
+        """Reject automatic scheduling."""
+        if value is not None:
+            raise ValueError("interval is not supported; schedule refresh outside the Bag")
+        self._kw["interval"] = None
 
     # =========================================================================
     # KW PROPERTY (transformed kwargs for load)
@@ -350,11 +324,13 @@ class BagResolver:
     def kw(self) -> dict[str, Any]:
         """Pre-processed kwargs, result of on_loading(self._kw).
 
-        Subclasses' load() / async_load() must read from self.kw (not self._kw)
+        Subclasses' load() must read from self.kw (not self._kw)
         so that on_loading transformations are visible. Default on_loading is
         identity, so self.kw returns self._kw unchanged.
         """
-        return self.on_loading(self._kw)
+        result = self.on_loading(self._kw)
+        self._require_sync_result(result)
+        return result
 
     # =========================================================================
     # REACTIVE PROPERTY (mutable)
@@ -366,9 +342,7 @@ class BagResolver:
 
         When True, any set_attr on the parent node that changes a domain
         parameter (non-internal) triggers reset(refresh=True) instead of the
-        default lazy reset(). Reactive refreshes are coalesced to the next
-        event loop tick: multiple param changes in the same sync turn cause
-        at most one load.
+        default lazy reset(). Refreshes execute immediately on the caller thread.
         """
         return bool(self._kw.get("reactive"))
 
@@ -426,127 +400,28 @@ class BagResolver:
     # =========================================================================
 
     def reset(self, refresh: bool = False) -> None:
-        """Invalidate the cache, optionally forcing an immediate refresh.
-
-        Args:
-            refresh: If False (default) just invalidate — next pull reloads
-                silently (passive, lazy). If True, invalidate AND schedule an
-                immediate reload that writes the new value through the node
-                mutation channel, firing an update event for subscribers
-                (active, push).
-
-        Coalescing:
-            refresh=True schedules the reload for the next event loop tick.
-            If a refresh is already pending or running, subsequent calls are
-            collapsed: at most one load runs per burst of triggers.
-
-        Raises:
-            ValueError: refresh=True on a read_only resolver (nowhere to emit).
-            RuntimeError: refresh=True outside an async context.
-        """
+        """Invalidate the cache; refresh=True reloads and notifies synchronously."""
         self._cache_last_update = None
-        if self._timer_id is not None:
-            self._stop_interval()
-            self._start_interval()
-
         if not refresh:
             return
-
         if self.read_only:
-            raise ValueError(
-                "reset(refresh=True) is incompatible with read_only=True: "
-                "the refresh writes the value to the node for subscribers to "
-                "observe, but read_only prevents that write."
-            )
-        if not is_async_context():
-            raise RuntimeError(
-                "reset(refresh=True) requires an async context. "
-                "Reactive/push refresh relies on the event loop to coalesce "
-                "triggers and schedule the reload."
-            )
-        if self._refresh_pending or self._refresh_running:
+            raise ValueError("reset(refresh=True) is incompatible with read_only=True")
+        if self._refresh_running:
             return
-        self._refresh_pending = True
-        loop = asyncio.get_running_loop()
-        loop.call_soon(self._schedule_refresh)
-
-    def _schedule_refresh(self) -> None:
-        """Create the refresh task from the next-tick callback."""
-        asyncio.ensure_future(self._do_refresh())
-
-    async def _do_refresh(self) -> None:
-        """Execute a coalesced refresh: load + notify via mutation channel.
-
-        Runs in async context (scheduled by reset(refresh=True)). Clears the
-        pending flag at entry so a new trigger can schedule a follow-up
-        refresh after this one completes, but the running flag blocks
-        overlapping loads (simple policy — a trigger while running is dropped,
-        the next param change will reschedule).
-
-        Updates self._kw with the merged effective params so load/async_load
-        see the current node.attr values ("changing arguments = updating
-        resolver state"). No restore: the new params are the new state.
-        """
-        self._refresh_pending = False
         self._refresh_running = True
         try:
-            with contextlib.suppress(Exception):
-                self._kw = self._build_effective_kw()
-                if self.is_async:
-                    result = await self.async_load()
-                else:
-                    result = await asyncio.to_thread(self.load)
-                self._finalize_result_and_notify(result)
+            self._kw = self._build_effective_kw()
+            self._finalize_result_and_notify(self.load())
         finally:
             self._refresh_running = False
 
-    # =========================================================================
-    # INTERVAL (background refresh via set_interval)
-    # =========================================================================
-
     def _start_interval(self) -> None:
-        """Start background refresh if interval is set.
-
-        The first refresh is scheduled at the next loop tick (initial_delay=0),
-        so subscribers registered immediately after resolver attachment see the
-        first value without waiting a full interval.
-
-        The read_only + interval combination is rejected at construction
-        (see __init__ validation), so no runtime check is needed here.
-
-        Raises:
-            RuntimeError: If called in a sync context. Background refresh
-                requires an async event loop to avoid thread-safety issues.
-        """
-        interval = self._kw.get("interval")
-        if interval is None:
-            return
-        if self._timer_id is not None:
-            return
-        if not is_async_context():
-            raise RuntimeError(
-                "interval requires an async context. "
-                "Use cache_time > 0 (passive cache) in sync code."
-            )
-        self._timer_id = set_interval(interval, self._background_load, initial_delay=0)
+        """Reject automatic scheduling; retained for node attachment compatibility."""
+        if self.interval is not None:
+            raise ValueError("interval is not supported; schedule refresh outside the Bag")
 
     def _stop_interval(self) -> None:
-        """Stop background refresh if running."""
-        if self._timer_id is not None:
-            cancel_timer(self._timer_id)
-            self._timer_id = None
-
-    async def _background_load(self) -> None:
-        """Execute a timer-driven refresh.
-
-        Wrapper kept for backward compatibility and as the set_interval
-        callback. Delegates to _do_refresh, which implements the full
-        coalesced active-trigger path. Each interval tick runs one refresh;
-        overlapping ticks are suppressed by the _refresh_running flag.
-        """
-        if self._refresh_running:
-            return
-        await self._do_refresh()
+        """Compatibility hook: synchronous resolvers own no background timers."""
 
     @property
     def expired(self) -> bool:
@@ -566,13 +441,8 @@ class BagResolver:
 
     @property
     def is_async(self) -> bool:
-        """Whether this resolver is async (implements async_load).
-
-        Returns True if subclass overrides async_load(), False if it overrides load().
-        Deduced by checking if async_load is NOT the base class NotImplementedError.
-        """
-        # Check if async_load was overridden (not the base class version)
-        return type(self).async_load is not BagResolver.async_load
+        """Compatibility property: resolvers always execute synchronously."""
+        return False
 
     # =========================================================================
     # __call__ - MAIN ENTRY POINT
@@ -588,7 +458,7 @@ class BagResolver:
                 arguments = updating resolver state". No temporary overrides.
 
         Returns:
-            The resolved value, or a coroutine if in async context.
+            The resolved value, synchronously in every execution context.
 
         Semantic rule:
             node.attr is the current input of the resolver. When cached,
@@ -606,13 +476,9 @@ class BagResolver:
         if static:
             return self.cached_value
 
-        # Interval timer manages reloads: just return cached value if present
-        if self._kw.get("interval") is not None and self.cached_value is not None:
-            return self.cached_value
-
         # call_kwargs update the resolver state before the load. When attached,
         # they go through node.attr (emitting upd_attrs and, when reactive,
-        # scheduling the refresh via the existing set_attr hook). Standalone
+        # performing the refresh via the existing set_attr hook). Standalone
         # resolvers update _kw directly since there is no node.
         if call_kwargs:
             if self._parent_node is not None:
@@ -642,27 +508,13 @@ class BagResolver:
 
         Assigns effective_kw to self._kw permanently: changing arguments is
         modelled as "updating the resolver state", not as a transient swap.
-        This avoids a subtle async bug where a try/finally restore runs
-        before the awaited load actually reads self._kw.
         """
         self._kw = effective_kw
         return self._dispatch_load()
 
     def _dispatch_load(self) -> Any:
-        """Dispatch to correct load method based on sync/async context."""
-        match (self.is_async, is_async_context()):
-            case (False, False):
-                return self._sync_sync_load()
-            case (False, True):
-                return self._sync_async_load()
-            case (True, False):
-                return self._async_sync_load()
-            case (True, True):
-                return self._async_async_load()
-
-    # =========================================================================
-    # LOAD VARIANTS - 4 cases (is_async, in_async_context)
-    # =========================================================================
+        """Load directly on the caller's thread in every execution context."""
+        return self._sync_sync_load()
 
     def _prepare_result(self, result: Any) -> Any:
         """Common post-load processing: as_bag conversion + timestamp update.
@@ -679,6 +531,7 @@ class BagResolver:
         - bytes: decoded and parsed as XML/JSON
         - Bag: returned as-is
         """
+        self._require_sync_result(result)
         as_bag = self._kw.get("as_bag")
         if as_bag is True:
             should_convert = True
@@ -698,8 +551,10 @@ class BagResolver:
                         result = bag
                 except (TypeError, FileNotFoundError, ValueError):
                     pass  # Not convertible to Bag — keep original result
+        result = self.on_loaded(result)
+        self._require_sync_result(result)
         self._cache_last_update = datetime.now()
-        return self.on_loaded(result)
+        return result
 
     def _finalize_result(self, result: Any) -> Any:
         """Store result in cache silently (passive, pull-driven path).
@@ -716,7 +571,7 @@ class BagResolver:
     def _finalize_result_and_notify(self, result: Any) -> Any:
         """Store result through the node mutation channel (active path).
 
-        Used by active triggers (interval timer, future reactive, etc.):
+        Used by synchronous refresh and reactive parameter changes:
         writes via parent_node.set_value(), which fires _on_node_changed
         so subscribers receive an update event.
 
@@ -737,26 +592,12 @@ class BagResolver:
         """Sync resolver in sync context - calls load()."""
         return self._finalize_result(self.load())
 
-    @with_retry
-    @smartasync
-    def _sync_async_load(self) -> Any:
-        """Sync resolver in async context - wraps load() for async."""
-        return self._finalize_result(self.load())
-
-    @with_retry
-    def _async_sync_load(self) -> Any:
-        """Async resolver in sync context - runs async_load() synchronously."""
-        result = smartasync(self.async_load)()
-        return self._finalize_result(result)
-
-    @with_retry
-    async def _async_async_load(self) -> Any:
-        """Async resolver in async context - awaits async_load()."""
-        return self._finalize_result(await self.async_load())
-
-    # =========================================================================
-    # METHODS TO OVERRIDE IN SUBCLASSES
-    # =========================================================================
+    @staticmethod
+    def _require_sync_result(result: Any) -> None:
+        if inspect.isawaitable(result):
+            if inspect.iscoroutine(result):
+                result.close()
+            raise TypeError("BagResolver requires a synchronous value; awaitable results are not supported")
 
     def load(self) -> Any:
         """Override this for SYNC resolvers.
@@ -774,24 +615,6 @@ class BagResolver:
         """
         raise NotImplementedError("Sync resolvers must implement load()")
 
-    async def async_load(self) -> Any:
-        """Override this for ASYNC resolvers.
-
-        Implement this method in subclasses that perform asynchronous operations
-        (e.g., network requests, async I/O).
-
-        Returns:
-            The resolved value (e.g., Bag, dict, or any other type).
-
-        Example:
-            class UrlResolver(BagResolver):
-                async def async_load(self):
-                    async with httpx.AsyncClient() as client:
-                        response = await client.get(self.kw['url'])
-                        return response.text
-        """
-        raise NotImplementedError("Async resolvers must implement async_load()")
-
     def init(self) -> None:
         """Hook called at the end of __init__.
 
@@ -801,7 +624,7 @@ class BagResolver:
         pass
 
     def on_loading(self, kw: dict[str, Any]) -> dict[str, Any]:
-        """Pre-processing hook applied to kwargs before load() / async_load().
+        """Pre-processing hook applied to kwargs before load().
 
         Default implementation is identity: returns kw unchanged.
 
@@ -907,33 +730,14 @@ class BagResolver:
 
 
 class BagSyncResolver(BagResolver):
-    """Resolver whose load() is always executed synchronously, even in async context.
-
-    Use this base class for resolvers whose load() is fast and CPU-only
-    (no I/O, no blocking). The load() method is never wrapped in to_thread,
-    so it always returns a plain value, never a coroutine.
-
-    For resolvers that perform I/O or heavy computation, use BagResolver instead.
-
-    Example:
-        class ComponentResolver(BagSyncResolver):
-            def load(self):
-                bag = Bag()
-                bag['title'] = self.kw['title']
-                return bag
-    """
-
-    def _dispatch_load(self) -> Any:
-        """Always use sync load, even in async context."""
-        return self._sync_sync_load()
+    """Compatibility base for explicitly synchronous resolvers."""
 
 
 class BagCbResolver(BagSyncResolver):
     """Resolver that calls a **sync** callback function to get the value.
 
     Extra kwargs are passed to the callback when load() is called. The
-    callback must be a plain (non-coroutine) function; use
-    :class:`BagAsyncCbResolver` for async callbacks.
+    callback must be a plain function returning a synchronous value.
 
     Parameters (class_args):
         callback: Sync callable that returns the value.
@@ -963,7 +767,7 @@ class BagCbResolver(BagSyncResolver):
         if inspect.iscoroutinefunction(cb):
             raise TypeError(
                 "BagCbResolver requires a sync callback. "
-                "Use BagAsyncCbResolver for coroutine functions."
+                "Run asynchronous work outside the Bag."
             )
 
     def load(self) -> Any:
@@ -973,47 +777,10 @@ class BagCbResolver(BagSyncResolver):
 
 
 class BagAsyncCbResolver(BagResolver):
-    """Resolver that calls an **async** (coroutine) callback function.
-
-    The callback must be a coroutine function; use :class:`BagCbResolver`
-    for sync callbacks.
-
-    Parameters (class_args):
-        callback: Coroutine function that returns the value.
-
-    Parameters (class_kwargs):
-        cache_time: Cache duration in seconds. Default 0 (no cache).
-        read_only: If True, value is not stored in node._value. Default False.
-
-    Raises:
-        TypeError: If ``callback`` is not a coroutine function.
-
-    Example:
-        >>> async def fetch_data(url, timeout=30):
-        ...     async with httpx.AsyncClient() as client:
-        ...         return await client.get(url, timeout=timeout)
-        >>> resolver = BagAsyncCbResolver(fetch_data, url="http://...", timeout=10)
-        >>> await resolver()  # works in async context
-    """
-
-    class_kwargs = {"cache_time": 0, "interval": None, "read_only": False, "as_bag": False}
-    class_args = ["callback"]
-    internal_params = BagResolver.internal_params | {"callback"}
+    """Removed asynchronous callback API, retained for a clear migration error."""
 
     def __init__(self, *args: Any, **kwargs: Any) -> None:
-        super().__init__(*args, **kwargs)
-        cb = self._kw.get("callback")
-        if not inspect.iscoroutinefunction(cb):
-            raise TypeError(
-                "BagAsyncCbResolver requires an async (coroutine) callback. "
-                "Use BagCbResolver for sync callbacks."
-            )
-
-    @property
-    def is_async(self) -> bool:
-        return True
-
-    async def async_load(self) -> Any:
-        """Call async callback with parameters from kw."""
-        params = {k: v for k, v in self.kw.items() if k not in self.internal_params}
-        return await self.kw["callback"](**params)
+        raise TypeError(
+            "BagAsyncCbResolver is no longer supported; "
+            "use BagCbResolver with a synchronous callback"
+        )

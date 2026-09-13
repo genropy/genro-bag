@@ -144,3 +144,15 @@ longer supported.
 Bag subscriptions, transactions and TYTX registration remain available,
 including serialization of Bags nested in ordinary dict/list values and
 registered branch types.
+
+## Synchronous Bag access
+
+Bag and its resolvers return completed values, including in a running event loop.
+Resolvers implement synchronous `load()` methods. Async loaders and callbacks
+are rejected; application code owns asynchronous I/O and scheduling. See the
+[synchronous resolver migration guide](docs/resolvers/sync-async.md).
+
+## Release 0.23.0
+
+See [release notes](docs/releases/0.23.0.md) for the synchronous resolver contract,
+constructor additions and compatibility boundaries.

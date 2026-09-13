@@ -8,7 +8,7 @@ This module provides ready-to-use resolver implementations:
 - FileResolver: Lazily loads file content with format detection
 - TxtDocResolver: Lazily loads text file content
 - BagCbResolver: Calls a sync callback function
-- BagAsyncCbResolver: Calls an async (coroutine) callback function
+- BagAsyncCbResolver: Removed API; raises a migration error
 - UuidResolver: Generates a UUID string (cached by default)
 - UrlResolver: Loads content from HTTP URL (requires httpx)
 - OpenApiResolver: Loads OpenAPI spec and organizes by tags (requires httpx)

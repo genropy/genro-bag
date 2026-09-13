@@ -226,6 +226,10 @@ class BagQuery:
             ...     print('.'.join(_pathlist))
             >>> bag.walk(my_cb, _pathlist=[])
         """
+        if "_mode" in kwargs:
+            mode = kwargs.pop("_mode")
+            static = isinstance(mode, str) and "static" in mode
+
         if callback is not None:
             # Legacy callback mode
             for idx, node in enumerate(self._nodes):
@@ -399,6 +403,7 @@ class BagQuery:
         what: str | list | None = None,
         condition: Callable[[BagNode], bool] | None = None,
         as_columns: bool = False,
+        **kwargs: Any,
     ) -> list:
         """Return a list of tuples with keys/values/attributes (backward compatible).
 
@@ -413,6 +418,12 @@ class BagQuery:
         Returns:
             List of tuples (or list of lists if as_columns=True).
         """
+        if "asColumns" in kwargs:
+            as_columns = kwargs.pop("asColumns")
+        if kwargs:
+            unexpected = next(iter(kwargs))
+            raise TypeError(f"digest() got an unexpected keyword argument {unexpected!r}")
+
         result = self.query(what, condition, iter=False, deep=False)
         if as_columns:
             if not result:
@@ -425,7 +436,7 @@ class BagQuery:
             return [result_list]
         return list(result)
 
-    def columns(self, cols: str | list, attr_mode: bool = False) -> list:
+    def columns(self, cols: str | list, attr_mode: bool = False, **kwargs: Any) -> list:
         """Return digest result as columns.
 
         Args:
@@ -435,6 +446,12 @@ class BagQuery:
         Returns:
             List of lists (columns).
         """
+        if "attrMode" in kwargs:
+            attr_mode = kwargs.pop("attrMode")
+        if kwargs:
+            unexpected = next(iter(kwargs))
+            raise TypeError(f"columns() got an unexpected keyword argument {unexpected!r}")
+
         if isinstance(cols, str):
             cols = cols.split(",")
         mode = ""

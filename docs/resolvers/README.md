@@ -66,23 +66,15 @@ bag['cached'] = BagCbResolver(func, cache_time=300)
 # Cache forever (until manual reset)
 bag['permanent'] = BagCbResolver(func, cache_time=False)
 
-# Active cache — background refresh every 30 seconds (async only)
-bag['live'] = BagCbResolver(func, cache_time=-30)
 
 # Reset cache manually
 bag.get_node('cached').resolver.reset()
 ```
 
-## Async Support
+## Synchronous execution
 
-```python
-# In sync code - just works
-result = bag['data']
-
-# In async code - use smartawait
-from genro_toolbox import smartawait
-result = await smartawait(bag.get_item('data'))
-```
+Access returns the final value in all contexts: `result = bag["data"]`.
+See [synchronous resolvers](sync-async.md) for migration details.
 
 ## Custom Resolvers
 

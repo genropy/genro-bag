@@ -94,42 +94,10 @@ bag = Bag()
 bag['session'] = RedisResolver('user:123:session', redis_client=redis)
 ```
 
-## Example: Async Resolver
+## Synchronous loaders
 
-```python
-from genro_bag.resolver import BagResolver
-import aiohttp
-
-class AsyncApiResolver(BagResolver):
-    """Async HTTP API resolver."""
-
-    class_args = ['url']
-    class_kwargs = {
-        'cache_time': 300,
-        'read_only': False,
-        'headers': None
-    }
-
-    async def load(self):
-        url = self.kw['url']
-        headers = self.kw['headers'] or {}
-
-        async with aiohttp.ClientSession() as session:
-            async with session.get(url, headers=headers) as resp:
-                return await resp.json()
-
-# Usage (in async context)
-from genro_toolbox import smartawait
-
-bag = Bag()
-bag['data'] = AsyncApiResolver(
-    'https://api.example.com/data',
-    headers={'Authorization': 'Bearer xxx'}
-)
-
-# Access
-result = await smartawait(bag.get_item('data'))
-```
+Implement `def load(self)` and return the final value. Async methods and
+awaitable results are rejected; see [migration](sync-async.md).
 
 ## Example: File Watcher with mtime Check
 
@@ -198,7 +166,7 @@ bag['data']['nested.key']
 
 ## Custom Transforms: `on_loading` and `on_loaded`
 
-Subclasses can plug pre/post-processing around `load()` / `async_load()` by
+Subclasses can plug pre/post-processing around `load()` by
 overriding two instance methods:
 
 - **`on_loading(kw) -> kw`**: transform kwargs before the load. Default
@@ -209,7 +177,7 @@ overriding two instance methods:
 
 ### Reading state: `self.kw` vs `self._kw`
 
-Inside `load()` / `async_load()`, always read parameters from **`self.kw`**
+Inside `load()`, always read parameters from **`self.kw`**
 (not `self._kw`). `self.kw` is a property that returns `self.on_loading(self._kw)`,
 so any transformation you inject via `on_loading` is visible to the load:
 
@@ -254,9 +222,9 @@ class JsonApiResolver(BagResolver):
     class_args = ['url']
     class_kwargs = {'as_bag': True}
 
-    async def async_load(self):
-        async with httpx.AsyncClient() as client:
-            r = await client.get(self.kw['url'])
+    def load(self):
+        with httpx.Client() as client:
+            r = client.get(self.kw['url'])
             return r.json()
 
     def on_loaded(self, result):
@@ -287,8 +255,6 @@ class_kwargs = {'cache_time': 300}  # 5 minutes
 # Static reference data
 class_kwargs = {'cache_time': False}  # Infinite
 
-# Active cache — auto-refresh every 60 seconds (async only)
-class_kwargs = {'cache_time': -60}
 ```
 
 ### 2. Handle Errors Gracefully
