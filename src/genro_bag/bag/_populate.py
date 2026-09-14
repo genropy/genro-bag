@@ -400,10 +400,11 @@ class BagPopulate:
 
     def update(
         self,
-        source: Bag | dict,
-        ignore_none: bool = False,
-        *,
+        source: Bag | Mapping[Any, Any] | str | Any,
         resolved: bool = False,
+        ignore_none: bool = False,
+        preserve_pattern: Any = None,
+        *,
         ignoreNone: bool | None = None,
         preservePattern: Any = None,
     ) -> None:
@@ -412,12 +413,16 @@ class BagPopulate:
         Merges nodes from source into this Bag. For existing labels,
         updates the value, merges attributes and carries ``node_tag`` /
         ``xml_tag`` (an incoming non-None tag wins, mirroring
-        ``set_item``). For new labels, adds the node with its tags.
+        ``set_item``). For new labels, adds the node with its tags. Unlike the
+        legacy implementation, an unresolved resolver on a newly inserted node
+        is retained; legacy accidentally inserted that node with a null value
+        and discarded its resolver.
 
         Args:
             source: A Bag or dict to merge from.
-            ignore_none: If True, don't overwrite existing values with None.
             resolved: Resolve incoming resolver values before copying.
+            ignore_none: If True, don't overwrite existing values with None.
+            preserve_pattern: Compiled regex protecting matching current strings.
             ignoreNone: Legacy spelling of ``ignore_none``.
             preservePattern: Compiled pattern protecting matching strings.
 
@@ -428,57 +433,90 @@ class BagPopulate:
             (10, 2, 3)
         """
         if ignoreNone is not None:
-            if ignore_none and not ignoreNone:
+            if ignore_none is not False and ignore_none != ignoreNone:
                 raise TypeError("conflicting ignore_none and ignoreNone values")
             ignore_none = ignoreNone
+        if preservePattern is not None:
+            if preserve_pattern is not None and preserve_pattern is not preservePattern:
+                raise TypeError("conflicting preserve_pattern and preservePattern values")
+            preserve_pattern = preservePattern
 
         def updatable(value: Any) -> bool:
             return not (
-                preservePattern is not None
+                preserve_pattern is not None
                 and isinstance(value, str)
-                and preservePattern.search(value) is not None
+                and preserve_pattern.search(value) is not None
             )
 
-        # Normalize to list of (label, value, attr, node_tag, xml_tag)
-        items: list[tuple[Any, Any, dict[str, Any], str | None, str | None]]
-        if isinstance(source, dict):
-            items = [(k, v, {}, None, None) for k, v in source.items()]
-        else:
-            items = [
-                (
-                    n.label,
-                    n.get_value(static=not resolved),
-                    n.attr,
-                    n.node_tag,
-                    n.xml_tag,
-                )
-                for n in list(source)
-            ]
+        if isinstance(source, str):
+            source = self.__class__(source)
 
-        for label, value, attr, node_tag, xml_tag in items:
+        if isinstance(source, Mapping):
+            for label, value in source.items():
+                current = self.get_item(label, default=None, static=True)
+                if (not ignore_none or value is not None) and updatable(current):
+                    self.set_item(label, value)
+            return
+
+        for incoming in list(source):
+            label = incoming.label
+            resolver = incoming.resolver
+            value = incoming.get_value(static=False) if resolved else incoming.static_value
+            copied_resolver = None if resolved else resolver
+            attr = dict(incoming.attr)
+            node_tag = incoming.node_tag
+            xml_tag = incoming.xml_tag
             if label in self._nodes:
                 curr_node = self._nodes[label]
-                for attr_name, attr_value in attr.items():
-                    if updatable(curr_node.attr.get(attr_name)):
-                        curr_node.attr[attr_name] = attr_value
+                attrs_to_update = {
+                    attr_name: attr_value
+                    for attr_name, attr_value in attr.items()
+                    if updatable(curr_node.attr.get(attr_name))
+                }
                 if node_tag is not None:
                     curr_node.node_tag = node_tag
                 if xml_tag is not None:
                     curr_node.xml_tag = xml_tag
                 curr_value = curr_node.static_value
-                if safe_is_instance(value, _IS_BAG) and safe_is_instance(curr_value, _IS_BAG):
+                if copied_resolver is not None:
+                    if (not ignore_none or value is not None) and updatable(curr_value):
+                        curr_node.set_value(
+                            value,
+                            _attributes=attrs_to_update,
+                            _updattr=True,
+                            _remove_null_attributes=False,
+                        )
+                    else:
+                        curr_node.attr.update(attrs_to_update)
+                    curr_node.resolver = copied_resolver
+                elif safe_is_instance(value, _IS_BAG) and safe_is_instance(curr_value, _IS_BAG):
+                    curr_node.attr.update(attrs_to_update)
+                    curr_node.resolver = None
                     curr_value.update(
                         value,
-                        ignore_none=ignore_none,
-                        resolved=resolved,
-                        preservePattern=preservePattern,
+                        resolved,
+                        ignore_none,
+                        preserve_pattern,
                     )
                 else:
                     if (not ignore_none or value is not None) and updatable(curr_value):
-                        curr_node.value = value
+                        curr_node.resolver = None
+                        curr_node.set_value(
+                            value,
+                            _attributes=attrs_to_update,
+                            _updattr=True,
+                            _remove_null_attributes=False,
+                        )
+                    else:
+                        curr_node.attr.update(attrs_to_update)
             else:
                 new_node = self.set_item(
-                    label, value, _attributes=attr, node_tag=node_tag,
+                    label,
+                    value,
+                    _attributes=attr,
+                    _remove_null_attributes=False,
+                    resolver=copied_resolver,
+                    node_tag=node_tag,
                 )
                 if xml_tag is not None:
                     new_node.xml_tag = xml_tag

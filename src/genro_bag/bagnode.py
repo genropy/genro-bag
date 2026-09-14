@@ -194,6 +194,8 @@ class BagNode(BagNodeNamesMixin):
         If the node's value is a Bag and the parent has backref=True,
         establishes the bidirectional parent-child relationship via set_backref().
         """
+        if parent_bag is None and getattr(self._value, "parent_node", None) is self:
+            self._value.set_backref()
         self._parent_bag = None
         if parent_bag is not None:
             self._parent_bag = parent_bag
@@ -373,26 +375,16 @@ class BagNode(BagNodeNamesMixin):
                 _attributes.update(rootattributes)
 
         oldvalue = self._value
+        if oldvalue is not value and getattr(oldvalue, "parent_node", None) is self:
+            oldvalue.set_backref()
         self._value = value
 
-        changed = oldvalue != self._value
-        if not changed and _attributes:
-            for attr_k, attr_v in _attributes.items():
-                if self._attr.get(attr_k) != attr_v:
-                    changed = True
-                    break
-
-        trigger = trigger and changed
-
-        # Event type: 'upd_value' for value-only, 'upd_value_attr' for combined.
-        evt = "upd_value"
+        value_changed = oldvalue != self._value
         attrs_diff: dict[str, dict[str, Any]] | None = None
 
         if _attributes is not None:
-            evt = "upd_value_attr"
             oldattr_snapshot = dict(self._attr)
-            # Call set_attr with trigger=False: it must not emit its own
-            # 'upd_attrs' event, the combined 'upd_value_attr' covers both.
+            # Apply attributes silently; emit one event for the actual changes.
             self.set_attr(
                 _attributes,
                 trigger=False,
@@ -400,6 +392,9 @@ class BagNode(BagNodeNamesMixin):
                 _remove_null_attributes=_remove_null_attributes,
             )
             attrs_diff = self._build_attr_diff(oldattr_snapshot, self._attr) or None
+
+        trigger = trigger and (value_changed or attrs_diff is not None)
+        evt = ("upd_value_attr" if value_changed else "upd_attrs") if attrs_diff else "upd_value"
 
         if trigger:
             if attrs_diff is not None:
@@ -1161,6 +1156,7 @@ class BagNodeContainer:
         if value is not None:
             del self._dict[value.label]
             self._list.remove(value)
+            value.parent_bag = None
             return value
 
         return None
@@ -1244,6 +1240,8 @@ class BagNodeContainer:
         events. Used as fast path by Bag.clear(trigger=False) and by
         Bag.clear() when the Bag has no parent or no backref.
         """
+        for node in self._list:
+            node.parent_bag = None
         self._dict.clear()
         self._list.clear()
 

@@ -4,7 +4,7 @@ BagNode.set_value when ``_attributes`` is also passed.
 Depends on test_basic.py (set_item) and test_subscriptions.py (subscribe).
 
 Contract: a set_item / set_value that changes a node's value
-AND also touches its attributes emits a single ``upd_value_attr``
+AND also changes its attributes emits a single ``upd_value_attr``
 event with composite payload:
 
 - ``oldvalue``  = the previous scalar/Bag value (historical semantics);
@@ -17,10 +17,9 @@ At node level the subscriber receives an ``info`` dict with both keys:
 At bag level (via _on_node_changed) the two pieces arrive as
 separate kwargs: ``oldvalue=<scalar>``, ``attrs_diff=<diff>``.
 
-If attributes don't actually change (no-op on attributes side),
-``attrs_diff`` may be None but the value is still updated
-as ``upd_value_attr`` (because user passed ``_attributes``
-explicitly).
+If attributes do not actually change, a value change emits ``upd_value``
+with ``attrs_diff=None``. An attribute-only change emits ``upd_attrs``.
+An assignment that changes neither emits no change event.
 
 ## Scale
 

@@ -762,6 +762,15 @@ class TestResolverKw:
 
 
 class TestResolverContainerProxy:
+    def test_resolver_iteration_delegates_to_resolved_bag(self):
+        """Iteration exposes the resolved Bag nodes instead of indexing by integer."""
+
+        resolver = BagCbResolver(
+            lambda: Bag({"a": 1, "b": 2}), cache_time=False
+        )
+
+        assert [node.label for node in resolver] == ["a", "b"]
+
     def test_resolver_getitem_after_load(self):
         """After load that produces a Bag, resolver['key'] navigates the resulting Bag."""
 
@@ -816,6 +825,16 @@ class TestResolverContainerProxy:
 
 
 class TestDirectoryResolverBasics:
+    def test_resolved_update_accepts_directory_resolver(self, tmp_path):
+        """Bag.update can consume a resolver directly and resolve its file nodes."""
+        (tmp_path / "one.txt").write_text("one", encoding="utf-8")
+        resolver = DirectoryResolver(str(tmp_path), ext="txt")
+        target = Bag()
+
+        target.update(resolver, resolved=True)
+
+        assert target["one_txt"] == b"one"
+
     def test_empty_directory_produces_empty_bag(self, tmp_path):
         """An empty directory -> empty Bag."""
         bag = Bag()
@@ -841,7 +860,7 @@ class TestDirectoryResolverBasics:
         bag["docs"] = DirectoryResolver(str(tmp_path))
         result = bag["docs"]
         # default label: name + '_' + ext
-        assert "config_xml" in result
+        assert "config_xml" in result.keys()
 
     def test_directory_with_multiple_extensions(self, tmp_path):
         """ext='xml,txt' processes both extensions."""
@@ -850,8 +869,8 @@ class TestDirectoryResolverBasics:
         bag = Bag()
         bag["docs"] = DirectoryResolver(str(tmp_path), ext="xml,txt")
         result = bag["docs"]
-        assert "config_xml" in result
-        assert "notes_txt" in result
+        assert "config_xml" in result.keys()
+        assert "notes_txt" in result.keys()
 
     def test_subdirectory_becomes_nested_directory_resolver(self, tmp_path):
         """A subdirectory produces a node with a DirectoryResolver."""
@@ -862,11 +881,11 @@ class TestDirectoryResolverBasics:
         bag["docs"] = DirectoryResolver(str(tmp_path))
         result = bag["docs"]
         # 'sub' is present as a node
-        assert "sub" in result
+        assert "sub" in result.keys()
         # accessing it triggers the resolver and returns the sub Bag
         sub_bag = result["sub"]
         assert isinstance(sub_bag, Bag)
-        assert "inner_xml" in sub_bag
+        assert "inner_xml" in sub_bag.keys()
 
 
 class TestDirectoryResolverAttributes:
@@ -1062,7 +1081,7 @@ class TestDirectoryResolverProcessors:
         )
         result = bag["docs"]
         # the node exists, but the value comes from processor_default
-        assert "doc_xml" in result
+        assert "doc_xml" in result.keys()
 
 
 class TestDirectoryResolverExtMapping:
@@ -1072,7 +1091,7 @@ class TestDirectoryResolverExtMapping:
         bag = Bag()
         bag["docs"] = DirectoryResolver(str(tmp_path), ext="dat:xml")
         result = bag["docs"]
-        assert "data_dat" in result
+        assert "data_dat" in result.keys()
 
 
 class TestDirectoryResolverContent:

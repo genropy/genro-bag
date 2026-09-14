@@ -708,6 +708,10 @@ class BagResolver(BagResolverNamesMixin):
         """Proxy for bag[key]. Resolves and delegates."""
         return self()[k]
 
+    def __iter__(self):
+        """Iterate over the resolved value."""
+        return iter(self())
+
     def _htraverse(self, *args: Any, **kwargs: Any) -> Any:
         """Proxy for _htraverse. Resolves and delegates."""
         return self()._htraverse(*args, **kwargs)

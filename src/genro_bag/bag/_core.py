@@ -593,7 +593,7 @@ class Bag(BagNamesMixin, BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser
         navigable, garbage-collected when no longer referenced).
 
         When trigger is False, clears in place without allocating an
-        orphans Bag or re-parenting old nodes. Use for bulk operations
+        orphans Bag; removed nodes are detached. Use for bulk operations
         where no subscriber cares about the cleared content.
 
         Args:
@@ -622,8 +622,7 @@ class Bag(BagNamesMixin, BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser
         self._nodes = self._container_class()
         orphans = self.__class__()
         orphans._nodes = old_container
-        for node in old_container:
-            node._parent_bag = orphans
+        orphans.set_backref()
         self.parent._on_node_changed(
             self.parent_node,
             [self.parent_node.label],
@@ -1039,6 +1038,7 @@ class Bag(BagNamesMixin, BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser
     def del_parent_ref(self) -> None:
         """Set False in the parent Bag reference of the relative Bag."""
         self.parent = None
+        self.parent_node = None
         self._backref = False
 
     def clear_backref(self) -> None:

@@ -45,6 +45,7 @@ import pytest
 
 from genro_bag import Bag, BagNode
 
+
 # =============================================================================
 # 1. Node identity
 # =============================================================================
@@ -290,17 +291,13 @@ class TestPosition:
         n = bag.set_item("c", 3, node_position="<")
         assert n.position == 0
 
-    def test_position_negative_on_popped_node(self):
-        """Node extracted with pop_node is no longer in container: position -1.
-
-        pop_node does not call orphaned(), so parent_bag remains referenced
-        but node is no longer indexable in container (label absent).
-        """
+    def test_position_none_on_popped_node(self):
+        """A popped node has no containing Bag and therefore no position."""
         bag = Bag()
         bag.set_item("x", 1)
         node = bag.pop_node("x")
         assert isinstance(node, BagNode)
-        assert node.position == -1
+        assert node.position is None
 
 
 # =============================================================================
@@ -316,13 +313,13 @@ class TestParentLinks:
         assert node.parent_bag is bag
 
     def test_parent_bag_none_after_orphaned_call(self):
-        """orphaned() zeros parent_bag; pop_node alone does not."""
+        """pop_node detaches immediately; orphaned remains safe to call again."""
         bag = Bag()
         bag.set_item("x", 1)
         node = bag.pop_node("x")
         assert isinstance(node, BagNode)
-        # pop_node does not call orphaned: parent_bag remains
-        assert node.parent_bag is bag
+        # pop_node already removed the parent reference
+        assert node.parent_bag is None
         # orphaned() zeros reference
         node.orphaned()
         assert node.parent_bag is None
@@ -640,8 +637,7 @@ class TestUnderscoreProperty:
     def test_raises_when_no_parent(self):
         """node._ on node without parent_bag raises ValueError.
 
-        To have truly orphan node, need pop_node followed by
-        orphaned() (pop_node alone preserves parent_bag).
+        A node extracted by pop_node has no parent.
         """
         bag = Bag()
         bag.set_item("x", 1)

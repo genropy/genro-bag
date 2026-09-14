@@ -28,11 +28,13 @@ __iter__, __contains__) and test_query.py (query, keys, values, items).
 from __future__ import annotations
 
 import pickle
+import re
 from pathlib import Path
 
 import pytest
 
 from genro_bag import Bag
+from genro_bag.resolvers import BagCbResolver
 
 # =============================================================================
 # 1. fill_from(None)
@@ -360,6 +362,102 @@ class TestDeepcopy:
 
 
 class TestUpdate:
+    def test_positional_contract_and_camel_keyword_aliases(self):
+        current = Bag({"keep": None, "template": "${KEEP}"})
+        incoming = Bag({"keep": 2, "template": "replace", "added": 3})
+
+        current.update(incoming, False, True, re.compile(r"^\$\{"))
+
+        assert current["keep"] == 2
+        assert current["template"] == "${KEEP}"
+        assert current["added"] == 3
+
+        camel = Bag({"keep": None, "template": "${KEEP}"})
+        camel.update(incoming, ignoreNone=True, preservePattern=re.compile(r"^\$\{"))
+        assert camel["keep"] == 2
+        assert camel["template"] == "${KEEP}"
+
+    def test_preserve_pattern_protects_attributes_without_blocking_value_update(self):
+        current = Bag()
+        current.set_item("item", "old", _attributes={"caption": "${KEEP}", "other": "old"})
+        incoming = Bag()
+        incoming.set_item("item", "new", _attributes={"caption": "replace", "other": "new"})
+
+        current.update(incoming, preserve_pattern=re.compile(r"^\$\{"))
+
+        assert current["item"] == "new"
+        assert current.get_attr("item", "caption") == "${KEEP}"
+        assert current.get_attr("item", "other") == "new"
+
+    def test_unresolved_update_preserves_existing_and_inserted_resolvers(self):
+        calls = []
+        source = Bag()
+        source["existing"] = BagCbResolver(lambda: calls.append("existing") or 10)
+        source["inserted"] = BagCbResolver(lambda: calls.append("inserted") or 20)
+        target = Bag({"existing": 1})
+
+        target.update(source)
+
+        assert calls == []
+        assert target.get_resolver("existing") is source.get_resolver("existing")
+        assert target.get_resolver("inserted") is source.get_resolver("inserted")
+        assert target.get_item("existing") == 10
+        assert target.get_item("inserted") == 20
+        assert calls == ["existing", "inserted"]
+
+    def test_resolved_update_executes_and_copies_plain_values(self):
+        calls = []
+        source = Bag()
+        source["existing"] = BagCbResolver(lambda: calls.append("existing") or 10)
+        source["inserted"] = BagCbResolver(lambda: calls.append("inserted") or 20)
+        target = Bag()
+        target["existing"] = BagCbResolver(lambda: -1)
+
+        target.update(source, True)
+
+        assert calls == ["existing", "inserted"]
+        assert target.get_resolver("existing") is None
+        assert target.get_resolver("inserted") is None
+        assert target["existing"] == 10
+        assert target["inserted"] == 20
+
+    def test_bag_update_preserves_nested_null_attrs_and_tags(self):
+        source = Bag()
+        branch = Bag()
+        inner = branch.set_item("inner", 2, _attributes={"nullable": None},
+                                _remove_null_attributes=False, node_tag="innerTag")
+        inner.xml_tag = "innerXml"
+        outer = source.set_item("outer", branch, _attributes={"nullable": None},
+                                _remove_null_attributes=False, node_tag="outerTag")
+        outer.xml_tag = "outerXml"
+        target = Bag({"outer": {"kept": 1}})
+
+        target.update(source)
+
+        assert target["outer.kept"] == 1
+        assert target["outer.inner"] == 2
+        assert target.get_node("outer").attr == {"nullable": None}
+        assert target.get_node("outer").node_tag == "outerTag"
+        assert target.get_node("outer").xml_tag == "outerXml"
+        assert target.get_node("outer.inner").attr == {"nullable": None}
+        assert target.get_node("outer.inner").node_tag == "innerTag"
+        assert target.get_node("outer.inner").xml_tag == "innerXml"
+
+    def test_update_accepts_xml_and_dict_and_emits_value_and_insert_events(self):
+        target = Bag({"existing": 1})
+        events = []
+        target.set_backref()
+        target.subscribe("audit", update=lambda **kw: events.append(("upd", kw["node"].label)),
+                         insert=lambda **kw: events.append(("ins", kw["node"].label)))
+
+        target.update("<GenRoBag><existing _T=\"L\">2</existing><xmlnew>yes</xmlnew></GenRoBag>")
+        target.update({"dictnew": 3})
+
+        assert target["existing"] == 2
+        assert target["xmlnew"] == "yes"
+        assert target["dictnew"] == 3
+        assert events == [("upd", "existing"), ("ins", "xmlnew"), ("ins", "dictnew")]
+
     def test_update_with_dict_adds_new_and_overwrites(self):
         """update(dict) adds new keys and overwrites existing."""
         bag = Bag({"a": 1, "b": 2})
