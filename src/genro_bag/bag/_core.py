@@ -510,6 +510,7 @@ class Bag(BagNamesMixin, BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser
             node = self._nodes.pop(p)
             if self.backref:
                 self._on_node_deleted(node, p, reason=_reason)
+            node.parent_bag = None
             return node
         return None
 
@@ -616,7 +617,10 @@ class Bag(BagNamesMixin, BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser
         if not trigger or not (
             self.backref and self.parent is not None and self.parent_node is not None
         ):
+            old_nodes = list(self._nodes)
             self._nodes.clear()
+            for node in old_nodes:
+                node.parent_bag = None
             return
         old_container = self._nodes
         self._nodes = self._container_class()

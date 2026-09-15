@@ -28,6 +28,19 @@ def test_removed_subtree_is_independent(operation):
     child.set_item('nested.x', 3)
     assert len(events) == 1
 
+def test_delete_subscribers_see_popped_node_still_attached():
+    root = Bag()
+    root.set_backref()
+    root.set_item('outer.child', Bag({'x': 1}))
+    inner = root.get_item('outer')
+    node = inner.get_node('child')
+    seen = []
+    root.subscribe('test', delete=lambda node, **kw: seen.append((node.parent_bag, node.parent_node.label)))
+    root.pop_node('outer.child')
+    assert seen == [(inner, 'outer')]
+    assert node.parent_bag is None
+    assert node.parent_node is None
+
 def test_identical_child_stays_attached():
     root = Bag()
     root.set_backref()

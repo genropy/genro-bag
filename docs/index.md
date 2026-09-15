@@ -148,5 +148,6 @@ reference/full-faq
 :maxdepth: 1
 :caption: Releases
 
+releases/0.23.2
 releases/0.23.0
 ```

@@ -658,7 +658,7 @@ class BagNode(BagNodeNamesMixin):
         In the hierarchy: grandparent_bag contains parent_node, whose value
         is parent_bag, which contains this node.
         """
-        if self.parent_bag:
+        if self.parent_bag is not None:
             return self.parent_bag.parent_node
         return None
 
@@ -669,7 +669,7 @@ class BagNode(BagNodeNamesMixin):
             Dict with all inherited attributes merged with this node's attributes.
         """
         inherited: dict[str, Any] = {}
-        if self.parent_bag and self.parent_bag.parent_node:
+        if self.parent_bag is not None and self.parent_bag.parent_node is not None:
             inherited = self.parent_bag.parent_node.get_inherited_attributes()
         inherited.update(self._attr)
         return inherited
@@ -1156,7 +1156,6 @@ class BagNodeContainer:
         if value is not None:
             del self._dict[value.label]
             self._list.remove(value)
-            value.parent_bag = None
             return value
 
         return None
@@ -1237,11 +1236,9 @@ class BagNodeContainer:
         """Remove all elements in place.
 
         Low-level clear: empties the internal list and dict without firing
-        events. Used as fast path by Bag.clear(trigger=False) and by
-        Bag.clear() when the Bag has no parent or no backref.
+        events and without touching the removed nodes. The owning Bag
+        detaches them once its subscribers have been notified.
         """
-        for node in self._list:
-            node.parent_bag = None
         self._dict.clear()
         self._list.clear()
 
