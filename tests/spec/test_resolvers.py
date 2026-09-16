@@ -11,7 +11,7 @@ resolver's public methods directly.
 
 ## Scale
 
-1.  UuidResolver              unique id generator, cache_time=False
+1.  UuidResolver              unique id generator, cache_time=-1
 2.  EnvResolver               env var + default
 3.  BagCbResolver sync        sync callback with kwargs
 4.  BagCbResolver with cache  cache_time > 0
@@ -21,7 +21,7 @@ resolver's public methods directly.
 8.  static=True               read without trigger
 9.  reset / expired           manual invalidation
 10. read_only                 does not save the value in the node
-11. cache_time < 0            error in __init__
+11. boolean cache_time        error in __init__
 12. serialize roundtrip       resolver serialization
 13. get_resolver / set_resolver  node accessors
 14. UrlResolver               network (marker)
@@ -70,7 +70,7 @@ class TestUuidResolver:
         assert len(value) > 0
 
     def test_cached_by_default(self):
-        """With cache_time=False (default) two reads return the same UUID."""
+        """With cache_time=-1 (default) two reads return the same UUID."""
         bag = Bag()
         bag["id"] = UuidResolver()
         first = bag["id"]
@@ -175,7 +175,7 @@ class TestBagCbResolverCache:
         assert bag["c"] == 3
 
     def test_cache_time_infinite(self):
-        """cache_time=False: the value remains stable after the first load."""
+        """cache_time=-1: the value remains stable after the first load."""
         counter = {"n": 0}
 
         def cb():
@@ -183,7 +183,7 @@ class TestBagCbResolverCache:
             return counter["n"]
 
         bag = Bag()
-        bag["c"] = BagCbResolver(cb, cache_time=False)
+        bag["c"] = BagCbResolver(cb, cache_time=-1)
         assert bag["c"] == 1
         assert bag["c"] == 1
         assert bag["c"] == 1
@@ -372,7 +372,7 @@ class TestParameterPriority:
         assert bag.get_attr("x", "a") == 7
 
     def test_set_attr_on_resolver_param_invalidates_cache(self):
-        """On a resolver with cache_time=False and NON-reactive, changing an attr
+        """On a resolver with cache_time=-1 and NON-reactive, changing an attr
         that is a resolver parameter invalidates the cache: the next access
         recomputes. Difference with 'reactive=True' where the refresh is eager.
         """
@@ -383,7 +383,7 @@ class TestParameterPriority:
             return calls["n"] * multiplier
 
         bag = Bag()
-        bag["x"] = BagCbResolver(cb, cache_time=False, multiplier=5)
+        bag["x"] = BagCbResolver(cb, cache_time=-1, multiplier=5)
         # first access: computes, cache hot
         assert bag["x"] == 5
         # second access: cache hit, does not recompute
@@ -413,7 +413,7 @@ class TestStaticAccess:
             return "value"
 
         bag = Bag()
-        bag["v"] = BagCbResolver(cb, cache_time=False)
+        bag["v"] = BagCbResolver(cb, cache_time=-1)
         # first lazy read triggers load
         bag["v"]
         assert calls["n"] == 1
@@ -425,7 +425,7 @@ class TestStaticAccess:
     def test_static_before_any_load_returns_none(self):
         """static=True before any load returns the cached value (None)."""
         bag = Bag()
-        bag["v"] = BagCbResolver(lambda: "hello", cache_time=False)
+        bag["v"] = BagCbResolver(lambda: "hello", cache_time=-1)
         assert bag.get_item("v", static=True) is None
 
 
@@ -444,7 +444,7 @@ class TestResetAndExpired:
             return counter["n"]
 
         bag = Bag()
-        bag["c"] = BagCbResolver(cb, cache_time=False)
+        bag["c"] = BagCbResolver(cb, cache_time=-1)
         assert bag["c"] == 1
         assert bag["c"] == 1  # cached
         resolver = bag.get_resolver("c")
@@ -452,9 +452,9 @@ class TestResetAndExpired:
         assert bag["c"] == 2  # ricaricato
 
     def test_expired_false_when_cache_infinite_and_loaded(self):
-        """With cache_time=False and already loaded, expired is False."""
+        """With cache_time=-1 and already loaded, expired is False."""
         bag = Bag()
-        bag["c"] = BagCbResolver(lambda: 1, cache_time=False)
+        bag["c"] = BagCbResolver(lambda: 1, cache_time=-1)
         bag["c"]  # trigger
         assert bag.get_resolver("c").expired is False
 
@@ -494,10 +494,10 @@ class TestReadOnly:
 
 
 class TestConstructionErrors:
-    def test_negative_cache_time_rejected(self):
-        """Negative cache_time is no longer supported: raises ValueError."""
-        with pytest.raises(ValueError):
-            BagCbResolver(lambda: 1, cache_time=-10)
+    def test_boolean_cache_time_rejected(self):
+        for value in (False, True):
+            with pytest.raises(TypeError, match="cache_time must be numeric"):
+                BagCbResolver(lambda: 1, cache_time=value)
 
     def test_read_only_with_interval_rejected(self):
         """read_only=True + interval raises ValueError."""
@@ -591,18 +591,18 @@ class TestResolverInPlaceProperties:
         assert resolver is not None
         assert resolver.cache_time == 60
 
-    def test_cache_time_false_means_infinite(self):
-        """cache_time=False means infinite cache."""
+    def test_cache_time_negative_means_infinite(self):
+        """cache_time=-1 means infinite cache."""
         bag = Bag()
-        bag["c"] = BagCbResolver(lambda: 1, cache_time=False)
+        bag["c"] = BagCbResolver(lambda: 1, cache_time=-1)
         resolver = bag.get_resolver("c")
         assert resolver is not None
-        assert resolver.cache_time is False
+        assert resolver.cache_time == -1
 
     def test_interval_default_none(self):
         """A resolver without an interval has interval=None."""
         bag = Bag()
-        bag["c"] = BagCbResolver(lambda: 1, cache_time=False)
+        bag["c"] = BagCbResolver(lambda: 1, cache_time=-1)
         resolver = bag.get_resolver("c")
         assert resolver is not None
         assert resolver.interval is None
@@ -618,7 +618,7 @@ class TestResolverInPlaceProperties:
     def test_reactive_true_when_set(self):
         """reactive=True at construct is exposed by the property."""
         bag = Bag()
-        bag["c"] = BagCbResolver(lambda: 1, cache_time=False, reactive=True)
+        bag["c"] = BagCbResolver(lambda: 1, cache_time=-1, reactive=True)
         resolver = bag.get_resolver("c")
         assert resolver is not None
         assert resolver.reactive is True
@@ -626,7 +626,7 @@ class TestResolverInPlaceProperties:
     def test_reactive_setter_mutates(self):
         """reactive setter allows modifying the flag at runtime."""
         bag = Bag()
-        bag["c"] = BagCbResolver(lambda: 1, cache_time=False)
+        bag["c"] = BagCbResolver(lambda: 1, cache_time=-1)
         resolver = bag.get_resolver("c")
         assert resolver is not None
         resolver.reactive = True
@@ -646,9 +646,9 @@ class TestResolverInPlaceProperties:
         assert resolver.read_only is True
 
     def test_read_only_derived_false_with_cache(self):
-        """With cache_time=False (infinite), read_only not explicit is False."""
+        """With cache_time=-1 (infinite), read_only not explicit is False."""
         bag = Bag()
-        bag["c"] = BagCbResolver(lambda: 1, cache_time=False)
+        bag["c"] = BagCbResolver(lambda: 1, cache_time=-1)
         resolver = bag.get_resolver("c")
         assert resolver is not None
         assert resolver.read_only is False
@@ -688,7 +688,7 @@ class TestResolverCachedValue:
     def test_cached_value_before_load_is_none(self):
         """cached_value before any read is None."""
         bag = Bag()
-        bag["c"] = BagCbResolver(lambda: "hello", cache_time=False)
+        bag["c"] = BagCbResolver(lambda: "hello", cache_time=-1)
         resolver = bag.get_resolver("c")
         assert resolver is not None
         assert resolver.cached_value is None
@@ -696,7 +696,7 @@ class TestResolverCachedValue:
     def test_cached_value_after_read(self):
         """After a read, cached_value reflects the value."""
         bag = Bag()
-        bag["c"] = BagCbResolver(lambda: "hello", cache_time=False)
+        bag["c"] = BagCbResolver(lambda: "hello", cache_time=-1)
         _ = bag["c"]
         resolver = bag.get_resolver("c")
         assert resolver is not None
@@ -766,7 +766,7 @@ class TestResolverContainerProxy:
         """Iteration exposes the resolved Bag nodes instead of indexing by integer."""
 
         resolver = BagCbResolver(
-            lambda: Bag({"a": 1, "b": 2}), cache_time=False
+            lambda: Bag({"a": 1, "b": 2}), cache_time=-1
         )
 
         assert [node.label for node in resolver] == ["a", "b"]
@@ -779,7 +779,7 @@ class TestResolverContainerProxy:
 
         bag = Bag()
         # as_bag=True forces the conversion of the dict to a Bag
-        bag["data"] = BagCbResolver(build, cache_time=False, as_bag=True)
+        bag["data"] = BagCbResolver(build, cache_time=-1, as_bag=True)
         _ = bag["data"]  # trigger load
         resolver = bag.get_resolver("data")
         assert resolver is not None
@@ -793,7 +793,7 @@ class TestResolverContainerProxy:
             return {"a": 1, "b": 2}
 
         bag = Bag()
-        bag["data"] = BagCbResolver(build, cache_time=False, as_bag=True)
+        bag["data"] = BagCbResolver(build, cache_time=-1, as_bag=True)
         _ = bag["data"]
         resolver = bag.get_resolver("data")
         assert resolver is not None
@@ -808,7 +808,7 @@ class TestResolverContainerProxy:
             return {"a": 42}
 
         bag = Bag()
-        bag["data"] = BagCbResolver(build, cache_time=False, as_bag=True)
+        bag["data"] = BagCbResolver(build, cache_time=-1, as_bag=True)
         _ = bag["data"]
         resolver = bag.get_resolver("data")
         assert resolver is not None

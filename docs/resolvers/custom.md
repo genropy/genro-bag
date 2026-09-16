@@ -253,7 +253,7 @@ class_kwargs = {'cache_time': 0}  # No cache
 class_kwargs = {'cache_time': 300}  # 5 minutes
 
 # Static reference data
-class_kwargs = {'cache_time': False}  # Infinite
+class_kwargs = {'cache_time': -1}  # Infinite
 
 ```
 

@@ -236,7 +236,7 @@ class BagParser:
                 entry = SUFFIX_TO_TYPE.get(value[2:])
                 if entry is not None and issubclass(entry[0], BagParser):
                     value = tytx_decode(value)
-            if hasattr(value, "walk") and hasattr(value, "_nodes"):
+            if hasattr(value, "traverse") and hasattr(value, "_nodes"):
                 # Rows carry empty branches; descendants are populated below.
                 # Legacy X subclasses keep the historical root-class factory.
                 child_class = type(value)
@@ -478,6 +478,17 @@ class _BagXmlHandler(ContentHandler):
         value = self._get_value(dtype=curr_type)
         self.value_list = []
 
+        # A typed empty Bag is a container, even though it is falsy.
+        # BAG is structural XML metadata, not a scalar TYTX suffix.
+        if (
+            self.legacy_mode
+            and curr_type
+            and curr_type.upper() == "BAG"
+            and not value.strip()
+        ):
+            self._set_into_parent(tag_label, curr, attrs or {})
+            return
+
         if self.legacy_mode and value and curr_type and curr_type != "T":
             try:
                 value = tytx_decode(f"{value}::{curr_type}")
@@ -526,15 +537,13 @@ class _BagXmlHandler(ContentHandler):
         if self.tag_attribute and self.tag_attribute in attrs:
             tag_label = attrs.pop(self.tag_attribute)
 
-        # Handle duplicate labels (always active - Bag doesn't allow duplicates)
-        dup_manager = getattr(dest, "__dupmanager", None)
-        if dup_manager is None:
-            dup_manager = {}
-            setattr(dest, "__dupmanager", dup_manager)
-        cnt = dup_manager.get(tag_label, 0)
-        dup_manager[tag_label] = cnt + 1
-        if cnt:
-            tag_label = f"{tag_label}_{cnt}"
+        # XML siblings may repeat or already use a generated suffix.
+        # Disambiguate the internal label without changing original_xml_tag.
+        requested_label = tag_label
+        suffix = 1
+        while dest.get_node(tag_label) is not None:
+            tag_label = f"{requested_label}_{suffix}"
+            suffix += 1
 
         if resolver is not None:
             node = dest.set_item(tag_label, None, _attributes=attrs or None, resolver=resolver)

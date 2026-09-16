@@ -14,7 +14,7 @@ Key Concepts:
 Caching Semantics:
     - cache_time = 0      -> NO cache, load() called ALWAYS
     - cache_time > 0      -> passive cache for N seconds (TTL, reload on next access)
-    - cache_time = False  -> INFINITE cache (until manual reset())
+    - cache_time < 0  -> INFINITE cache (until manual reset())
 
 Synchronous active triggers:
     - reactive = True     -> auto-refresh when a non-internal param changes
@@ -111,11 +111,10 @@ class BagResolver(BagResolverNamesMixin):
                 -> load(); cache + node.attr stay coherent
 
     read_only Mode:
-        - read_only=True: Each call invokes load(). Result is NOT stored in
-          node._value. Good for computed/dynamic values.
-        - read_only=False (default): Result is stored in node._value and cached.
-          Good for expensive operations.
-        NOTE: If cache_time != 0, read_only is forced to False.
+        - read_only=True: Result is NOT stored in node._value. If cache_time is
+          non-zero, it is cached inside the resolver.
+        - read_only=False (default): Result is stored in node._value when
+          attached, or inside the resolver when standalone.
 
     Reactive Mode:
         - reactive=True: When a non-internal param changes via set_attr, the
@@ -126,7 +125,7 @@ class BagResolver(BagResolverNamesMixin):
     Class Attributes:
         class_kwargs: dict of {param_name: default_value}
             Parameters with defaults, passable as keyword args.
-            - 'cache_time': 0 = no cache, >0 = passive TTL, False = infinite
+            - 'cache_time': 0 = no cache, >0 = passive TTL, <0 = infinite
             - 'interval': only None is supported; scheduling belongs outside the Bag
             - 'reactive': False = lazy, True = push-refresh on param change
             - 'read_only': if True, value is NOT saved in node._value
@@ -230,11 +229,8 @@ class BagResolver(BagResolverNamesMixin):
 
         # Validate parameters
         ct = self._kw.get("cache_time", 0)
-        if isinstance(ct, (int, float)) and not isinstance(ct, bool) and ct < 0:
-            raise ValueError(
-                f"cache_time={ct!r} is no longer supported. "
-                "Use cache_time=False for infinite caching."
-            )
+        if isinstance(ct, bool):
+            raise TypeError("cache_time must be numeric; use a negative value for infinite caching")
 
         if self._kw.get("interval") is not None:
             raise ValueError("interval is not supported; schedule refresh outside the Bag")
@@ -275,8 +271,13 @@ class BagResolver(BagResolverNamesMixin):
 
     @parent_node.setter
     def parent_node(self, parent_node: BagNode | None) -> None:
-        """Set the parent node and validate scheduling options."""
-        if self._parent_node is not None and parent_node is None:
+        """Set the parent node and invalidate cache when its storage changes."""
+        previous_parent = self._parent_node
+        if previous_parent is parent_node:
+            return
+        if not self.read_only and self._cache_last_update is not None:
+            self.reset()
+        if previous_parent is not None and parent_node is None:
             self._stop_interval()
         self._parent_node = parent_node
         if parent_node is not None:
@@ -287,13 +288,13 @@ class BagResolver(BagResolverNamesMixin):
     # =========================================================================
 
     @property
-    def cache_time(self) -> int | float | bool:
+    def cache_time(self) -> int | float:
         """Get cache time setting (expiration policy).
 
         Returns:
             0: no cache, reload on every access.
             N>0: passive TTL, cache valid for N seconds.
-            False: infinite cache (until manual reset()).
+            N<0: infinite cache (until manual reset()).
 
         Note:
             Refresh scheduling belongs outside the Bag.
@@ -376,7 +377,7 @@ class BagResolver(BagResolverNamesMixin):
             return self._init_kwargs["read_only"]  # type: ignore[no-any-return]
         if self._kw.get("interval") is not None or self._kw.get("reactive"):
             return False
-        return self.cache_time is not False and self.cache_time == 0
+        return self.cache_time == 0
 
     # =========================================================================
     # CACHED VALUE PROPERTY
@@ -384,13 +385,15 @@ class BagResolver(BagResolverNamesMixin):
 
     @property
     def cached_value(self) -> Any:
-        """Get cached value from parent node or local storage."""
-        return self._parent_node._value if self._parent_node else self._cached_value
+        """Get the value from the storage selected by read_only and attachment."""
+        if not self.read_only and self._parent_node is not None:
+            return self._parent_node._value
+        return self._cached_value
 
     @cached_value.setter
     def cached_value(self, value: Any) -> None:
-        """Set cached value in parent node or local storage."""
-        if self._parent_node:
+        """Store in the resolver for read-only/standalone use, else in the node."""
+        if not self.read_only and self._parent_node is not None:
             self._parent_node._value = value
         else:
             self._cached_value = value
@@ -427,7 +430,7 @@ class BagResolver(BagResolverNamesMixin):
     def expired(self) -> bool:
         """Check if cache has expired."""
         cache_time = self.cache_time
-        if cache_time is False:
+        if cache_time < 0:
             # Infinite cache: only expired if never loaded
             return self._cache_last_update is None
         if cache_time == 0:
@@ -474,6 +477,8 @@ class BagResolver(BagResolverNamesMixin):
             2. resolver._kw: Defaults from construction
         """
         if static:
+            if self._parent_node is not None:
+                return self._parent_node._value
             return self.cached_value
 
         # call_kwargs update the resolver state before the load. When attached,
@@ -487,11 +492,11 @@ class BagResolver(BagResolverNamesMixin):
                 self._kw.update(call_kwargs)
                 self._cache_last_update = None
 
-        # Without call_kwargs: use cache if valid
-        if not self.read_only and not self.expired:
+        # Cache policy is independent from where the result is stored.
+        if not self.expired:
             return self.cached_value
 
-        # Cache expired or read_only: reload
+        # Cache expired: reload.
         return self._load_with_kw(self._build_effective_kw())
 
     def _build_effective_kw(self) -> dict[str, Any]:
@@ -546,7 +551,7 @@ class BagResolver(BagResolverNamesMixin):
             if not isinstance(result, bag_class):
                 try:
                     bag = bag_class()
-                    bag.fill_from(result)
+                    bag._load_source(result)
                     if len(bag):
                         result = bag
                 except (TypeError, FileNotFoundError, ValueError):
@@ -564,7 +569,7 @@ class BagResolver(BagResolverNamesMixin):
         a read, not a semantic mutation.
         """
         result = self._prepare_result(result)
-        if not self.read_only:
+        if not self.read_only or self.cache_time != 0:
             self.cached_value = result
         return result
 
@@ -700,37 +705,6 @@ class BagResolver(BagResolverNamesMixin):
             )
         return resolver_cls(*data.get("args", ()), **data.get("kwargs", {}))  # type: ignore[no-any-return]
 
-    # =========================================================================
-    # PROXY METHODS - DELEGATE TO RESOLVED BAG
-    # =========================================================================
-
-    def __getitem__(self, k: str) -> Any:
-        """Proxy for bag[key]. Resolves and delegates."""
-        return self()[k]
-
-    def __iter__(self):
-        """Iterate over the resolved value."""
-        return iter(self())
-
-    def _htraverse(self, *args: Any, **kwargs: Any) -> Any:
-        """Proxy for _htraverse. Resolves and delegates."""
-        return self()._htraverse(*args, **kwargs)
-
-    def get_node(self, k: str) -> Any:
-        """Proxy for get_node. Resolves and delegates."""
-        return self().get_node(k)
-
-    def keys(self) -> list[str]:
-        """Proxy for keys(). Resolves and delegates."""
-        return list(self().keys())
-
-    def items(self) -> list[tuple[str, Any]]:
-        """Proxy for items(). Resolves and delegates."""
-        return list(self().items())
-
-    def values(self) -> list[Any]:
-        """Proxy for values(). Resolves and delegates."""
-        return list(self().values())
 
 
 class BagSyncResolver(BagResolver):

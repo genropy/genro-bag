@@ -9,7 +9,7 @@ Methods provided:
     - digest(): Backward-compatible alias for query()
     - columns(): Return query result as columns
     - sum(): Sum values or attributes
-    - walk(): Depth-first tree traversal
+    - for_each(): Callback traversal; traverse(): Node iterator
     - get_nodes(): Get filtered list of nodes
     - get_node_by_attr(): Find node by attribute value
     - get_node_by_value(): Find node by value content
@@ -20,7 +20,8 @@ Methods provided:
 from __future__ import annotations
 
 from collections.abc import Callable, Iterator
-from typing import TYPE_CHECKING, Any, overload
+from numbers import Number
+from typing import TYPE_CHECKING, Any
 
 from genro_toolbox import safe_is_instance
 
@@ -33,7 +34,7 @@ _IS_BAG = "genro_bag.bag._core.Bag"
 class BagQuery:
     """Mixin providing query, iteration and aggregation methods for Bag.
 
-    Includes walk (depth-first traversal), query/digest (filtering with deep
+    Includes depth-first traversal, query/digest (filtering with deep
     option), dict-like keys/values/items, and node lookup by attr or value.
     """
 
@@ -76,9 +77,10 @@ class BagQuery:
         return self._nodes.items(iter=iter)
 
     def get_nodes(self, condition: Callable[[BagNode], bool] | None = None) -> list[BagNode]:
-        """Get the actual list of nodes contained in the Bag.
+        """Return a new list containing the Bag's current nodes.
 
-        The get_nodes method works as the filter of a list.
+        List mutations do not change the Bag structure; the nodes themselves
+        are shared. Later insertions/removals are not reflected in this list.
 
         Args:
             condition: Optional callable that takes a BagNode and returns bool.
@@ -90,36 +92,31 @@ class BagQuery:
             return list(self._nodes)
         return [n for n in self._nodes if condition(n)]
 
-    def get_node_by_attr(self, attr: str, value: Any) -> BagNode | None:
-        """Return the first BagNode with the requested attribute value.
+    def get_node_by_attr(
+        self, attr: str, value: Any, deep_first: bool = False
+    ) -> BagNode | None:
+        """Find an attribute match, preferring the current level by default.
 
-        Search strategy (hybrid depth-first with level priority):
-        1. First checks all direct children of current Bag
-        2. Then recursively searches into sub-Bags (depth-first)
-
-        This means a match at the current level is always found before
-        descending into nested Bags, but once descent begins, it proceeds
-        depth-first through the subtree before checking siblings.
-
-        Args:
-            attr: Attribute name to search.
-            value: Attribute value to match.
-
-        Returns:
-            BagNode if found, None otherwise.
+        With deep_first=True, visit each node's subtree before its next sibling.
+        With False, check all siblings before descending into their subtrees.
+        None as value searches for attribute presence, as in has_attr().
         """
         sub_bags = []
         for node in self._nodes:
             if node.has_attr(attr, value):
                 return node
-            if safe_is_instance(node.value, _IS_BAG):
-                sub_bags.append(node)
-
-        for node in sub_bags:
-            found = node.value.get_node_by_attr(attr, value)
-            if found:
-                return found  # type: ignore[no-any-return]
-
+            child = node.value
+            if safe_is_instance(child, _IS_BAG):
+                if deep_first:
+                    found = child.get_node_by_attr(attr, value, deep_first=True)
+                    if found is not None:
+                        return found
+                else:
+                    sub_bags.append(child)
+        for child in sub_bags:
+            found = child.get_node_by_attr(attr, value, deep_first=False)
+            if found is not None:
+                return found
         return None
 
     def get_node_by_value(self, key: str, value: Any) -> BagNode | None:
@@ -137,8 +134,11 @@ class BagQuery:
         """
         for node in self._nodes:
             node_value = node.value
-            if node_value and node_value.get(key) == value:
-                return node
+            if node_value:
+                found = (node_value.get_item(key) if safe_is_instance(node_value, _IS_BAG)
+                         else node_value.get(key))
+                if found == value:
+                    return node
         return None
 
     def is_empty(self, zero_is_none: bool = False, blank_is_none: bool = False) -> bool:
@@ -177,89 +177,76 @@ class BagQuery:
 
         return True
 
-    @overload
-    def walk(self, callback: None = None, static: bool = True, **kwargs: Any) -> Iterator[tuple[str, BagNode]]: ...
-    @overload
-    def walk(self, callback: Callable[[BagNode], Any], static: bool = True, **kwargs: Any) -> Any: ...
+    def for_each(self, callback, static=True, deep=False, **kwargs):
+        """Visit nodes using a callback, optionally descending into child Bags.
 
-    def walk(
-        self, callback: Callable[[BagNode], Any] | None = None, static: bool = True, **kwargs: Any
-    ) -> Iterator[tuple[str, BagNode]] | Any:
-        """Walk the tree depth-first.
-
-        Two modes of operation:
-
-        1. **Generator mode** (no callback): Returns a generator yielding
-           (path, node) tuples for all nodes in the tree. This is the
-           recommended approach.
-
-        2. **Legacy callback mode**: Calls callback(node, **kwargs) for each
-           node. Supports early exit (if callback returns truthy value),
-           _pathlist and _indexlist kwargs for path tracking.
-
-        Args:
-            callback: If None, return generator of (path, node) tuples.
-                If provided, call callback(node, **kwargs) for each node.
-            static: If True (default), don't trigger resolvers during traversal.
-                If False, resolvers may be triggered to compute nested Bag values.
-            **kwargs: Passed to callback. Special keys:
-                - _pathlist: list of labels from root (auto-updated by walk)
-                - _indexlist: list of indices from root (auto-updated by walk)
-
-        Returns:
-            Generator of (path, node) if callback is None.
-            If callback provided: value returned by callback if truthy, else None.
-
-        Examples:
-            >>> # Generator mode (modern, recommended)
-            >>> for path, node in bag.walk():
-            ...     print(f"{path}: {node.value}")
-
-            >>> # Early exit with generator
-            >>> for path, node in bag.walk():
-            ...     if node.get_attr('id') == 'target':
-            ...         found = node
-            ...         break
-
-            >>> # Legacy callback mode with path tracking
-            >>> def my_cb(node, _pathlist=None, **kw):
-            ...     print('.'.join(_pathlist))
-            >>> bag.walk(my_cb, _pathlist=[])
+        None continues into children; falsey non-None results skip children;
+        a truthy result stops the entire visit and is returned. Path/index
+        tracking kwargs include the current node. Exceptions propagate.
         """
-        if "_mode" in kwargs:
-            mode = kwargs.pop("_mode")
-            static = isinstance(mode, str) and "static" in mode
+        if not callable(callback):
+            raise TypeError("for_each requires a callable")
 
-        if callback is not None:
-            # Legacy callback mode
-            for idx, node in enumerate(self._nodes):
-                kw = dict(kwargs)
-                if "_pathlist" in kwargs:
-                    kw["_pathlist"] = kwargs["_pathlist"] + [node.label]
-                if "_indexlist" in kwargs:
-                    kw["_indexlist"] = kwargs["_indexlist"] + [idx]
-
+        def visit(bag, context):
+            for index, node in enumerate(bag._nodes):
+                kw = dict(context)
+                if "_pathlist" in context:
+                    kw["_pathlist"] = context["_pathlist"] + [node.label]
+                if "_indexlist" in context:
+                    kw["_indexlist"] = context["_indexlist"] + [index]
                 result = callback(node, **kw)
                 if result:
                     return result
-
-                value = node.get_value(static=static)
-                if safe_is_instance(value, _IS_BAG):
-                    result = value.walk(callback, static=static, **kw)
-                    if result:
-                        return result
+                if result is None and deep:
+                    value = node.get_value(static=static)
+                    if safe_is_instance(value, _IS_BAG):
+                        result = visit(value, kw)
+                        if result:
+                            return result
             return None
 
-        # Generator mode - uses static parameter (default True)
-        def _walk_gen(bag: Any, prefix: str) -> Iterator[tuple[str, BagNode]]:
+        return visit(self, kwargs)
+
+    def _iter_nodes_with_paths(self, static=True, prefix=""):
+        """Stream path/node pairs for internal query and serialization use."""
+        for node in self._nodes:
+            path = f"{prefix}.{node.label}" if prefix else node.label
+            yield path, node
+            value = node.get_value(static=static)
+            if safe_is_instance(value, _IS_BAG):
+                yield from value._iter_nodes_with_paths(static=static, prefix=path)
+
+    def traverse(self) -> Iterator[BagNode]:
+        """Yield original nodes depth-first, parent before children.
+
+        Matches legacy Python traversal: values are read statically, so lazy
+        resolvers are not invoked. Shared subtrees are visited at each path.
+        """
+        for node in self._nodes:
+            yield node
+            value = node.get_value(static=True)
+            if safe_is_instance(value, _IS_BAG):
+                yield from value.traverse()
+
+    def get_leaves(self):
+        """Return (relative path, value) pairs for non-Bag leaves.
+
+        Resolve each node once per occurrence. Empty Bags are branches and
+        produce no leaf entry. Paths do not require parent backrefs.
+        """
+        result = []
+
+        def collect(bag, prefix):
             for node in bag._nodes:
                 path = f"{prefix}.{node.label}" if prefix else node.label
-                yield path, node
-                value = node.get_value(static=static)
+                value = node.get_value(static=False)
                 if safe_is_instance(value, _IS_BAG):
-                    yield from _walk_gen(value, path)
+                    collect(value, path)
+                else:
+                    result.append((path, value))
 
-        return _walk_gen(self, "")
+        collect(self, "")
+        return result
 
     def query(
         self,
@@ -333,7 +320,7 @@ class BagQuery:
             obj = self
 
         def _extract_value(node: BagNode, w: str, path: str,
-                           is_deep: bool, value: Any = None) -> Any:
+                           is_deep: bool, read_value: Callable[[], Any]) -> Any:
             """Extract a single value from a node based on what specifier."""
             if w == "#k":
                 return node.label
@@ -344,13 +331,11 @@ class BagQuery:
             elif callable(w):
                 return w(node)
             elif w == "#v":
-                if value is None:
-                    value = node.get_value(static=static)
+                value = read_value()
                 return None if is_deep and safe_is_instance(value, _IS_BAG) else value
             elif w.startswith("#v."):
                 inner_path = w.split(".", 1)[1]
-                if value is None:
-                    value = node.get_value(static=static)
+                value = read_value()
                 return value[inner_path] if hasattr(value, "get_item") else None
             elif w == "#__v":
                 return node.static_value
@@ -358,40 +343,47 @@ class BagQuery:
                 attr = w.split(".", 1)[1] if "." in w else None
                 return node.get_attr(attr)
             else:
-                if value is None:
-                    value = node.get_value(static=static)
+                value = read_value()
                 return value[w] if hasattr(value, "__getitem__") else None
 
         def _iter_digest() -> Iterator:
-            """Generator that yields tuples for each node."""
-            nonlocal limit
-            count = [0]
+            """Stream query results, resolving each visited node at most once."""
+            count = 0
 
-            def _iter_nodes(bag: Any, prefix: str, is_deep: bool) -> Iterator:
+            def visit(bag, prefix):
+                nonlocal count
                 for node in bag._nodes:
                     path = f"{prefix}.{node.label}" if prefix else node.label
-                    value = node.get_value(static=static)
-                    is_branch = safe_is_instance(value, _IS_BAG)
+                    loaded = False
+                    value = None
 
-                    if ((is_branch and branch) or (not is_branch and leaf)) and (
-                        condition is None or condition(node)):
-                            if len(whatsplit) == 1:
-                                yield _extract_value(node, whatsplit[0], path, is_deep, value)
-                            else:
-                                yield tuple(
-                                    _extract_value(node, w, path, is_deep, value)
-                                    for w in whatsplit
-                                )
-                            count[0] += 1
-                            if limit is not None and count[0] >= limit:
-                                return
+                    def read_value(node=node):
+                        nonlocal loaded, value
+                        if not loaded:
+                            value = node.get_value(static=static)
+                            loaded = True
+                        return value
 
-                    if deep and is_branch:
-                        yield from _iter_nodes(value, path, True)
-                        if limit is not None and count[0] >= limit:
+                    included = (leaf and branch) or (
+                        branch if safe_is_instance(read_value(), _IS_BAG) else leaf)
+                    if included and (condition is None or condition(node)):
+                        if len(whatsplit) == 1:
+                            yield _extract_value(node, whatsplit[0], path, deep, read_value)
+                        else:
+                            yield tuple(_extract_value(node, w, path, deep, read_value)
+                                        for w in whatsplit)
+                        count += 1
+                        if limit is not None and count >= limit:
                             return
 
-            yield from _iter_nodes(obj, "", deep)
+                    if deep:
+                        child = read_value()
+                        if safe_is_instance(child, _IS_BAG):
+                            yield from visit(child, path)
+                            if limit is not None and count >= limit:
+                                return
+
+            yield from visit(obj, "")
 
         if iter:
             return _iter_digest()
@@ -496,7 +488,7 @@ class BagQuery:
         def sort_key(value: Any, case_insensitive: bool) -> tuple:
             """Create sort key handling None and case sensitivity."""
             if value is None:
-                return (1, "")  # None values sort last
+                return (-1, "")  # None first ascending, last descending
             if case_insensitive and isinstance(value, str):
                 return (0, value.lower())
             return (0, value)
@@ -545,32 +537,44 @@ class BagQuery:
     def sum(
         self,
         what: str = "#v",
+        strict: bool = False,
         condition: Callable[[BagNode], bool] | None = None,
-        deep: bool = False,
-    ) -> float | list[float]:
-        """Sum values or attributes.
+    ) -> float | None | list[float | None]:
+        """Sum selected values at the current level, without recursive traversal.
 
         Args:
-            what: What to sum (same syntax as query).
-                - '#v': sum values
-                - '#a.attrname': sum attribute
-                - '#v,#a.price': multiple sums (returns list)
-            condition: Optional callable filter (receives BagNode, returns bool).
-            deep: If True, recursively sum through nested Bags.
+            what: Query criterion, or comma-separated criteria for multiple sums.
+            strict: Return None for a criterion containing None or an empty string.
+                Otherwise those values contribute zero. Non-numeric values are ignored
+                unless strict, which raises TypeError. Zero and False are valid.
+            condition: Optional callable filter receiving a BagNode.
 
         Returns:
-            Sum as float, or list of floats if multiple what specs.
+            A sum (or None in strict mode), or a list for multiple criteria.
 
         Examples:
-            >>> bag.sum()                    # sum all values
-            >>> bag.sum('#a.price')          # sum 'price' attribute
-            >>> bag.sum('#v,#a.qty')         # [sum_values, sum_qty]
-            >>> bag.sum('#v', condition=lambda n: n.get_attr('active'))  # filtered sum
-            >>> bag.sum('#a.qty', deep=True)  # recursive sum (replaces summarizeAttributes)
+            >>> bag.sum('#v', True)
+            >>> bag.sum('#a.price', condition=lambda n: n.get_attr('active'))
         """
+        if strict is not None and not isinstance(strict, bool):
+            raise TypeError("sum strict must be a boolean; pass condition as the third argument")
+        if condition is not None and not callable(condition):
+            raise TypeError("sum condition must be callable; deep is no longer supported")
+
+        def total(criterion: str) -> Any:
+            result = 0
+            missing = False
+            for value in self.query(criterion, condition):
+                if value is None or (isinstance(value, str) and value == ""):
+                    missing = True
+                    continue
+                if not isinstance(value, Number):
+                    if strict:
+                        raise TypeError(f"sum encountered non-numeric value: {type(value).__name__}")
+                    continue
+                result += value
+            return None if strict and missing else result
+
         if "," in what:
-            return [
-                sum(v or 0 for v in self.query(w.strip(), condition, deep=deep))
-                for w in what.split(",")
-            ]
-        return sum(v or 0 for v in self.query(what, condition, deep=deep))
+            return [total(criterion.strip()) for criterion in what.split(",")]
+        return total(what)

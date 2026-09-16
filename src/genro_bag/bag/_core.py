@@ -58,7 +58,7 @@ class Bag(BagNamesMixin, BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser
     Inherits from:
         BagParser: Provides from_xml, from_tytx, from_json classmethods.
         BagSerializer: Provides to_xml, to_tytx, to_json instance methods.
-        BagQuery: Provides query, digest, walk, keys, values, items, sum, sort methods.
+        BagQuery: Provides query, digest, for_each, traverse, keys, values, items, sum, sort methods.
 
     Attributes:
         _nodes: BagNodeContainer holding the BagNodes.
@@ -120,7 +120,7 @@ class Bag(BagNamesMixin, BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser
         if legacy_items:
             source = legacy_items
         if source:
-            self.fill_from(source)
+            self._load_source(source)
 
     # -------------------- transaction --------------------------------
 
@@ -389,8 +389,11 @@ class Bag(BagNamesMixin, BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser
         resolver=None,
         node_tag: str | None = None,
         **kwargs,
-    ) -> BagNode:
+    ) -> BagNode | Bag:
         """Set value at a hierarchical path.
+
+        An empty path merges first-level Bag or mapping entries and returns self.
+        Existing nested Bags are replaced, not recursively merged.
 
         Traverses the Bag hierarchy following the dot-separated path, creating
         intermediate Bags as needed, and sets the value at the final location.
@@ -464,6 +467,21 @@ class Bag(BagNamesMixin, BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser
             >>> bag['data'] = BagCbResolver(lambda: 'computed')
             >>> bag.set_item('data', 'new', resolver=False)  # Remove resolver
         """
+        if path == "":
+            if isinstance(value, Bag):
+                entries = [(node.label, node.value, dict(node.attr)) for node in value]
+            elif hasattr(value, "items"):
+                entries = [(key, item, None) for key, item in list(value.items())]
+            else:
+                return self
+            for key, item, attributes in entries:
+                self.set_item(
+                    key, item, _attributes=attributes, _updattr=_updattr,
+                    _remove_null_attributes=_remove_null_attributes,
+                    _reason=_reason, do_trigger=do_trigger,
+                )
+            return self
+
         # Merge kwargs into _attributes
         if kwargs:
             _attributes = dict(_attributes or {})
@@ -510,7 +528,6 @@ class Bag(BagNamesMixin, BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser
             node = self._nodes.pop(p)
             if self.backref:
                 self._on_node_deleted(node, p, reason=_reason)
-            node.parent_bag = None
             return node
         return None
 
@@ -538,13 +555,8 @@ class Bag(BagNamesMixin, BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser
             >>> bag.pop('a.b', 'gone')
             'gone'
         """
-        result = default
-        obj, label = self._htraverse(path, static=True)
-        if obj:
-            n = obj._pop(label, _reason=_reason)
-            if n:
-                result = n.value
-        return result
+        node = self.pop_node(path, _reason=_reason)
+        return node.value if node is not None else default
 
     del_item = pop
     __delitem__ = pop
@@ -573,13 +585,18 @@ class Bag(BagNamesMixin, BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser
             >>> node.attr
             {'type': 'int'}
         """
-        result, label = self._htraverse(path, static=True)
-        if result and label:
-            obj = result
-            n = obj._pop(label, _reason=_reason)
-            if n:
-                return n  # type: ignore[no-any-return]
-        return None
+        obj, label = self._htraverse(path, static=True)
+        if obj is None or not label:
+            return None
+        node = obj._nodes[label]
+        if node is None:
+            return None
+        try:
+            return obj._pop(label, _reason=_reason)
+        finally:
+            # Subscribers may fail, reinsert the node, or transfer ownership.
+            if node.parent_bag is obj and obj._nodes._dict.get(node.label) is not node:
+                node.parent_bag = None
 
     # -------------------- clear --------------------------------
 
@@ -660,21 +677,29 @@ class Bag(BagNamesMixin, BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser
         """
         self._nodes.move(what, position, trigger=trigger)
 
-    def as_dict(self, ascii: bool = False, lower: bool = False) -> dict[str, Any]:
-        """Convert Bag to dict (first level only).
+    def as_dict(
+        self, ascii: bool = False, lower: bool = False,
+        recursive: bool = False, exclude_null_values: bool = False,
+    ) -> dict[str, Any]:
+        """Convert Bag to dict, optionally converting nested Bags recursively.
 
-        Args:
-            ascii: If True, convert keys to ASCII.
-            lower: If True, convert keys to lowercase.
+        Existing ascii/lower positional arguments are preserved. Null exclusion
+        removes only None values, retaining empty Bags, strings and containers.
+        Ordinary dict/list values are left untouched. Attributes are not exported.
         """
         result = {}
         for el in self._nodes:
+            value = el.value
+            if exclude_null_values and value is None:
+                continue
             key = el.label
             if ascii:
                 key = str(key)
             if lower:
                 key = key.lower()
-            result[key] = el.value
+            if recursive and isinstance(value, Bag):
+                value = Bag.as_dict(value, ascii, lower, recursive, exclude_null_values)
+            result[key] = value
         return result
 
     def setdefault(self, path: str, default: Any = None) -> Any:
@@ -966,11 +991,11 @@ class Bag(BagNamesMixin, BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser
     def get_node(
         self,
         path: str | None = None,
-        as_tuple: bool = False,
+        *,
         autocreate: bool = False,
         default: Any = None,
         static: bool = False,
-    ) -> BagNode | tuple[Bag, BagNode | None] | None:
+    ) -> BagNode | None:
         """Get the BagNode at a path.
 
         Unlike get_item which returns the value, this returns the BagNode itself,
@@ -982,14 +1007,12 @@ class Bag(BagNamesMixin, BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser
         Args:
             path: Hierarchical path. If None or empty, returns the parent_node
                 (the node containing this Bag). Can also be an integer index.
-            as_tuple: If True, return (container_bag, node) tuple.
             autocreate: If True, create node if not found.
             default: Default value for autocreated node.
             static: If True, do not trigger resolvers during traversal. Default False.
 
         Returns:
             The BagNode at the path, or None if not found.
-            If as_tuple is True, returns (Bag, BagNode) tuple.
 
         Example:
             >>> bag = Bag()
@@ -1000,7 +1023,7 @@ class Bag(BagNamesMixin, BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser
             >>> node.attr['type']
             'int'
         """
-        if not path:
+        if path is None or path == "":
             return self.parent_node
 
         if isinstance(path, int):
@@ -1012,8 +1035,6 @@ class Bag(BagNamesMixin, BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser
             obj, label = obj_label
             if isinstance(obj, Bag):
                 node = obj._get_node(label, autocreate, default)
-                if as_tuple:
-                    return (obj, node)
                 return node
             return None
 

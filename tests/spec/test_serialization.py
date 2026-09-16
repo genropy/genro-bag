@@ -522,12 +522,11 @@ class TestXmlTagSanitization:
 
     def test_empty_label_becomes_none_marker(self):
         """Label vuoto produce il tag speciale '_none_'."""
-        # set_item with a path holding an empty segment -> label ''
         bag = Bag()
-        # setting a node with an empty label through the path "root." does not work
-        # because split drops the empties. Set it on the sub-Bag instead.
+        # Construct the serializer fixture directly: empty-path assignment
+        # now updates the Bag contents rather than creating an empty label.
         sub = Bag()
-        sub.set_item("", "v")
+        sub._nodes.set("", "v", parent_bag=sub)
         bag.set_item("root", sub)
         xml = bag.to_xml() or ""
         # the emitted tag carries the _none_ marker

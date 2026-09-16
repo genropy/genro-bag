@@ -55,8 +55,8 @@ def has_nested_resolver(value: Any) -> bool:
         return any(has_nested_resolver(v) for v in value.values())
     if isinstance(value, (list, tuple)):
         return any(has_nested_resolver(v) for v in value)
-    if hasattr(value, "walk") and hasattr(value, "_nodes"):
-        for _path, node in value.walk():
+    if hasattr(value, "traverse") and hasattr(value, "_nodes"):
+        for node in value.traverse():
             if node.resolver is not None:
                 return True
             if node.attr and any(is_resolver(v) for v in node.attr.values()):

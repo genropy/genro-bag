@@ -17,18 +17,18 @@ class _BranchResolver(BagResolver):
         return Bag(leaf=1)
 
 
-def test_walk_legacy_mode_controls_resolver_traversal():
+def test_for_each_static_controls_resolver_traversal():
     calls = []
     bag = Bag()
     bag.set_item("branch", _BranchResolver(calls))
 
     static_labels = []
-    bag.walk(lambda node: static_labels.append(node.label), _mode="static")
+    bag.for_each(lambda node: static_labels.append(node.label), static=True, deep=True)
     assert static_labels == ["branch"]
     assert calls == []
 
     deep_labels = []
-    bag.walk(lambda node: deep_labels.append(node.label), _mode="deep")
+    bag.for_each(lambda node: deep_labels.append(node.label), static=False, deep=True)
     assert deep_labels == ["branch", "leaf"]
     assert calls == ["load"]
 

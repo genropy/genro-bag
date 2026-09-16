@@ -136,7 +136,7 @@ Query a specific subtree:
 
 ## Tree Traversal
 
-### The walk() Method
+### Callback Traversal
 
 Recursive traversal of all nodes:
 
@@ -147,8 +147,9 @@ Recursive traversal of all nodes:
 >>> bag['a.b'] = 1
 >>> bag['a.c'] = 2
 
->>> for path, node in bag.walk():
-...     print(f"{path}: {node.value}")
+>>> def show(node, _pathlist):
+...     print(f"{'.'.join(_pathlist)}: {node.value}")
+>>> bag.for_each(show, deep=True, _pathlist=[])
 a: ...
 a.b: 1
 a.c: 2
@@ -212,6 +213,6 @@ By value content:
 | Query combo | `bag.query('#k,#v,#a.attr')` |
 | Filter | `bag.query('#k', condition=fn)` |
 | Subtree query | `bag.query('path:#k')` |
-| Walk tree | `for path, node in bag.walk()` |
+| Walk tree | `bag.for_each(callback, deep=True)` |
 | Find by attr | `bag.get_node_by_attr(attr, val)` |
 | Find by value | `bag.get_node_by_value(key, val)` |

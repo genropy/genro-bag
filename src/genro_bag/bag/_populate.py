@@ -1,7 +1,7 @@
 # Copyright 2025 Softwell S.r.l. - SPDX-License-Identifier: Apache-2.0
 """BagPopulate mixin - initialization, population, copy and pickle for Bag.
 
-Provides fill_from, from_url, deepcopy, pickle support, and update methods.
+Provides replacement, source loading, copying, pickle support, and updates.
 """
 
 from __future__ import annotations
@@ -25,7 +25,7 @@ _IS_BAG = "genro_bag.bag._core.Bag"
 class BagPopulate:
     """Mixin providing population, copy, pickle and update methods for Bag.
 
-    Supports fill_from with multiple sources (dict, list, file path, XML/JSON
+    Supports internal loading from multiple sources (dict, list, file path, XML/JSON
     string, another Bag), plus deepcopy, pickle, and update semantics.
     """
 
@@ -40,48 +40,30 @@ class BagPopulate:
         def clear(self) -> None: ...
         def __iter__(self) -> Iterator: ...
 
-    def fill_from(
-        self, source: Any = None, transport: str | None = None
-    ) -> Self:
-        """Fill bag from a source and return self for chaining.
-
-        Populates the bag with data from various sources:
-        - None: No-op, returns self unchanged
-        - dict: Keys become labels, values become node values
-        - tuple: A (label, value) or (label, value, attributes) node specification.
-        - list/tuple of node tuples: Named nodes in source order.
-        - list: Other items become numbered nodes (0, 1, 2, ...).
-            Dict items in the list are converted to Bag.
-        - Bag: Copy nodes from another Bag
-        - str (file path): Load from file based on extension
-        - str (XML inline): Detected by leading '<', parsed as XML
-        - str (JSON inline): Detected by leading '{' or '[', parsed as JSON
-        - bytes: Decoded to str, then detected as XML or JSON
-        - directory path: Mount a lazy DirectoryResolver under its basename
-        - Path: Load from file or mount a directory
-
-        Atomic semantics (issue #44):
-            The new content is built into an offline orphan Bag first; the
-            node containers are then swapped atomically. If the source fails
-            to parse, self stays unchanged — never partially populated. When
-            self is attached with backref, observers see a single upd_value
-            event with oldvalue = orphan Bag carrying the previous content.
-
-        Args:
-            source: Data source.
-            transport: Force transport for file loading ('xml', 'json', 'msgpack').
-
-        Returns:
-            Self for method chaining.
-        """
+    def _load_source(self, source: Any = None, transport: str | None = None) -> Self:
+        """Decode a construction/compatibility source before replacing contents."""
         if source is None:
             return self
+        prepared = self.__class__()
+        self._populate_into(prepared, source, transport=transport)
+        return self._replace_prepared(prepared)
 
-        # 1. Build the new content offline in an orphan Bag (no events emitted
-        #    since the new bag has no parent and no backref).
-        new_bag = self.__class__()
-        self._populate_into(new_bag, source, transport=transport)
+    def replace(self, other: Bag) -> Self:
+        """Replace all contents from a Bag, preserving this Bag's identity.
 
+        Copy structural nodes without resolving values. Preparation precedes any
+        mutation, and attached Bags emit one parent update. Self replacement is
+        a no-op. Returns self.
+        """
+        if not safe_is_instance(other, _IS_BAG):
+            raise TypeError("Bag.replace expects a Bag")
+        if other is self:
+            return self
+        prepared = self.__class__()
+        self._fill_from_bag(other, prepared)
+        return self._replace_prepared(prepared)
+
+    def _replace_prepared(self, new_bag: Bag) -> Self:
         # 2. Orphan the current nodes: detach them from self before the swap.
         #    BagNode.orphaned() clears _parent_bag and recursively clear_backref
         #    on any nested Bag value — mirrors the JS legacy helper.
@@ -256,14 +238,16 @@ class BagPopulate:
             # Deep copy the value if it's a Bag
             value = node.get_value(static=True)
             if safe_is_instance(value, _IS_BAG):
-                value = value.deepcopy()
+                value = value.__class__().replace(value)
             new_node = target.set_item(
                 node.label,
                 value,
                 _attributes=dict(node.attr),
-                resolver=copy.deepcopy(node.resolver),
+                resolver=copy.deepcopy(node.resolver, {id(node): None}),
                 node_tag=node.node_tag,
             )
+            new_node.set_attr(dict(node.attr), trigger=False, _updattr=False,
+                              _remove_null_attributes=False)
             new_node.xml_tag = node.xml_tag
 
     def _fill_from_dict(
@@ -315,7 +299,7 @@ class BagPopulate:
         result = resolver()
 
         bag = cls()
-        bag.fill_from(result)
+        bag._load_source(result)
         return bag  # type: ignore[return-value]
 
     # -------------------- deepcopy --------------------------------
@@ -345,11 +329,14 @@ class BagPopulate:
         for node in self:
             value = node.static_value
             if safe_is_instance(value, _IS_BAG):
-                value = value.deepcopy()
+                value = value.__class__().replace(value)
             attr = {k: self._copy_resolver(v) if is_resolver(v) else v
                     for k, v in node.attr.items()}
             resolver = self._copy_resolver(node.resolver) if node.resolver is not None else None
-            result.set_item(node.label, value, _attributes=attr, resolver=resolver)
+            copied = result.set_item(
+                node.label, value, _attributes=attr, resolver=resolver, node_tag=node.node_tag
+            )
+            copied.xml_tag = node.xml_tag
         return result
 
     def _copy_resolver(self, resolver: Any) -> Any:

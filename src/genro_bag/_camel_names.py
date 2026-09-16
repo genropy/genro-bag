@@ -26,20 +26,11 @@ def _legacy_node_attributes(attributes, kwargs):
 def translate_legacy_resolver_kwargs(kwargs):
     """Semantic and functional adapter: normalize legacy constructor keywords."""
     translated = dict(kwargs)
-    legacy_cache_time = "cacheTime" in translated
     for legacy_name, modern_name in _LEGACY_RESOLVER_NAMES.items():
         if legacy_name in translated and modern_name in translated:
             raise TypeError(f"pass only one of {legacy_name} and {modern_name}")
         if legacy_name in translated:
             translated[modern_name] = translated.pop(legacy_name)
-    cache_time = translated.get("cache_time")
-    if (
-        legacy_cache_time
-        and isinstance(cache_time, (int, float))
-        and not isinstance(cache_time, bool)
-        and cache_time < 0
-    ):
-        translated["cache_time"] = False
     return translated
 
 
@@ -66,12 +57,8 @@ class BagNamesMixin:
     ):
         """Semantic and functional adapter: translate legacy item arguments."""
         attributes = _legacy_node_attributes(_attributes, kwargs)
-        if _validators:
-            warnings.warn(
-                "Bag validators are outside the native legacy adapter scope.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
+        if _validators is not None:
+            raise TypeError("Bag validators are no longer supported")
         if _duplicate:
             return self.addItem(
                 item_path,
@@ -105,12 +92,8 @@ class BagNamesMixin:
         attributes = _legacy_node_attributes(_attributes, kwargs)
         if duplicate_policy not in {"rename_warn", "error"}:
             raise ValueError("duplicate_policy must be 'rename_warn' or 'error'")
-        if _validators:
-            warnings.warn(
-                "Bag validators are outside the native legacy adapter scope.",
-                DeprecationWarning,
-                stacklevel=2,
-            )
+        if _validators is not None:
+            raise TypeError("Bag validators are no longer supported")
 
         target, requested_label = self._htraverse(item_path, write_mode=True)
         label = requested_label
@@ -156,10 +139,12 @@ class BagNamesMixin:
         )
         return self.get_node(label)
 
-    def getNode(self, path=None, asTuple=False, autocreate=False, default=None):
+    def getNode(self, path=None, _reserved=None, autocreate=False, default=None):
         """Semantic and functional adapter: translate legacy node arguments."""
+        if _reserved is not None and _reserved is not False:
+            raise TypeError("getNode no longer supports asTuple; use getNode(path) for the node")
         return self.get_node(
-            path=path, as_tuple=asTuple, autocreate=autocreate, default=default
+            path=path, autocreate=autocreate, default=default
         )
 
     def getNodes(self, condition=None):
@@ -205,10 +190,10 @@ class BagNamesMixin:
             if node.getAttr(attr) == value:
                 return node
 
-        return self.walk(match, static=(_mode == "static"))
+        return self.for_each(match, static=(_mode == "static"), deep=True)
 
-    def getNodeByAttr(self, attr, value, path=None):
-        """Search loaded nodes with level priority, without resolving values."""
+    def getNodeByAttr(self, attr, value, path=None, deep_first=False):
+        """Search loaded nodes, preserving path output and selectable visit order."""
         explored = set()
 
         def search(bag, prefix):
@@ -223,7 +208,12 @@ class BagNamesMixin:
                     return node
                 child = node.get_value(static=True)
                 if isinstance(child, BagNamesMixin):
-                    children.append((node.label, child))
+                    if deep_first:
+                        found = search(child, prefix + [node.label])
+                        if found is not None:
+                            return found
+                    else:
+                        children.append((node.label, child))
             for label, child in children:
                 found = search(child, prefix + [label])
                 if found is not None:
@@ -296,9 +286,10 @@ class BagNamesMixin:
                 )
         return result
 
-    def asDict(self, ascii=False, lower=False):
+    def asDict(self, ascii=False, lower=False, recursive=False, excludeNullValues=False):
         """Semantic adapter: asDict -> as_dict."""
-        return self.as_dict(ascii=ascii, lower=lower)
+        return self.as_dict(ascii=ascii, lower=lower, recursive=recursive,
+                            exclude_null_values=excludeNullValues)
 
     def getFormattedValue(self, joiner="\n", omitEmpty=True, **kwargs):
         """Join legacy formatted child values, excluding private labels."""
@@ -315,8 +306,20 @@ class BagNamesMixin:
                 result.append(formatted)
         return joiner.join(result)
 
-    def fillFrom(self, source, **kwargs):
-        """Semantic and functional adapter: populate through the native path."""
+    def fill_from(self, source=None, transport=None):
+        """Deprecated compatibility entry point for mixed source types."""
+        warnings.warn(
+            "Bag.fill_from is deprecated; decode the source and use replace(Bag)",
+            DeprecationWarning, stacklevel=2,
+        )
+        if source is None:
+            return self
+        prepared = self.__class__()
+        self._populate_into(prepared, source, transport=transport)
+        return self.replace(prepared)
+
+    def fillFrom(self, source=None, **kwargs):
+        """Deprecated camel-case alias."""
         return self.fill_from(source, **kwargs)
 
     def toXml(
@@ -365,7 +368,7 @@ class BagNamesMixin:
             attr_in_value=attrInValue,
             avoid_duplicate_label=avoidDupLabel,
         )
-        self.fill_from(loaded)
+        self.replace(loaded)
 
     def fromJson(self, source, listJoiner=None):
         """Semantic and functional adapter: atomically populate from legacy JSON."""
@@ -374,7 +377,7 @@ class BagNamesMixin:
             list_joiner=listJoiner,
             legacy_mode=True,
         )
-        self.fill_from(loaded)
+        self.replace(loaded)
 
     def cbtraverse(self, pathlist, callback, result=None, **kwargs):
         """Semantic and functional adapter: invoke a callback along a path."""
@@ -401,8 +404,8 @@ class BagNamesMixin:
         return result
 
     def getLeaves(self):
-        """Semantic and functional adapter: return legacy leaf path/value pairs."""
-        return self.query("#p,#v", deep=True, branch=False)
+        """Camel-case alias for get_leaves()."""
+        return self.get_leaves()
 
     def popAttributesFromNodes(self, blacklist):
         """Semantic and functional adapter: remove attributes recursively."""
@@ -424,13 +427,55 @@ class BagNamesMixin:
 
     def getIndexList(self, asText=False):
         """Semantic and functional adapter: return recursive dot paths."""
-        paths = self.query("#p", deep=True)
+        paths = [".".join(parts) for parts, _node in self.getIndex()]
         return "\n".join(paths) if asText else paths
 
     def rowchild(self, childname="R_#", _pkey=None, **kwargs):
-        """Append a legacy menu row with its generated label and primary key."""
+        """Deprecated legacy row helper; not part of the native Bag API."""
+        warnings.warn("Bag.rowchild is deprecated; use set_item with explicit label and attributes",
+                      DeprecationWarning, stacklevel=2)
         childname = (childname or "R_#").replace("#", str(len(self)).zfill(8))
-        return self.setItem(childname, None, _pkey=_pkey or childname, _attributes=kwargs)
+        self.setItem(childname, None, _pkey=_pkey or childname, _attributes=kwargs)
+
+    def child(self, tag, childname="*_#", childcontent=None, _parentTag=None, **kwargs):
+        """Emulate Bag.child, not GnrStructData.child, for legacy callers."""
+        from genro_bag.bag._exceptions import BagException
+
+        warnings.warn("Bag.child is deprecated; use set_item with explicit content and attributes",
+                      DeprecationWarning, stacklevel=2)
+        where = self
+        childname = childname or "*_#"
+        if "." in childname:
+            labels = childname.split(".")
+            childname = labels.pop()
+            for label in labels:
+                if label not in where:
+                    where[label] = self.__class__()
+                where = where[label]
+        childname = childname.replace("*", tag).replace("#", str(len(where)))
+        if childcontent is None:
+            childcontent = self.__class__()
+            result = childcontent
+        else:
+            result = None
+        if _parentTag:
+            if isinstance(_parentTag, str):
+                _parentTag = [part.strip() for part in _parentTag.split(",")]
+            # Preserve the legacy Bag lookup; struct validation is a separate API.
+            actual_parent_tag = where.getAttr("", tag)
+            if actual_parent_tag not in _parentTag:
+                raise BagException(f'{tag} "{childname}" cannot be inserted in a {actual_parent_tag}')
+        if childname in where and where[childname] != "" and where[childname] is not None:
+            if where.getAttr(childname, "tag") != tag:
+                old_tag = where.getAttr(childname, "tag")
+                raise BagException(f"Cannot change {childname} from {old_tag} to {tag}")
+            result = where[childname]
+            # The legacy Bag helper expects an attributes-bearing value here.
+            # Do not substitute GnrStructData's different reuse semantics.
+            result.attributes.update(**{k: v for k, v in kwargs.items() if v is not None})
+        else:
+            where.setItem(childname, childcontent, tag=tag, _attributes=kwargs)
+        return result
 
     def getIndex(self):
         """Return ``(path_parts, node)`` pairs in depth-first order.
@@ -452,20 +497,6 @@ class BagNamesMixin:
 
         collect(self, [])
         return result
-
-    def traverse(self):
-        """Yield all nodes depth-first without resolving lazy values."""
-        explored = {id(self)}
-
-        def visit(bag):
-            for node in bag:
-                yield node
-                value = node.get_value(static=True)
-                if isinstance(value, BagNamesMixin) and id(value) not in explored:
-                    explored.add(id(value))
-                    yield from visit(value)
-
-        yield from visit(self)
 
     def merge(
         self,
@@ -807,29 +838,18 @@ class BagResolverNamesMixin:
         if (has_legacy_kwargs or has_legacy_args) and inherited_legacy:
             for name, default in inherited_legacy.items():
                 modern_name = _LEGACY_RESOLVER_NAMES.get(name, name)
-                inherited_kwargs[modern_name] = (
-                    False if modern_name == "cache_time" and default == -1 else default
-                )
+                inherited_kwargs[modern_name] = default
             cls.class_kwargs = inherited_kwargs
         if has_legacy_kwargs:
             for name, default in own["classKwargs"].items():
                 modern_name = _LEGACY_RESOLVER_NAMES.get(name, name)
-                if (
-                    modern_name == "cache_time"
-                    and isinstance(default, (int, float))
-                    and not isinstance(default, bool)
-                    and default < 0
-                ):
-                    default = False
                 inherited_kwargs[modern_name] = default
                 inherited_legacy[name] = own["classKwargs"][name]
             cls.class_kwargs = inherited_kwargs
         elif has_modern_kwargs:
             if any(hasattr(base, "_legacy_class_kwargs") for base in cls.__bases__):
                 inherited_legacy = {
-                    _MODERN_RESOLVER_NAMES.get(name, name): (
-                        -1 if name == "cache_time" and default is False else default
-                    )
+                    _MODERN_RESOLVER_NAMES.get(name, name): default
                     for name, default in cls.class_kwargs.items()
                 }
             else:
@@ -860,13 +880,40 @@ class BagResolverNamesMixin:
             return parameters[modern_name]
         raise AttributeError(name)
 
+    def _resolved_bag_compat(self):
+        """Resolve explicitly for a deprecated container-style call."""
+        warnings.warn(
+            "Resolver Bag delegation is deprecated; resolve explicitly with resolver()",
+            DeprecationWarning, stacklevel=3,
+        )
+        return self()
+
+    def __getitem__(self, key):
+        return self._resolved_bag_compat()[key]
+
+    def __iter__(self):
+        return iter(self._resolved_bag_compat())
+
+    def _htraverse(self, *args, **kwargs):
+        return self._resolved_bag_compat()._htraverse(*args, **kwargs)
+
+    def get_node(self, key):
+        return self._resolved_bag_compat().get_node(key)
+
     def getNode(self, key):
-        """Semantic adapter: getNode -> get_node."""
-        return self.get_node(key)
+        return self._resolved_bag_compat().getNode(key)
+
+    def keys(self):
+        return list(self._resolved_bag_compat().keys())
+
+    def items(self):
+        return list(self._resolved_bag_compat().items())
+
+    def values(self):
+        return list(self._resolved_bag_compat().values())
 
     def digest(self, k=None):
-        """Semantic and functional adapter: forward digest to the resolved Bag."""
-        return self().digest(k)
+        return self._resolved_bag_compat().digest(k)
 
     def resolverSerialize(self, args=None, kwargs=None):
         """Semantic and functional adapter: emit the legacy resolver record."""
@@ -892,8 +939,6 @@ class BagResolverNamesMixin:
         for name, default in self.classKwargs.items():
             modern_name = _LEGACY_RESOLVER_NAMES.get(name, name)
             value = self._kw.get(modern_name, default)
-            if modern_name == "cache_time" and value is False:
-                value = -1
             result[name] = value
         return result
 
@@ -920,18 +965,15 @@ class BagResolverNamesMixin:
     @property
     def cacheTime(self):
         """Semantic and functional adapter: expose legacy infinite-cache spelling."""
-        return -1 if self.cache_time is False else self.cache_time
+        return self.cache_time
 
     @cacheTime.setter
     def cacheTime(self, value):
         """Semantic and functional adapter: update the native cache setting."""
-        infinite = (
-            isinstance(value, (int, float))
-            and not isinstance(value, bool)
-            and value < 0
-        )
-        self._kw["cache_time"] = False if infinite else value
-        self._init_kwargs["cache_time"] = False if infinite else value
+        if isinstance(value, bool):
+            raise TypeError("cacheTime must be numeric; use a negative value for infinite caching")
+        self._kw["cache_time"] = value
+        self._init_kwargs["cache_time"] = value
         self._legacy_init_kwargs["cacheTime"] = value
 
     @property
@@ -942,6 +984,10 @@ class BagResolverNamesMixin:
     @readOnly.setter
     def readOnly(self, value):
         """Semantic and functional adapter: update the native read-only setting."""
-        self._kw["read_only"] = bool(value)
-        self._init_kwargs["read_only"] = bool(value)
-        self._legacy_init_kwargs["readOnly"] = bool(value)
+        value = bool(value)
+        changed = value != self.read_only
+        self._kw["read_only"] = value
+        self._init_kwargs["read_only"] = value
+        self._legacy_init_kwargs["readOnly"] = value
+        if changed:
+            self.reset()

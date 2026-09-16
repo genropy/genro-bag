@@ -186,12 +186,15 @@ def legacy_to_xml(
         translate_cb=translate_cb,
         omit_unknown_types=omit_unknown_types,
         forced_tag_attr=forced_tag_attr,
+        indent=(pretty if isinstance(pretty, str) else "\t") if pretty else None,
     )
-    body = writer.bag_block(bag, [])
-    xml = body if omit_root else f"<GenRoBag>{body}</GenRoBag>"
-    if pretty:
-        indent = pretty if isinstance(pretty, str) else "\t"
-        xml = _pretty_xml(xml, indent)
+    body = writer.bag_block(bag, [], depth=0 if omit_root else 1)
+    if omit_root:
+        xml = body
+    elif pretty and body:
+        xml = f"<GenRoBag>\n{body}\n</GenRoBag>"
+    else:
+        xml = f"<GenRoBag>{body}</GenRoBag>"
     header = ""
     if doc_header is not False:
         header = doc_header or f"<?xml version='1.0' encoding='{encoding}'?>\n"
@@ -226,6 +229,7 @@ class _LegacyXmlWriter:
         translate_cb: Any,
         omit_unknown_types: bool,
         forced_tag_attr: str | None,
+        indent: str | None = None,
     ) -> None:
         self.catalog = catalog
         self.typeattrs = typeattrs
@@ -237,11 +241,27 @@ class _LegacyXmlWriter:
         self.translate_cb = translate_cb
         self.omit_unknown_types = omit_unknown_types
         self.forced_tag_attr = forced_tag_attr
+        self.indent = indent
 
-    def bag_block(self, bag: Any, namespaces: list[str]) -> str:
-        return "\n".join(self.node_block(node, namespaces) for node in bag)
+    def bag_block(
+        self, bag: Any, namespaces: list[str], depth: int = 0, preserve_space: bool = False
+    ) -> str:
+        parts = []
+        pretty = self.indent is not None and not preserve_space
+        for node in bag:
+            part = self.node_block(node, namespaces, depth, preserve_space)
+            if part and pretty:
+                tag = (node.attr.get(self.forced_tag_attr)
+                       if self.forced_tag_attr else None) or node.xml_tag or node.label
+                if tag != "__flatten__":
+                    part = self.indent * depth + part
+            if part or not pretty:
+                parts.append(part)
+        return ("" if preserve_space else "\n").join(parts)
 
-    def node_block(self, node: Any, namespaces: list[str]) -> str:
+    def node_block(
+        self, node: Any, namespaces: list[str], depth: int = 0, preserve_space: bool = False
+    ) -> str:
         attrs = dict(node.attr)
         if "__forbidden__" in attrs:
             return ""
@@ -249,6 +269,11 @@ class _LegacyXmlWriter:
             key[6:] for key in attrs if key.startswith("xmlns:")
         ]
         tag = node.xml_tag or node.label
+        preserve_space = self.indent is not None and (
+            preserve_space or attrs.get("xml:space") == "preserve"
+        )
+        effective_tag = (attrs.get(self.forced_tag_attr) if self.forced_tag_attr else None) or tag
+        child_depth = depth if effective_tag == "__flatten__" else depth + 1
 
         if (
             self.unresolved
@@ -258,18 +283,22 @@ class _LegacyXmlWriter:
             if not attrs.get("_resolver_name"):
                 attrs["_resolver"] = json.dumps(node.resolver.resolverSerialize())
             value = node.get_value(static=True)
-            content = self.bag_block(value, current_namespaces) if _is_bag(value) else ""
-            return self.build_tag(tag, content, attrs, xml_mode=True, namespaces=current_namespaces)
+            content = (self.bag_block(value, current_namespaces, child_depth, preserve_space)
+                       if _is_bag(value) else "")
+            return self.build_tag(tag, content, attrs, xml_mode=True, namespaces=current_namespaces,
+                                  depth=depth, preserve_space=preserve_space)
 
         value = node.get_value()
         if _is_bag(value) and bool(value):
             return self.build_tag(
                 tag,
-                self.bag_block(value, current_namespaces),
+                self.bag_block(value, current_namespaces, child_depth, preserve_space),
                 attrs,
                 xml_mode=True,
                 localize=False,
                 namespaces=current_namespaces,
+                depth=depth,
+                preserve_space=preserve_space,
             )
         return self.build_tag(tag, value, attrs, namespaces=current_namespaces)
 
@@ -282,6 +311,8 @@ class _LegacyXmlWriter:
         xml_mode: bool = False,
         localize: bool = True,
         namespaces: list[str] | None = None,
+        depth: int = 0,
+        preserve_space: bool = False,
     ) -> str:
         namespaces = namespaces or []
         if not type_code and value != "":
@@ -352,14 +383,9 @@ class _LegacyXmlWriter:
                 value = value.encode(self.output_encoding, "ignore").decode("utf-8")
         if not value and tag_name in self.self_closed_tags:
             return f"<{tag_name}{tag_attrs}/>"
+        if xml_mode and value and self.indent is not None and not preserve_space:
+            return f"<{tag_name}{tag_attrs}>\n{value}\n{self.indent * depth}</{tag_name}>"
         return f"<{tag_name}{tag_attrs}>{value}</{tag_name}>"
-
-
-def _pretty_xml(xml: str, indent: str) -> str:
-    from xml.dom.minidom import parseString
-
-    result = parseString(xml).toprettyxml(indent=indent)
-    return result.split("\n", 1)[1].rstrip() if result.startswith("<?xml") else result
 
 
 @dataclass

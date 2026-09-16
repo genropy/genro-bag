@@ -319,7 +319,7 @@ Durante l'analisi sono stati identificati e corretti 6 bug in `genro_bag`:
 | `readOnly` attribute | `read_only` property | `readOnly` | BOTH | Original is static attr; new derives from cache_time when not explicit |
 | `instanceKwargs` property | — | `instanceKwargs` | ORIGINAL ONLY | Returns dict of current params; wrapper computes from `_kw` |
 | `resolverSerialize()` | `serialize()` | `resolverSerialize` | BOTH | Different key format: `resolverclass` vs `resolver_class` |
-| `expired` property | `expired` property | inherited | BOTH | Similar; new adds `cache_time=False` (infinite cache) |
+| `expired` property | `expired` property | inherited | BOTH | Both use negative cache durations for infinite cache |
 | `reset()` | `reset()` | inherited | BOTH | Original clears cache; new also restarts active timer |
 | `load()` | `load()` | inherited | BOTH | Override for sync resolution |
 | `init()` | `init()` | inherited | BOTH | Hook after `__init__` |

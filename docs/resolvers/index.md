@@ -60,7 +60,7 @@ bag['dynamic'] = BagCbResolver(func, cache_time=0)
 bag['cached'] = BagCbResolver(func, cache_time=300)
 
 # Cache forever (until manual reset)
-bag['permanent'] = BagCbResolver(func, cache_time=False)
+bag['permanent'] = BagCbResolver(func, cache_time=-1)
 
 ```
 

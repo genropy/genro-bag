@@ -38,7 +38,7 @@ Other lists remain positional: `Bag(['first', 10])` has labels `"0"` and
 `"1"`. Lists of lists also remain positional. A list of named node tuples is
 now interpreted as node specifications; use an explicit mapping such as
 `Bag({'0': ('first', 10)})` to store such a tuple as a value instead.
-The same syntax is supported by `fill_from`, with its atomic failure behavior.
+To replace existing contents, use `bag.replace(Bag(source))`. Parsing completes before replacement.
 
 ### Mount a directory
 
@@ -50,7 +50,7 @@ value = bag['config.environment_xml.setting']
 
 An existing directory path, supplied as a string or `pathlib.Path`, mounts a
 `DirectoryResolver` under its basename. Subdirectories and supported files are
-loaded synchronously on demand. `fill_from(directory)` supports the same input.
+loaded synchronously on demand. `bag.replace(Bag(directory))` supports the same input.
 Node labels follow normal Bag path semantics, as in the historical constructor.
 
 For compatibility, `_template_kargs` passed alongside a source is ignored,

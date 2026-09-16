@@ -12,7 +12,6 @@ import json
 import re
 from collections.abc import Iterator
 from typing import TYPE_CHECKING, Any, Literal
-from xml.dom.minidom import parseString
 from xml.sax import saxutils
 
 from genro_tytx import to_tytx as tytx_encode
@@ -36,7 +35,7 @@ class BagSerializer:
 
     if TYPE_CHECKING:
         def __iter__(self) -> Iterator[BagNode]: ...
-        def walk(self, callback: Any = None, static: bool = True, **kw: Any) -> Iterator[tuple[str, BagNode]]: ...
+        def _iter_nodes_with_paths(self, static: bool = True, prefix: str = "") -> Iterator[tuple[str, BagNode]]: ...
 
     # ==================== to_xml ====================
 
@@ -128,11 +127,8 @@ class BagSerializer:
             self_closed_tags=self_closed_tags,
             sign_key=sign_key,
             expires_in=expires_in,
+            pretty=pretty,
         )
-
-        # Pretty print (before adding header)
-        if pretty:
-            content = self._prettify_xml(content)
 
         # Add XML declaration
         if doc_header is True:
@@ -148,37 +144,25 @@ class BagSerializer:
 
         return content
 
-    def _prettify_xml(self, xml_str: str) -> str:
-        """Format XML with indentation."""
-        try:
-            result = parseString(xml_str).toprettyxml(indent="  ")
-            # Remove the xml declaration added by toprettyxml
-            if result.startswith("<?xml"):
-                result = result.split("\n", 1)[1] if "\n" in result else ""
-            return result
-        except Exception:
-            # If parsing fails (e.g., multiple roots), wrap temporarily
-            wrapped = f"<_root_>{xml_str}</_root_>"
-            pretty_xml = parseString(wrapped).toprettyxml(indent="  ")
-            # Extract content between _root_ tags
-            start = pretty_xml.find("<_root_>") + 8
-            end = pretty_xml.rfind("</_root_>")
-            return pretty_xml[start:end].strip()
-
     def _bag_to_xml(
         self,
         namespaces: list[str],
         self_closed_tags: list[str] | None = None,
         sign_key: str | None = None,
         expires_in: int | None = None,
+        pretty: bool = False,
+        depth: int = 0,
     ) -> str:
         """Convert Bag to XML string."""
         parts = []
         for node in self:
             parts.append(
-                self._node_to_xml(node, namespaces, self_closed_tags, sign_key, expires_in)
+                ("  " * depth if pretty else "")
+                + self._node_to_xml(
+                    node, namespaces, self_closed_tags, sign_key, expires_in, pretty, depth
+                )
             )
-        return "".join(parts)
+        return ("\n" if pretty else "").join(parts)
 
     def _node_to_xml(
         self,
@@ -187,6 +171,8 @@ class BagSerializer:
         self_closed_tags: list[str] | None = None,
         sign_key: str | None = None,
         expires_in: int | None = None,
+        pretty: bool = False,
+        depth: int = 0,
     ) -> str:
         """Convert a BagNode to XML string."""
         # Extract local namespaces from this node's attributes
@@ -218,8 +204,14 @@ class BagSerializer:
 
         # Check if value is a Bag (using duck typing to avoid import)
         if hasattr(value, "_bag_to_xml"):
-            inner = value._bag_to_xml(current_namespaces, self_closed_tags, sign_key, expires_in)
+            # Never add whitespace inside a subtree that explicitly preserves it.
+            pretty = pretty and node.attr.get("xml:space") != "preserve"
+            inner = value._bag_to_xml(
+                current_namespaces, self_closed_tags, sign_key, expires_in, pretty, depth + 1
+            )
             if inner:
+                if pretty:
+                    return f"<{tag}{attrs_str}>\n{inner}\n{'  ' * depth}</{tag}>"
                 return f"<{tag}{attrs_str}>{inner}</{tag}>"
             # Empty Bag
             if self_closed_tags is None or tag in self_closed_tags:
@@ -359,7 +351,7 @@ class BagSerializer:
     ) -> Iterator[tuple[str | int | None, str, str | None, Any, dict]]:
         """Expand each node into (parent, label, tag, value, attr) tuples.
 
-        Consumes walk() and transforms each node into a flat tuple suitable
+        Consumes a private streaming path iterator and transforms each node into a flat tuple suitable
         for TYTX serialization. Values are Python raw types - TYTX encoding
         is done later by the serializer.
 
@@ -390,7 +382,7 @@ class BagSerializer:
             path_to_code: dict[str, int] = {}
             code_counter = 0
 
-        for path, node in self.walk():
+        for path, node in self._iter_nodes_with_paths():
             parent_path = path.rsplit(".", 1)[0] if "." in path else ""
             where = f"node {path!r}"
 
@@ -402,7 +394,7 @@ class BagSerializer:
             # which would otherwise be written as "::NN" and lose it.
             if node.resolver is not None:
                 value = encode_resolver(node.resolver, sign_key, expires_in, where)
-            elif hasattr(node_value, "walk") and hasattr(node_value, "_nodes"):
+            elif hasattr(node_value, "traverse") and hasattr(node_value, "_nodes"):
                 value = f"::{type(node_value).__tytx_suffix__}"
             elif node_value is None:
                 value = "::NN"
@@ -424,7 +416,7 @@ class BagSerializer:
                 parent_ref = path_to_code.get(parent_path) if parent_path else None
                 yield (parent_ref, node.label, node.node_tag, value, attr)
 
-                if hasattr(node_value, "walk") and hasattr(node_value, "_nodes"):
+                if hasattr(node_value, "traverse") and hasattr(node_value, "_nodes"):
                     path_to_code[path] = code_counter
                     assert path_registry is not None
                     path_registry[code_counter] = path
@@ -496,7 +488,7 @@ class BagSerializer:
         value = node.get_value(static=True)
         where = f"node {node.label!r}"
         # Check if value is a Bag using duck typing
-        if hasattr(value, "_nodes") and hasattr(value, "walk"):
+        if hasattr(value, "_nodes") and hasattr(value, "traverse"):
             value = [value._node_to_json_dict(n, typed, sign_key, expires_in) for n in value]
         elif sign_key is not None and has_nested_resolver(value):
             # A Bag inside a plain container travels through the TYTX type

@@ -291,3 +291,51 @@ def test_legacy_xml_does_not_treat_dynamic_proxy_as_bag():
     xml = bag.toXml(catalog=_Catalog())
     assert "store proxy" in xml
     assert Bag.from_xml(xml, legacy_mode=True, catalog=_Catalog())["nested.answer"] == 42
+
+
+def test_pretty_legacy_xml_is_written_directly_with_types_and_custom_indent(monkeypatch):
+    from xml.dom import minidom
+
+    def forbidden(*args, **kwargs):
+        pytest.fail('Legacy serialization must not parse its output')
+
+    monkeypatch.setattr(minidom, 'parseString', forbidden)
+    bag = Bag()
+    bag.set_item('branch.count', 12)
+    bag.set_item('branch.text', '  a & <b>\n  c  ')
+    xml = bag.to_xml(legacy_mode=True, catalog=CATALOG, pretty='  ', doc_header=False)
+    assert xml == (
+        '<GenRoBag>\n  <branch>\n    <count _T="L">12</count>\n'
+        '    <text>  a &amp; &lt;b&gt;\n  c  </text>\n  </branch>\n</GenRoBag>'
+    )
+    restored = Bag.from_xml(xml, legacy_mode=True, catalog=CATALOG)
+    assert restored['branch.count'] == 12
+    assert restored['branch.text'] == '  a & <b>\n  c  '
+
+
+def test_pretty_legacy_fragments_flatten_and_raw_html():
+    bag = Bag()
+    bag.set_item('__flatten__', Bag({'a': 'one', 'b': 'two'}))
+    bag.set_item('raw', '<b>do not reformat</b>::HTML')
+    bag.set_item('hidden', 'secret', {'__forbidden__': True})
+    assert bag.to_xml(legacy_mode=True, catalog=CATALOG, pretty=True,
+                      omit_root=True, doc_header=False) == (
+        '<a>one</a>\n<b>two</b>\n<raw><b>do not reformat</b></raw>'
+    )
+    assert Bag().to_xml(legacy_mode=True, catalog=CATALOG, pretty=True,
+                        doc_header=False) == '<GenRoBag></GenRoBag>'
+
+
+def test_pretty_legacy_preserves_space_and_explicit_empty_tag_policy():
+    bag = Bag()
+    bag.set_item('group', Bag({'a': 'one', 'b': 'two'}), {'xml:space': 'preserve'})
+    bag.set_item('empty', '')
+    kwargs = {"legacy_mode": True, "catalog": CATALOG, "typeattrs": False, "doc_header": False}
+    assert bag.to_xml(pretty=True, self_closed_tags=['empty'], **kwargs) == (
+        '<GenRoBag>\n\t<group xml:space="preserve"><a>one</a><b>two</b></group>'
+        '\n\t<empty/>\n</GenRoBag>'
+    )
+    assert bag.to_xml(**kwargs) == (
+        '<GenRoBag><group xml:space="preserve"><a>one</a>\n<b>two</b></group>'
+        '\n<empty></empty></GenRoBag>'
+    )

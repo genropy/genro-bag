@@ -30,7 +30,7 @@ class _DynamicFallback:
 
 
 class _DigestResolver(BagResolver):
-    classKwargs = {"cacheTime": False}
+    classKwargs = {"cacheTime": -1}
 
     def init(self):
         self.loads = 0

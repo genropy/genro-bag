@@ -104,7 +104,7 @@ class TxtDocResolver(BagResolver):
 class SerializedBagResolver(BagResolver):
     """Resolver that lazily loads a Bag from a serialized file.
 
-    Supports all formats recognized by Bag.fill_from():
+    Supports all formats recognized by Bag._load_source():
     - .xml: XML format (with auto-detect for legacy GenRoBag)
     - .bag.json: TYTX JSON format
     - .bag.mp: TYTX MessagePack format
@@ -133,7 +133,7 @@ class SerializedBagResolver(BagResolver):
 
     def load(self):
         """Load and return the Bag from the serialized file."""
-        return Bag().fill_from(self.kw["path"], transport=self.kw["format"])
+        return Bag()._load_source(self.kw["path"], transport=self.kw["format"])
 
 
 class DirectoryResolver(BagResolver):
@@ -222,7 +222,7 @@ class DirectoryResolver(BagResolver):
             def rnc_processor(path):
                 import rnc2rng
                 rng_xml = rnc2rng.dumps(rnc2rng.load(path))
-                return Bag().fill_from(rng_xml, transport='xml')
+                return Bag()._load_source(rng_xml, transport='xml')
 
             resolver = DirectoryResolver('/schemas', ext='rnc', processors={'rnc': rnc_processor})
 

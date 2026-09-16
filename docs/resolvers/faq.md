@@ -57,8 +57,7 @@ except Exception as e:
 |--------------|----------|
 | `0` | No caching, compute every time |
 | `> 0` | Passive cache for N seconds (reload on next access after expiry) |
-| `< 0` | Legacy cache convention; no background refresh |
-| `False` | Cache forever (until manual reset) |
+| `< 0` | Cache forever (until manual reset); no background refresh |
 
 ### Why is my value not updating?
 
@@ -66,7 +65,7 @@ Check your cache_time:
 
 ```python
 # This caches forever
-bag['data'] = UrlResolver('...', cache_time=False)
+bag['data'] = UrlResolver('...', cache_time=-1)
 
 # Force refresh
 bag.get_node('data').resolver.reset()
@@ -77,7 +76,7 @@ bag.get_node('data').resolver.reset()
 Yes, each resolver has its own cache:
 
 ```python
-bag['static'] = UrlResolver('...', cache_time=False)  # Forever
+bag['static'] = UrlResolver('...', cache_time=-1)  # Forever
 bag['dynamic'] = UrlResolver('...', cache_time=30)  # 30 seconds
 bag['realtime'] = UrlResolver('...', cache_time=0)  # Never cache
 ```

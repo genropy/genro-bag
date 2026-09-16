@@ -46,7 +46,7 @@ async def test_directory_xml_configuration_is_immediately_traversable(tmp_path):
 
 def test_reset_invalidates_cache_without_loading():
     calls = []
-    bag = Bag({"value": BagCbResolver(lambda: calls.append(1) or len(calls), cache_time=False)})
+    bag = Bag({"value": BagCbResolver(lambda: calls.append(1) or len(calls), cache_time=-1)})
     assert bag["value"] == 1
     events = []
     bag.subscribe("watch", update=lambda **kw: events.append(kw))
@@ -59,7 +59,7 @@ def test_reset_invalidates_cache_without_loading():
 @pytest.mark.asyncio
 async def test_eager_refresh_is_inline_and_does_not_coalesce():
     calls = []
-    bag = Bag({"value": BagCbResolver(lambda: calls.append(1) or len(calls), cache_time=False)})
+    bag = Bag({"value": BagCbResolver(lambda: calls.append(1) or len(calls), cache_time=-1)})
     assert bag["value"] == 1
     events = []
     bag.subscribe("watch", update=lambda **kw: events.append(kw))
@@ -80,7 +80,7 @@ def test_eager_refresh_also_works_without_event_loop():
 @pytest.mark.asyncio
 async def test_reactive_attribute_change_refreshes_before_return():
     bag = Bag({"value": BagCbResolver(lambda factor: factor * 2, factor=3,
-                                      reactive=True, cache_time=False)})
+                                      reactive=True, cache_time=-1)})
     assert bag["value"] == 6
     bag.set_attr("value", factor=5)
     assert bag.get_item("value", static=True) == 10

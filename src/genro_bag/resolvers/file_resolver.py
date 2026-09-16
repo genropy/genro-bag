@@ -86,7 +86,7 @@ class FileResolver(BagResolver):
 
     def _load_bag_serialized(self, path: str) -> Bag:
         """Load native Bag formats via fill_from."""
-        return Bag().fill_from(path)
+        return Bag()._load_source(path)
 
     def _load_json(self, path: str) -> Any:
         """Parse JSON file. Result type depends on content and as_bag."""

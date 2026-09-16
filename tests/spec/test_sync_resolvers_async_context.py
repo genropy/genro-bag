@@ -154,7 +154,7 @@ def test_async_hooks_fail_without_leaking_coroutines(method):
             return self.kw["value"]
 
     setattr(Resolver, method, invalid)
-    resolver = Resolver(value=1, cache_time=False)
+    resolver = Resolver(value=1, cache_time=-1)
     with pytest.raises(TypeError, match="awaitable results"):
         resolver()
     assert resolver.expired

@@ -158,7 +158,7 @@ op['path']                     # '/pet/findByStatus'
 
 ### Default Cache
 
-OpenApiResolver defaults to `cache_time=False` (infinite).
+OpenApiResolver defaults to `cache_time=-1` (infinite).
 
 ## TxtDocResolver
 
@@ -230,7 +230,7 @@ bag['settings'] = FileResolver('/path/to/settings.bag.json')
 | `.txt`, `.css`, `.html`, `.md` | `str` | Text content |
 | `.json` | `dict`/`list`/scalar | Bag if `as_bag=True` |
 | `.csv` | `Bag` | Rows as nodes with column attributes |
-| `.bag.json`, `.bag.mp`, `.xml` | `Bag` | Delegates to `fill_from` |
+| `.bag.json`, `.bag.mp`, `.xml` | `Bag` | Uses the internal source loader |
 | (other) | `str` | Fallback to text |
 
 ### CSV Structure
@@ -328,7 +328,7 @@ from genro_bag.resolvers import UuidResolver
 bag = Bag()
 bag['session_id'] = UuidResolver()
 bag['session_id']  # '550e8400-e29b-41d4-a716-446655440000'
-bag['session_id']  # same UUID (cached with cache_time=False)
+bag['session_id']  # same UUID (cached with cache_time=-1)
 ```
 
 ### UUID Versions
@@ -346,7 +346,7 @@ node.value.reset()       # invalidate cache
 bag['session_id']        # new UUID generated
 ```
 
-UuidResolver defaults to `cache_time=False` (infinite cache).
+UuidResolver defaults to `cache_time=-1` (infinite cache).
 
 ## Common Parameters
 
@@ -354,7 +354,7 @@ All resolvers support three independent parameters:
 
 | Parameter | Default | Description |
 |-----------|---------|-------------|
-| `cache_time` | varies | Cache: 0=none, >0=passive TTL (int or float seconds), <0=legacy cache convention; no background refresh, False=infinite |
+| `cache_time` | varies | Cache: 0=none, >0=passive TTL (int or float seconds), <0=infinite; no background refresh |
 | `read_only` | False | If True, value is NOT stored in `node._value` |
 | `as_bag` | None | If True, convert result to Bag; if None, follows `read_only` |
 
@@ -389,9 +389,13 @@ Where `[value]` indicates the computed default: `as_bag` defaults to `not read_o
 
 - **`read_only=False`** (default): The resolved value becomes part of the Bag and can be navigated with dot notation. Default `as_bag=True` converts the result to Bag automatically.
 
-- **`read_only=True`**: The resolver acts like a "virtual" node - each access triggers resolution, the value is not stored in the Bag tree. Default `as_bag=False` returns raw values.
+- **`read_only=True`**: The resolver acts like a "virtual" node: the value is not stored in the Bag tree. Accesses use its internal cache according to `cache_time`. Default `as_bag=False` returns raw values.
 
-- **`cache_time != 0`**: The resolver maintains its own internal cache (in `_cached_value`), independent from where the value is stored.
+- **`cache_time != 0`**: The resolver reuses the stored result. For a read-only resolver, that result lives in its internal `_cached_value`; a writable attached resolver uses `node._value`.
+
+> **BUG FIX:** `read_only=True` now follows the cache contract already described
+> above. A positive TTL reuses the internal value until expiry, a negative TTL
+> keeps it until `reset()`, and zero continues to resolve on every access.
 
 ## Resolver Defaults
 

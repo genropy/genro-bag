@@ -11,11 +11,11 @@ Key Features:
     - Optional tag for semantic typing
     - Resolver support for lazy/dynamic value computation
     - Per-node subscriptions for change notifications
-    - Validation state tracking via _invalid_reasons
 """
 
 from __future__ import annotations
 
+import copy
 from collections.abc import Callable, Iterator
 from typing import TYPE_CHECKING, Any
 
@@ -58,8 +58,6 @@ class BagNode(BagNodeNamesMixin):
         _node_subscribers: Dict mapping subscriber_id to callback for change notifications.
         node_tag: Optional semantic type for the node.
         xml_tag: Original XML tag name for serialization.
-        _invalid_reasons: List of validation error messages. Empty list means valid.
-            Reserved for external validation systems to populate.
         _compiled: Dict for external compilation data. Initialized lazily
             on first access via the `compiled` property.
     """
@@ -73,7 +71,6 @@ class BagNode(BagNodeNamesMixin):
         "_node_subscribers",
         "node_tag",
         "xml_tag",
-        "_invalid_reasons",
         "_compiled",
     )
 
@@ -109,7 +106,6 @@ class BagNode(BagNodeNamesMixin):
         self._attr: dict[str, Any] = {}
         self.node_tag = node_tag
         self.xml_tag = xml_tag
-        self._invalid_reasons: list[str] = []
         self._compiled: dict[str, Any] | None = None
 
         # Set parent (uses property setter)
@@ -416,6 +412,37 @@ class BagNode(BagNodeNamesMixin):
                     reason=_reason,
                 )
 
+    def replace(self, other: BagNode) -> BagNode:
+        """Copy value, attributes and resolver; keep identity, label and position."""
+        if not isinstance(other, BagNode):
+            raise TypeError("BagNode.replace expects a BagNode")
+        if other is self:
+            return self
+        value = other.static_value
+        if safe_is_instance(value, "genro_bag.bag._core.Bag"):
+            value = value.__class__().replace(value)
+        memo = {id(other): None}
+        resolver = copy.deepcopy(other.resolver, memo)
+        attributes = dict(other.attr)
+        oldvalue, oldattr, oldresolver = self._value, dict(self._attr), self.resolver
+        self.resolver = resolver
+        self.set_value(value, trigger=False, _attributes=attributes,
+                       _updattr=False, _remove_null_attributes=False)
+        diff = self._build_attr_diff(oldattr, self._attr) or None
+        value_changed = oldvalue != value or oldresolver is not resolver
+        if value_changed or diff:
+            evt = ("upd_value_attr" if value_changed else "upd_attrs") if diff else "upd_value"
+            info = {"oldvalue": oldvalue}
+            if diff:
+                info["attrs_diff"] = diff
+            for callback in self._node_subscribers.values():
+                callback(node=self, info=info, evt=evt)
+            if self._parent_bag is not None and self._parent_bag.backref:
+                self._parent_bag._on_node_changed(
+                    self, [self.label], evt=evt, oldvalue=oldvalue, attrs_diff=diff,
+                )
+        return self
+
     @property
     def static_value(self) -> Any:
         """Get node's raw _value (bypassing resolver)."""
@@ -547,8 +574,7 @@ class BagNode(BagNodeNamesMixin):
         # If resolver.reactive is True, switch from lazy reset() to eager
         # reset(refresh=True) so subscribers observe the new value without pull.
         if self._resolver is not None and (
-            self._resolver.cache_time is False
-            or self._resolver.cache_time != 0
+            self._resolver.cache_time != 0
             or self._resolver.reactive
         ):
             resolver_kw = self._resolver._kw
@@ -647,8 +673,7 @@ class BagNode(BagNodeNamesMixin):
         """Get dot-separated path from root to this node."""
         if self.parent_bag is not None:
             fullpath = self.parent_bag.fullpath
-            if fullpath is not None:
-                return f"{fullpath}.{self.label}"
+            return f"{fullpath}.{self.label}" if fullpath else self.label
         return None
 
     @property
@@ -744,23 +769,6 @@ class BagNode(BagNodeNamesMixin):
         if subscriber_id is None:
             raise TypeError("subscriber id is required")
         self._node_subscribers.pop(subscriber_id, None)
-
-    # -------------------------------------------------------------------------
-    # Validation (for external validation systems)
-    # -------------------------------------------------------------------------
-
-    @property
-    def is_valid(self) -> bool:
-        """Check if this node has no validation errors.
-
-        The _invalid_reasons list is populated by external validation systems.
-        BagNode provides the storage and this property for checking validity,
-        but does not perform validation itself.
-
-        Returns:
-            True if _invalid_reasons is empty, False otherwise.
-        """
-        return len(self._invalid_reasons) == 0
 
     @property
     def is_branch(self) -> bool:

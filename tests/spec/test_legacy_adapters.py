@@ -210,7 +210,7 @@ def test_resolver_legacy_declarations_inheritance_and_load_attributes():
     }
     resolver.cacheTime = -1
     resolver.readOnly = False
-    assert resolver.cache_time is False
+    assert resolver.cache_time == -1
     assert resolver.cacheTime == -1
     assert resolver.read_only is False
 

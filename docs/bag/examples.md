@@ -82,7 +82,12 @@ Practical examples using only core Bag features (no resolvers or subscriptions).
 
 >>> # Get all electronics
 >>> electronics = catalog['electronics']
->>> [path for path, node in electronics.walk() if not isinstance(node.value, Bag)]
+>>> paths = []
+>>> def collect(node, _pathlist):
+...     if not isinstance(node.value, Bag):
+...         paths.append('.'.join(_pathlist))
+>>> electronics.for_each(collect, deep=True, _pathlist=[])
+>>> paths
 ['computers.laptops', 'computers.desktops', 'phones.smartphones']
 ```
 
@@ -99,8 +104,11 @@ Practical examples using only core Bag features (no resolvers or subscriptions).
 >>> nested['a.e'] = 3
 
 >>> # Flatten to dict
->>> flat = {path: node.value for path, node in nested.walk()
-...         if not isinstance(node.value, Bag)}
+>>> flat = {}
+>>> def collect(node, _pathlist):
+...     if not isinstance(node.value, Bag):
+...         flat['.'.join(_pathlist)] = node.value
+>>> nested.for_each(collect, deep=True, _pathlist=[])
 >>> flat
 {'a.b.c': 1, 'a.b.d': 2, 'a.e': 3}
 ```

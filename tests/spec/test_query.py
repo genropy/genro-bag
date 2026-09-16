@@ -24,6 +24,8 @@ get_node, __len__, __iter__, __contains__ are valid.
 
 from __future__ import annotations
 
+import pytest
+
 from genro_bag import Bag, BagNode
 
 # =============================================================================
@@ -257,51 +259,51 @@ class TestGetNodeByValue:
 
 
 # =============================================================================
-# 9. walk() - generator mode (path, node)
+# 9. traverse() - generator mode (path, node)
 # =============================================================================
 
 
-class TestWalkGenerator:
+class TestTraverse:
     def test_empty_bag_yields_nothing(self):
-        """walk() on empty Bag yields nothing."""
-        assert list(Bag().walk()) == []
+        """traverse() on empty Bag yields nothing."""
+        assert list(Bag().traverse()) == []
 
     def test_flat_bag_yields_each_node(self):
-        """walk() on flat Bag yields one tuple per node."""
+        """traverse() on flat Bag yields one tuple per node."""
         bag = Bag({"a": 1, "b": 2})
-        result = list(bag.walk())
+        result = collect_paths(bag)
         paths = [p for p, _n in result]
         assert paths == ["a", "b"]
         assert all(isinstance(n, BagNode) for _p, n in result)
 
     def test_deep_tree_yields_depth_first_paths(self):
-        """walk() traverses depth-first with dot-separated paths."""
+        """traverse() traverses depth-first with dot-separated paths."""
         bag = Bag()
         bag["a.x"] = 1
         bag["a.y"] = 2
         bag["b"] = 3
-        paths = [p for p, _n in bag.walk()]
+        paths = [p for p, _n in collect_paths(bag)]
         # depth-first: 'a', 'a.x', 'a.y', 'b'
         assert paths == ["a", "a.x", "a.y", "b"]
 
 
 # =============================================================================
-# 10. walk() - legacy callback mode
+# 10. traverse() - legacy callback mode
 # =============================================================================
 
 
-class TestWalkCallback:
+class TestForEach:
     def test_callback_invoked_per_node(self):
-        """walk(callback) calls callback for each visited node."""
+        """for_each(callback) calls callback for each visited node."""
         bag = Bag({"a": 1, "b": 2})
         visited = []
-        bag.walk(lambda n: visited.append(n.label))
+        bag.for_each(lambda n: visited.append(n.label), deep=True)
         assert visited == ["a", "b"]
 
     def test_callback_truthy_return_exits_early(self):
         """If callback returns truthy, walk terminates returning that value."""
         bag = Bag({"a": 1, "b": 2, "c": 3})
-        result = bag.walk(lambda n: n.value if n.value == 2 else None)
+        result = bag.for_each(lambda n: n.value if n.value == 2 else None, deep=True)
         assert result == 2
 
     def test_callback_with_pathlist_tracks_path(self):
@@ -313,7 +315,7 @@ class TestWalkCallback:
         def cb(node, _pathlist=None, **kw):
             captured.append(list(_pathlist))
 
-        bag.walk(cb, _pathlist=[])
+        bag.for_each(cb, deep=True, _pathlist=[])
         # first node 'outer' has path ['outer'], second 'inner' has ['outer', 'inner']
         assert captured == [["outer"], ["outer", "inner"]]
 
@@ -558,13 +560,15 @@ class TestSum:
         total = bag.sum("#v", condition=lambda n: n.value > 1)
         assert total == 5
 
-    def test_sum_deep(self):
-        """sum('#a.qty', deep=True) sums recursively over sub-Bags."""
+    def test_sum_stays_at_current_level(self):
+        """sum only considers current-level attributes."""
         bag = Bag()
         bag.set_item("outer.a", 0, _attributes={"qty": 10})
         bag.set_item("outer.b", 0, _attributes={"qty": 20})
         bag.set_item("c", 0, _attributes={"qty": 5})
-        assert bag.sum("#a.qty", deep=True) == 35
+        assert bag.sum("#a.qty") == 5
+        with pytest.raises(TypeError):
+            bag.sum("#a.qty", deep=True)
 
 
 # =============================================================================
@@ -648,3 +652,10 @@ class TestSort:
         bag.set_item("r3", {"age": 40, "name": "carol"})
         bag.sort("age")
         assert bag.keys() == ["r2", "r1", "r3"]
+
+
+def collect_paths(bag):
+    result = []
+    bag.for_each(lambda node, _pathlist: result.append((".".join(_pathlist), node)),
+                 deep=True, _pathlist=[])
+    return result

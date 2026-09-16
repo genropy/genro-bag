@@ -304,8 +304,8 @@ bag.to_tytx('/path/to/data.bag.mp', transport='msgpack')
 ```python
 # Auto-detected from extension
 bag = Bag()
-bag.fill_from('/path/to/data.bag.json')
-bag.fill_from('/path/to/data.bag.mp')
+bag.replace(Bag('/path/to/data.bag.json'))
+bag.replace(Bag('/path/to/data.bag.mp'))
 ```
 
 ## Format Comparison

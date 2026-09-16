@@ -22,7 +22,7 @@ are public API and must be exercised.
 3.  static_value                                cached value without trigger
 4.  attr property / set_attr / get_attr / del_attr / has_attr
 5.  is_branch                                   Bag value vs scalar
-6.  is_valid                                    default True (no invalid_reasons)
+6.  retired validation surface                  no longer provided
 7.  position                                    index in parent container
 8.  parent_bag / parent_node                    navigation
 9.  fullpath (with backref)                     path pointed to node
@@ -44,7 +44,6 @@ from __future__ import annotations
 import pytest
 
 from genro_bag import Bag, BagNode
-
 
 # =============================================================================
 # 1. Node identity
@@ -255,16 +254,15 @@ class TestIsBranch:
 
 
 # =============================================================================
-# 6. is_valid
+# 6. Retired validation surface
 # =============================================================================
 
 
-class TestIsValid:
-    def test_fresh_node_is_valid(self):
-        """Fresh node has is_valid=True (no error)."""
-        bag = Bag()
-        node = bag.set_item("x", 1)
-        assert node.is_valid is True
+class TestRetiredValidation:
+    def test_node_validation_is_no_longer_provided(self):
+        node = Bag().set_item("x", 1)
+        assert not hasattr(node, "is_valid")
+        assert not hasattr(node, "_invalid_reasons")
 
 
 # =============================================================================
@@ -348,12 +346,11 @@ class TestParentLinks:
 
 
 class TestNodeFullpath:
-    def test_fullpath_none_without_backref(self):
-        """Without backref, node fullpath is None (non-nested top-level)."""
+    def test_fullpath_of_connected_top_level_node(self):
+        """A node connected to a root Bag has its label as its path."""
         bag = Bag()
         node = bag.set_item("x", 1)
-        # parent_bag is root, fullpath of bag is None -> node none
-        assert node.fullpath is None
+        assert node.fullpath == "x"
 
     def test_fullpath_reports_path_with_backref(self):
         """With backref, nested node has dot-separated fullpath from root."""
@@ -578,7 +575,7 @@ class TestResetResolver:
         assert node.resolver is not None
         node.reset_resolver()
         # resolver remains, but cache is invalidated: re-access generates
-        # new uuid (cache_time=False -> not reloaded until cleared)
+        # new uuid (cache_time=-1 -> not reloaded until cleared)
         second = bag["id"]
         assert node.resolver is not None
         assert first != second

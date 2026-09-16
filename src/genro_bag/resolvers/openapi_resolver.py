@@ -24,7 +24,7 @@ class OpenApiResolver(BagResolver):
         url: URL to the OpenAPI spec (JSON format).
 
     Parameters (class_kwargs):
-        cache_time: Cache duration. Default False (infinite cache).
+        cache_time: Cache duration. Default -1 (infinite cache).
         read_only: If True, value is not stored in node._value. Default True.
             Independent from cache_time (internal cache).
         timeout: Request timeout in seconds. Default 30.
@@ -73,7 +73,7 @@ class OpenApiResolver(BagResolver):
     """
 
     class_kwargs = {
-        "cache_time": False,
+        "cache_time": -1,
         "read_only": True,
         "retry_policy": "http",
         "timeout": 30,

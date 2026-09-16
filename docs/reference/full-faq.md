@@ -173,7 +173,7 @@ BagCbResolver(func, cache_time=0)
 BagCbResolver(func, cache_time=60)
 
 # Cache forever (until manual reset)
-BagCbResolver(func, cache_time=False)
+BagCbResolver(func, cache_time=-1)
 
 ```
 

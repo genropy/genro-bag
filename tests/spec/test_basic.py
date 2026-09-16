@@ -249,6 +249,19 @@ class TestSetItem:
 
 
 class TestGetNode:
+    def test_integer_zero_is_first_node_not_parent(self):
+        root = Bag({"first": 10, "second": 20})
+        parent = Bag()
+        parent.set_item("child", Bag({"first": 30, "second": 40}))
+        parent.set_backref()
+        child = parent.get_item("child")
+        for bag, expected_parent in ((root, None), (child, parent.get_node("child"))):
+            for lookup in (bag.get_node, bag.getNode):
+                assert lookup(0) is bag.get_node("first")
+                assert lookup(1) is bag.get_node("second")
+                assert lookup(None) is expected_parent
+                assert lookup("") is expected_parent
+
     def test_get_node_returns_bagnode_instance(self):
         """get_node('a') returns a BagNode if path exists."""
         bag = Bag()
@@ -285,17 +298,22 @@ class TestGetNode:
         bag = Bag()
         assert bag.get_node(None) is None
 
-    def test_get_node_as_tuple_returns_container_and_node(self):
-        """as_tuple=True returns (Bag, BagNode)."""
+    def test_get_node_rejects_removed_tuple_option_without_shifting_arguments(self):
         bag = Bag()
         bag["a.b"] = 1
-        result = bag.get_node("a.b", as_tuple=True)
-        assert isinstance(result, tuple)
-        container, node = result
-        assert isinstance(container, Bag)
-        assert isinstance(node, BagNode)
-        assert node.label == "b"
-        assert node.value == 1
+        with pytest.raises(TypeError):
+            bag.get_node("a.b", as_tuple=True)
+        with pytest.raises(TypeError):
+            bag.get_node("a.b", True)
+        with pytest.raises(TypeError):
+            bag.getNode("a.b", asTuple=True)
+        with pytest.raises(TypeError, match="asTuple"):
+            bag.getNode("a.b", True)
+        assert bag.get_node("a.b").value == 1
+        assert bag.get_node("missing") is None
+        assert bag.getNode("new", False, True, 42).value == 42
+        assert bag.get_node("other", autocreate=True, default=3).value == 3
+        assert bag.getNode("a.b").asTuple()[:2] == ("b", 1)
 
     def test_node_first_level_by_label(self):
         """bag.node('a') quick access to direct child."""
