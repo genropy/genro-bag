@@ -559,6 +559,19 @@ class TestNodeSubscription:
 
 
 class TestResetResolver:
+    def test_missing_resolver_raises_without_mutation(self):
+        bag = Bag({"item": 42})
+        node = bag.get_node("item")
+        node.set_attr(caption="Kept")
+        events = []
+        bag.subscribe("watch", update=lambda **kw: events.append(kw))
+        for reset in (node.reset_resolver, node.resetResolver):
+            with pytest.raises(ValueError, match="node has no resolver"):
+                reset()
+            assert node.get_value(static=True) == 42
+            assert node.attr == {"caption": "Kept"}
+            assert not events
+
     def test_reset_resolver_clears_value_and_invalidates_cache(self):
         """reset_resolver() invalidates cache and zeros current value.
 

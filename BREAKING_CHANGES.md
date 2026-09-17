@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### Reset requires a resolver
+
+`BagNode.reset_resolver()` / `resetResolver()` now raises an explicit error
+when the node has no resolver (Python ValueError, JavaScript Error). The node
+value and attributes remain unchanged and no mutation notification is emitted.
+Previously the new libraries silently cleared the value in this case.
+Compatibility names inherit the same check. With a resolver, reset still
+invalidates its cache and clears the node value.
+
 ### Resolver cache durations are numeric
 
 Both libraries use the same expiration contract: zero reloads on access,

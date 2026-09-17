@@ -483,9 +483,10 @@ class BagNode(BagNodeNamesMixin):
         self._resolver = resolver
 
     def reset_resolver(self) -> None:
-        """Reset the resolver and clear the value."""
-        if self._resolver is not None:
-            self._resolver.reset()
+        """Reset the resolver and clear the value; reject nodes without a resolver."""
+        if self._resolver is None:
+            raise ValueError("Cannot reset resolver: node has no resolver")
+        self._resolver.reset()
         self.set_value(None)
 
     # -------------------------------------------------------------------------
