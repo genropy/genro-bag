@@ -66,6 +66,20 @@ class BagNamesMixin:
                 _attributes=attributes,
                 _position=_position or ">",
             )
+        if item_path == "" or item_path is True:
+            from .bag import Bag
+            from .resolver import BagResolver
+
+            if isinstance(item_value, BagResolver):
+                item_value = item_value()
+            if isinstance(item_value, Bag):
+                entries = [(node.label, node.value, dict(node.attr)) for node in item_value]
+                for label, value, attr in entries:
+                    self.setItem(label, value, _attributes=attr, _updattr=_updattr)
+            elif hasattr(item_value, "items"):
+                for label, value in list(item_value.items()):
+                    self.setItem(label, value)
+            return self
         self.set_item(
             item_path,
             item_value,
@@ -872,11 +886,11 @@ class BagResolverNamesMixin:
     def __getattr__(self, name):
         """Semantic and functional adapter: expose declared resolver parameters."""
         try:
-            parameters = object.__getattribute__(self, "_kw")
+            parameters = self._parameter_values()
         except AttributeError:
             raise AttributeError(name) from None
         modern_name = _LEGACY_RESOLVER_NAMES.get(name, name)
-        if modern_name in parameters:
+        if modern_name != name and modern_name in parameters:
             return parameters[modern_name]
         raise AttributeError(name)
 

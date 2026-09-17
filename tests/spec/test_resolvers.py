@@ -640,7 +640,7 @@ class TestResolverInPlaceProperties:
         on each access -> read_only=True (no write to the node).
         """
         bag = Bag()
-        bag["c"] = BagCbResolver(lambda: 1)  # cache_time=0 default, no interval
+        bag["c"] = BagResolver()  # No constructor or class-level storage policy
         resolver = bag.get_resolver("c")
         assert resolver is not None
         assert resolver.read_only is True
@@ -733,15 +733,15 @@ class TestResolverEquality:
 # =============================================================================
 
 
-class TestResolverKw:
-    def test_kw_returns_dict_of_parameters(self):
-        """resolver.kw is the dict of parameters (post on_loading)."""
+class TestResolverExtras:
+    def test_kwargs_exposes_only_extra_parameters(self):
+        """Public extras exclude callback and internal configuration."""
         bag = Bag()
         bag["c"] = BagCbResolver(lambda a, b: a + b, a=1, b=2)
         resolver = bag.get_resolver("c")
         assert resolver is not None
-        kw = resolver.kw
-        assert isinstance(kw, dict)
+        kw = dict(resolver.kwargs)
+        assert set(kw) == {"a", "b"}
         assert kw["a"] == 1
         assert kw["b"] == 2
 
@@ -752,7 +752,7 @@ class TestResolverKw:
         resolver = bag.get_resolver("c")
         assert resolver is not None
         # on_loading(dict) returns the dict unchanged
-        kw_copy = dict(resolver.kw)
+        kw_copy = dict(resolver.kwargs)
         assert resolver.on_loading(kw_copy) == kw_copy
 
 

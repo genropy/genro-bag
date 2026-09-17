@@ -31,7 +31,7 @@ from __future__ import annotations
 import functools
 import importlib
 import inspect
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from datetime import datetime, timedelta
 from typing import TYPE_CHECKING, Any
 
@@ -44,6 +44,8 @@ from genro_bag._camel_names import (
     BagResolverNamesMixin,
     translate_legacy_resolver_kwargs,
 )
+
+from ._resolver_params import ResolverExtras
 
 RETRY_POLICIES = RETRY_PRESETS
 
@@ -146,7 +148,7 @@ class BagResolver(BagResolverNamesMixin):
             class_args = ['base']
 
             def load(self):
-                return self.kw['base'] * self.kw['multiplier']
+                return self.base * self.multiplier
 
         bag['calc'] = CalcResolver(10, multiplier=3)  # base=10, multiplier=3
         bag['calc']  # -> 30 (uses resolver defaults)
@@ -162,7 +164,7 @@ class BagResolver(BagResolverNamesMixin):
         "cache_time": 0,
         "interval": None,
         "reactive": False,
-        "read_only": False,
+        "read_only": None,  # Unspecified: retain the automatic no-cache getter policy.
         "retry_policy": None,
         "as_bag": None,
     }
@@ -172,6 +174,7 @@ class BagResolver(BagResolverNamesMixin):
     }
 
     __slots__ = (
+        "_load_params",  # temporary prepared parameters for the current load
         "_kw",  # dict: all parameters from class_kwargs/class_args
         "_init_args",  # list: original positional args (for serialize)
         "_init_kwargs",  # dict: original keyword args (for serialize)
@@ -192,6 +195,8 @@ class BagResolver(BagResolverNamesMixin):
 
         At the end calls self.init() as a hook for subclasses.
         """
+        self._load_params = None
+
         # Save original args/kwargs to enable re-serialization.
         self._init_args: list[Any] = list(args)
         self._legacy_init_kwargs: dict[str, Any] = dict(kwargs)
@@ -239,7 +244,7 @@ class BagResolver(BagResolverNamesMixin):
         ):
             raise TypeError("BagResolver requires synchronous load(); async_load() is not supported")
 
-        if self._kw.get("reactive") and self._init_kwargs.get("read_only") is True:
+        if self._kw.get("reactive") and self._kw.get("read_only") is True:
             raise ValueError(
                 "read_only=True is incompatible with reactive=True: the "
                 "reactive refresh writes the value to the node for subscribers "
@@ -317,21 +322,41 @@ class BagResolver(BagResolverNamesMixin):
             raise ValueError("interval is not supported; schedule refresh outside the Bag")
         self._kw["interval"] = None
 
-    # =========================================================================
-    # KW PROPERTY (transformed kwargs for load)
-    # =========================================================================
+    def _parameter_values(self) -> dict[str, Any]:
+        """Read current execution parameters, or persistent state outside load."""
+        prepared = object.__getattribute__(self, "_load_params")
+        return prepared if prepared is not None else object.__getattribute__(self, "_kw")
+
+    def __getattr__(self, name):
+        try:
+            parameters = self._parameter_values()
+        except AttributeError:
+            raise AttributeError(name) from None
+        if name in parameters:
+            return parameters[name]
+        return super().__getattr__(name)
 
     @property
-    def kw(self) -> dict[str, Any]:
-        """Pre-processed kwargs, result of on_loading(self._kw).
+    def kwargs(self):
+        """Extra parameters only; reads never run preparation hooks."""
+        return ResolverExtras(self)
 
-        Subclasses' load() must read from self.kw (not self._kw)
-        so that on_loading transformations are visible. Default on_loading is
-        identity, so self.kw returns self._kw unchanged.
-        """
-        result = self.on_loading(self._kw)
-        self._require_sync_result(result)
-        return result
+    def _invoke_load(self) -> Any:
+        """Prepare once per load attempt, restoring an enclosing load on exit."""
+        previous = self._load_params
+        self._load_params = None
+        try:
+            raw = dict(self._kw)
+            prepared = self.on_loading(dict(raw))
+            self._require_sync_result(prepared)
+            if not isinstance(prepared, Mapping):
+                raise TypeError("on_loading must return a complete parameter mapping")
+            if not raw.keys() <= prepared.keys():
+                raise ValueError("on_loading must preserve all parameter names")
+            self._load_params = dict(prepared)
+            return self.load()
+        finally:
+            self._load_params = previous
 
     # =========================================================================
     # REACTIVE PROPERTY (mutable)
@@ -353,7 +378,7 @@ class BagResolver(BagResolverNamesMixin):
 
         Rejects the read_only + reactive combination as at construction.
         """
-        if value and self._init_kwargs.get("read_only") is True:
+        if value and self._kw.get("read_only") is True:
             raise ValueError(
                 "read_only=True is incompatible with reactive=True: the "
                 "reactive refresh writes the value to the node for subscribers "
@@ -370,11 +395,13 @@ class BagResolver(BagResolverNamesMixin):
         """Whether resolver is in read-only mode.
 
         If True, the resolved value is NOT stored in node._value.
-        If not explicitly passed, derived from cache_time, interval, reactive:
+        Constructor values override class defaults. Only when neither specifies a
+        policy is it derived from cache_time, interval, reactive:
         no cache and no active trigger → read_only=True, otherwise read_only=False.
         """
-        if "read_only" in self._init_kwargs:
-            return self._init_kwargs["read_only"]  # type: ignore[no-any-return]
+        configured = self._kw.get("read_only")
+        if configured is not None:
+            return configured  # type: ignore[no-any-return]
         if self._kw.get("interval") is not None or self._kw.get("reactive"):
             return False
         return self.cache_time == 0
@@ -414,7 +441,7 @@ class BagResolver(BagResolverNamesMixin):
         self._refresh_running = True
         try:
             self._kw = self._build_effective_kw()
-            self._finalize_result_and_notify(self.load())
+            self._finalize_result_and_notify(self._invoke_load())
         finally:
             self._refresh_running = False
 
@@ -595,7 +622,7 @@ class BagResolver(BagResolverNamesMixin):
     @with_retry
     def _sync_sync_load(self) -> Any:
         """Sync resolver in sync context - calls load()."""
-        return self._finalize_result(self.load())
+        return self._finalize_result(self._invoke_load())
 
     @staticmethod
     def _require_sync_result(result: Any) -> None:
@@ -616,7 +643,7 @@ class BagResolver(BagResolverNamesMixin):
         Example:
             class FileResolver(BagResolver):
                 def load(self):
-                    return Path(self.kw['path']).read_text()
+                    return Path(self.path).read_text()
         """
         raise NotImplementedError("Sync resolvers must implement load()")
 
@@ -638,8 +665,10 @@ class BagResolver(BagResolverNamesMixin):
         the same keys as input, not a delta — some resolvers (url_resolver,
         BagCbResolver) iterate over the full kwargs dict.
 
-        Called via the self.kw property; load() implementations read self.kw
-        (not self._kw) so transformations are visible.
+        The engine calls this once per load attempt with a shallow copy.
+        Read declared parameters as attributes and extras through self.kwargs.
+        Do not mutate nested objects in-place: they are shared with raw state.
+        Cached reads do not call this hook. Direct load() bypasses preparation.
         """
         return kw
 
@@ -750,8 +779,7 @@ class BagCbResolver(BagSyncResolver):
 
     def load(self) -> Any:
         """Call sync callback with parameters from kw."""
-        params = {k: v for k, v in self.kw.items() if k not in self.internal_params}
-        return self.kw["callback"](**params)
+        return self.callback(**self.kwargs)
 
 
 class BagAsyncCbResolver(BagResolver):

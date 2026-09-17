@@ -48,9 +48,9 @@ class EnvResolver(BagSyncResolver):
 
     def load(self) -> Any:
         """Read the environment variable, optionally typed via tytx."""
-        default: Any = self.kw.get("default")
-        value = os.environ.get(self.kw["var_name"], default)
-        dtype = self.kw.get("dtype")
+        default: Any = getattr(self, 'default', None)
+        value = os.environ.get(self.var_name, default)
+        dtype = getattr(self, 'dtype', None)
         if dtype is not None and value is not None:
             return tytx_decode(f"{value}::{dtype}")
         return value

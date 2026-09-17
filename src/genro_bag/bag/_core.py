@@ -389,11 +389,10 @@ class Bag(BagNamesMixin, BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser
         resolver=None,
         node_tag: str | None = None,
         **kwargs,
-    ) -> BagNode | Bag:
+    ) -> BagNode:
         """Set value at a hierarchical path.
 
-        An empty path merges first-level Bag or mapping entries and returns self.
-        Existing nested Bags are replaced, not recursively merged.
+        An empty path raises ValueError without modifying the Bag.
 
         Traverses the Bag hierarchy following the dot-separated path, creating
         intermediate Bags as needed, and sets the value at the final location.
@@ -412,7 +411,7 @@ class Bag(BagNamesMixin, BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser
             - resolver=NewResolver: Replace resolver with a new one
 
         Args:
-            path: Hierarchical path like 'a.b.c'. Empty path is ignored.
+            path: Non-empty hierarchical path like 'a.b.c'.
                 Supports '?attr' suffix to set a node attribute instead of value.
                 Supports '?attr1&attr2&attr3' to set multiple attributes at once
                 (value must be a tuple with matching length).
@@ -446,6 +445,7 @@ class Bag(BagNamesMixin, BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser
             The created or updated BagNode.
 
         Raises:
+            ValueError: If path is the empty string.
             BagNodeException: If target node has a resolver and resolver param not provided.
 
         Example:
@@ -468,19 +468,7 @@ class Bag(BagNamesMixin, BagPopulate, BagTraverse, BagEvents, BagRepr, BagParser
             >>> bag.set_item('data', 'new', resolver=False)  # Remove resolver
         """
         if path == "":
-            if isinstance(value, Bag):
-                entries = [(node.label, node.value, dict(node.attr)) for node in value]
-            elif hasattr(value, "items"):
-                entries = [(key, item, None) for key, item in list(value.items())]
-            else:
-                return self
-            for key, item, attributes in entries:
-                self.set_item(
-                    key, item, _attributes=attributes, _updattr=_updattr,
-                    _remove_null_attributes=_remove_null_attributes,
-                    _reason=_reason, do_trigger=do_trigger,
-                )
-            return self
+            raise ValueError("set_item requires a non-empty path")
 
         # Merge kwargs into _attributes
         if kwargs:

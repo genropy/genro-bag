@@ -86,7 +86,7 @@ class DatabaseResolver(BagResolver):
     class_kwargs = {'connection': None, 'cache_time': 60}
 
     def load(self):
-        return self.kw['connection'].execute(self.kw['query'])
+        return self.connection.execute(self.query)
 
 # Usage
 bag['users'] = DatabaseResolver('SELECT * FROM users', connection=db)

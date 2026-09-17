@@ -99,21 +99,21 @@ class UrlResolver(BagResolver):
             httpx.HTTPStatusError: If response status is 4xx or 5xx.
             ValueError: If read_only=False and response cannot be converted to Bag.
         """
-        url = self.kw["url"]
-        method = self.kw["method"]
-        qs = self.kw["qs"]
-        body: Bag | dict | None = self.kw["body"]
-        timeout = self.kw["timeout"]
+        url = self.url
+        method = self.method
+        qs = self.qs
+        body: Bag | dict | None = self.body
+        timeout = self.timeout
 
         # Extract dynamic parameters from _kw (passed via get_item kwargs)
         # _body overrides constructor body
-        if "_body" in self.kw:
-            body = self.kw["_body"]
+        if "_body" in self.kwargs:
+            body = self._body
 
         # Collect path args (arg_0, arg_1, ...) and extra qs params
         path_args: list[str | None] = []
         extra_qs = {}
-        for key, value in self.kw.items():
+        for key, value in self.kwargs.items():
             if key.startswith("arg_") and value is not None:
                 try:
                     idx = int(key[4:])
@@ -147,7 +147,7 @@ class UrlResolver(BagResolver):
 
         with httpx.Client() as client:
             request_method = getattr(client, method)
-            headers = dict(self.kw["headers"] or {})
+            headers = dict(self.headers or {})
             headers.update(self.prepare_headers())
             kwargs = {"timeout": timeout, "headers": headers}
 

@@ -20,9 +20,9 @@ class MyResolver(BagResolver):
 
     def load(self):
         """Called when value is accessed. Return the resolved value."""
-        arg1 = self.kw['arg1']
-        arg2 = self.kw['arg2']
-        my_option = self.kw['my_option']
+        arg1 = self.arg1
+        arg2 = self.arg2
+        my_option = self.my_option
 
         # Your logic here
         return computed_value
@@ -45,8 +45,8 @@ class DatabaseResolver(BagResolver):
     }
 
     def load(self):
-        query = self.kw['query']
-        conn = self.kw['connection']
+        query = self.query
+        conn = self.connection
 
         results = conn.execute(query).fetchall()
 
@@ -81,8 +81,8 @@ class RedisResolver(BagResolver):
     }
 
     def load(self):
-        key = self.kw['key']
-        client = self.kw['redis_client']
+        key = self.key
+        client = self.redis_client
 
         data = client.get(key)
         if data is None:
@@ -124,7 +124,7 @@ class MtimeJsonResolver(BagResolver):
         self._last_mtime = None
 
     def load(self):
-        path = Path(self.kw['filepath'])
+        path = Path(self.filepath)
         mtime = path.stat().st_mtime
 
         if self._last_mtime != mtime:
@@ -149,7 +149,7 @@ class NestedDataResolver(BagResolver):
     class_kwargs = {'cache_time': 300}
 
     def load(self):
-        data = fetch_data(self.kw['source'])
+        data = fetch_data(self.source)
 
         bag = Bag()
         for key, value in data.items():
@@ -175,32 +175,49 @@ overriding two instance methods:
   implementation is identity. Runs **after** the `as_bag` conversion in
   `_prepare_result`, so if `as_bag=True` the hook receives the converted Bag.
 
-### Reading state: `self.kw` vs `self._kw`
+### Parameter access and preparation
 
-Inside `load()`, always read parameters from **`self.kw`**
-(not `self._kw`). `self.kw` is a property that returns `self.on_loading(self._kw)`,
-so any transformation you inject via `on_loading` is visible to the load:
+Declare positional parameter names with `class_args` and named defaults with
+`class_kwargs`. Inside `load()`, read them as attributes (`self.url`,
+`self.timeout`). `self.kwargs` is a live mapping of extras only: declared
+positional names, declared defaults and internal options are excluded.
+
+The engine calls `on_loading` once before each actual `load()` attempt, with
+a shallow copy of the effective parameters. Cache hits do not prepare or load.
+Normal resolution and `reset(refresh=True)` share this preparation mechanism.
+Each retry prepares from persistent state, not from the preceding transformed
+copy. This does not change which entry points support retries.
+
+During `load()`, attributes and `kwargs` expose the prepared parameters. Outside
+`load()`, they expose persistent parameters without running hooks. Explicit
+call-time updates still change persistent state as before. Preparation itself
+does not. The temporary context is restored on success or failure, including
+nested resolutions on the same resolver. This does not make Bags thread-safe.
 
 ```python
 class MultiplyingResolver(BagResolver):
     class_args = ['base']
     class_kwargs = {'multiplier': 1}
 
-    def on_loading(self, kw):
-        # Normalize: ensure multiplier is int
-        return {**kw, 'multiplier': int(kw['multiplier'])}
+    def on_loading(self, params):
+        return {**params, 'multiplier': int(params['multiplier'])}
 
     def load(self):
-        # Reads transformed kwargs via self.kw
-        return self.kw['base'] * self.kw['multiplier']
+        return self.base * self.multiplier
 ```
 
-`self._kw` still exists as the raw underlying state (used by `set_attr`,
-serialization, child resolver creation). You normally do not touch it.
+Use `resolver()` for managed resolution. Calling `load()` directly bypasses
+preparation and caching. `_kw`, `_load_params` and `_invoke_load()` are private.
+The former `kw` property has been removed. There is no public preparation helper.
+Parameter names must not collide with resolver methods or properties.
+
+The copy is shallow: hooks must not mutate nested objects in-place. `on_loading`
+returns a complete mapping; the engine rejects non-mappings and missing input
+keys. `on_loaded` retains its existing position after result conversion.
 
 ### Contract: `on_loading` must return a complete dict
 
-Some resolvers iterate over `self.kw.items()` to pick up dynamic kwargs
+Some resolvers iterate over `self.kwargs.items()` to pick up extra parameters
 (e.g. `UrlResolver` collects extra query-string parameters). `on_loading`
 must return a dict with **all** the input keys — not a delta — or downstream
 code may drop parameters.
@@ -224,7 +241,7 @@ class JsonApiResolver(BagResolver):
 
     def load(self):
         with httpx.Client() as client:
-            r = client.get(self.kw['url'])
+            r = client.get(self.url)
             return r.json()
 
     def on_loaded(self, result):

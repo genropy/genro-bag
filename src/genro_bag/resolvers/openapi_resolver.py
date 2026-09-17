@@ -81,8 +81,8 @@ class OpenApiResolver(BagResolver):
     class_args = ["url"]
 
     def load(self) -> Bag:
-        url = self.kw["url"]
-        timeout = self.kw["timeout"]
+        url = self.url
+        timeout = self.timeout
 
         with httpx.Client() as client:
             response = client.get(url, timeout=timeout)
@@ -115,7 +115,7 @@ class OpenApiResolver(BagResolver):
             result["servers"] = spec["servers"]
 
         # Get base URL - resolve relative server URLs against the spec URL
-        spec_url = self.kw["url"]
+        spec_url = self.url
         servers = spec["servers"]
         base_url = ""
         if servers:

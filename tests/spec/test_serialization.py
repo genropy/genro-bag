@@ -524,7 +524,7 @@ class TestXmlTagSanitization:
         """Label vuoto produce il tag speciale '_none_'."""
         bag = Bag()
         # Construct the serializer fixture directly: empty-path assignment
-        # now updates the Bag contents rather than creating an empty label.
+        # rejects an empty path; imported XML can still contain empty labels.
         sub = Bag()
         sub._nodes.set("", "v", parent_bag=sub)
         bag.set_item("root", sub)

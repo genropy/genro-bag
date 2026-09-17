@@ -151,7 +151,7 @@ def test_async_hooks_fail_without_leaking_coroutines(method):
 
     class Resolver(BagResolver):
         def load(self):
-            return self.kw["value"]
+            return self.value
 
     setattr(Resolver, method, invalid)
     resolver = Resolver(value=1, cache_time=-1)

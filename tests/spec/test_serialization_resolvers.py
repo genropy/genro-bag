@@ -74,7 +74,7 @@ class CountingResolver(BagSyncResolver):
 
     def load(self):
         type(self).calls += 1
-        return f"loaded-{self.kw['tag']}"
+        return f"loaded-{self.tag}"
 
 
 # =============================================================================

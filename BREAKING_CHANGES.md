@@ -1,5 +1,44 @@
 # Breaking changes
 
+## 0.25.0
+
+### Empty-path assignment
+
+Native `set_item('', value)` / `setItem('', value)` rejects an empty path
+with ValueError / RangeError, regardless of the value, without modifying the Bag.
+Successful native assignments return the written BagNode. This supersedes the
+empty-path merge introduced in Python 0.24.0 / JS 0.6.0 and the earlier native
+empty-label creation. Builders must validate empty identifiers before insertion.
+Legacy empty-path merge and scalar no-op belong only to compatibility mixins
+(Python camelCase `setItem`, GenroJS `gnrbag_mixin.js`).
+
+### Legacy resolver defaults and extra keywords
+
+The native resolver now honors `read_only` declared in `class_kwargs`, including
+inherited defaults. The mixin only translates legacy `classKwargs`/`readOnly`.
+Explicit constructor values override class defaults; automatic policy applies
+only when neither specifies a policy (`None` in the base class). Both True and
+False class defaults are respected: callback resolvers declaring False are now
+writable even without caching. Readonly results with zero cache are recomputed
+on every read; with negative or positive duration the cache lives exclusively
+in the resolver, never in the BagNode. Positive duration expires on the next
+read after the TTL; negative duration lasts until invalidation/reset. `kwargs` is available as a live mapping of extra parameters, excluding declared
+arguments and internal options. It is not a mapping of all resolver parameters.
+
+### Resolver preparation and removal of `kw`
+
+The `kw` property has been removed. Concrete resolvers read named parameters
+as attributes and extras through `kwargs`. The engine runs `on_loading` once
+per actual load attempt, using a shallow copy of effective parameters. Cache
+hits run neither preparation nor load. Normal resolution and explicit refresh
+share this wrapper; retries each prepare afresh. Temporary prepared state is
+restored even after exceptions or nested resolutions. Serialization keeps raw
+persistent state. Explicit call-time updates retain their previous semantics.
+Hooks must return a complete mapping and must not mutate shared nested values.
+Use `resolver()`; direct `load()` calls bypass the engine. See
+`docs/resolvers/custom.md` for the public parameter contract. No public
+`prepare_kwargs` helper or replacement full-parameter property is introduced.
+
 ## 0.24.0
 
 ### Reset requires a resolver

@@ -42,7 +42,7 @@ class UuidResolver(BagSyncResolver):
 
     def load(self) -> str:
         """Generate a UUID string."""
-        version = self.kw["version"]
+        version = self.version
         generator = self._generators.get(version)
         if generator is None:
             raise ValueError(f"Unsupported UUID version: {version!r}. Use 'uuid1' or 'uuid4'.")

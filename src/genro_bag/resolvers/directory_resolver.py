@@ -97,7 +97,7 @@ class TxtDocResolver(BagResolver):
         Returns:
             bytes: The complete file content in binary form.
         """
-        with open(self.kw["path"], mode="rb") as f:
+        with open(self.path, mode="rb") as f:
             return f.read()
 
 
@@ -133,7 +133,7 @@ class SerializedBagResolver(BagResolver):
 
     def load(self):
         """Load and return the Bag from the serialized file."""
-        return Bag()._load_source(self.kw["path"], transport=self.kw["format"])
+        return Bag()._load_source(self.path, transport=self.format)
 
 
 class DirectoryResolver(BagResolver):
@@ -290,28 +290,28 @@ class DirectoryResolver(BagResolver):
                 Directories have nested DirectoryResolver as value.
         """
         extensions = (
-            dict([(ext.split(":") + ext.split(":"))[0:2] for ext in self.kw["ext"].split(",")])
-            if self.kw["ext"]
+            dict([(ext.split(":") + ext.split(":"))[0:2] for ext in self.ext.split(",")])
+            if self.ext
             else {}
         )
         extensions["directory"] = "directory"
         result = Bag()
         try:
-            directory = sorted(os.listdir(self.kw["path"]))
+            directory = sorted(os.listdir(self.path))
         except OSError:
             directory = []
-        if not self.kw["invisible"]:
+        if not self.invisible:
             directory = [x for x in directory if not x.startswith(".")]
-        base_realpath = os.path.realpath(self.kw["path"])
+        base_realpath = os.path.realpath(self.path)
         for fname in directory:
             # skip journal files and files starting with # (reserved for index syntax)
             if fname.startswith("#") or fname.endswith("#") or fname.endswith("~"):
                 continue
-            fullpath = os.path.join(self.kw["path"], fname)
+            fullpath = os.path.join(self.path, fname)
 
             # Security check: prevent symlink escape attacks
             # Verify that resolved path is still within the base directory
-            if not self.kw["follow_symlinks"]:
+            if not self.follow_symlinks:
                 real_fullpath = os.path.realpath(fullpath)
                 if (
                     not real_fullpath.startswith(base_realpath + os.sep)
@@ -320,24 +320,24 @@ class DirectoryResolver(BagResolver):
                     # Path escapes base directory via symlink - skip it
                     continue
 
-            relpath = os.path.join(self.kw["relocate"], fname)
+            relpath = os.path.join(self.relocate, fname)
             add_it = True
             if os.path.isdir(fullpath):
                 ext = "directory"
-                if self.kw["exclude"]:
-                    add_it = self._filter(fname, exclude=self.kw["exclude"])
+                if self.exclude:
+                    add_it = self._filter(fname, exclude=self.exclude)
             else:
-                if self.kw["include"] or self.kw["exclude"]:
+                if self.include or self.exclude:
                     add_it = self._filter(
                         fname,
-                        include=self.kw["include"],
-                        exclude=self.kw["exclude"],
+                        include=self.include,
+                        exclude=self.exclude,
                     )
                 fname, ext = os.path.splitext(fname)
                 ext = ext[1:]
             if add_it:
                 label = self.make_label(fname, ext)
-                processors = self.kw["processors"] or {}
+                processors = self.processors or {}
                 processname = extensions.get(ext.lower(), None)
                 handler = processors.get(processname)
                 if handler is not False:
@@ -366,13 +366,13 @@ class DirectoryResolver(BagResolver):
                     "ctime": ctime,
                     "size": size,
                 }
-                caption_opt = self.kw["caption"]
+                caption_opt = self.caption
                 if caption_opt is True:
                     nodeattr["caption"] = fname.replace("_", " ").strip().capitalize()
                 elif callable(caption_opt):
                     nodeattr["caption"] = caption_opt(fname)
-                if self.kw["callback"]:
-                    cbres = self.kw["callback"](nodeattr=nodeattr)
+                if self.callback:
+                    cbres = self.callback(nodeattr=nodeattr)
                     if cbres is False:
                         continue
                 handler_result = handler(fullpath)
@@ -422,7 +422,7 @@ class DirectoryResolver(BagResolver):
         Returns:
             str: Label suitable for use as Bag node key.
         """
-        if ext != "directory" and not self.kw["dropext"]:
+        if ext != "directory" and not self.dropext:
             name = f"{name}_{ext}"
         return name.replace(".", "_")
 
@@ -440,7 +440,7 @@ class DirectoryResolver(BagResolver):
         """
         return DirectoryResolver(
             path,
-            os.path.join(self.kw["relocate"], os.path.basename(path)),
+            os.path.join(self.relocate, os.path.basename(path)),
             **self._instance_kwargs(),
         )
 
