@@ -329,6 +329,7 @@ class BagNode(BagNodeNamesMixin):
         _updattr: bool | None = None,
         _remove_null_attributes: bool = True,
         _reason: str | None = None,
+        _fired: bool = False,
     ) -> None:
         """Set the node's value.
 
@@ -339,6 +340,8 @@ class BagNode(BagNodeNamesMixin):
             _updattr: If False, clear existing attributes first.
             _remove_null_attributes: If True, remove None values from attributes.
             _reason: Optional reason string for the trigger.
+            _fired: True when the write is a fired write; carried as
+                ``fired`` in the Bag change event. The value is not reset here.
 
         Special value handling:
             - BagResolver: Assigned to self.resolver, value set to None.
@@ -410,6 +413,7 @@ class BagNode(BagNodeNamesMixin):
                     oldvalue=oldvalue,
                     attrs_diff=attrs_diff,
                     reason=_reason,
+                    fired=_fired,
                 )
 
     def replace(self, other: BagNode) -> BagNode:
@@ -1058,6 +1062,7 @@ class BagNodeContainer:
             _reason: Reason for the change (for events).
             do_trigger: If True (default), fire events on change.
             _fired: If True, reset value to None after setting (fire event pattern).
+                The event of the write carries fired=True; the reset emits no event.
 
         Returns:
             The created or updated BagNode.
@@ -1125,6 +1130,7 @@ class BagNodeContainer:
                     _remove_null_attributes=_remove_null_attributes,
                     _reason=_reason,
                     trigger=do_trigger,
+                    _fired=_fired,
                 )
         else:
             # New node
@@ -1143,7 +1149,7 @@ class BagNodeContainer:
             self._dict[label] = node
             self._list.insert(idx, node)
             if do_trigger and parent_bag is not None and parent_bag.backref:
-                parent_bag._on_node_inserted(node, idx, reason=_reason)
+                parent_bag._on_node_inserted(node, idx, reason=_reason, fired=_fired)
 
         # Handle _fired
         if _fired:

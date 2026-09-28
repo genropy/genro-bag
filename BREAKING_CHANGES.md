@@ -1,5 +1,25 @@
 # Breaking changes
 
+## Unreleased
+
+### `fired` in change events
+
+Update and insert subscribers receive a new keyword argument, `fired`. It is
+`True` for the event of a fired write (`set_item(..., _fired=True)`) and
+`False` for every other `upd_*` and `ins` event, including the autocreated
+intermediates of a fired write on a missing path. It propagates to the parent
+Bags like the other fields. The reset to `None` after a fired write still
+emits no event. Delete events are unchanged. The field has the same name in
+genro-bag-js.
+
+- A callback that lists its keyword arguments without `**kwargs` must accept
+  `fired`, otherwise it raises TypeError.
+- Inside `transaction()` the `upd` and `ins` mutation tuples gain `fired` as
+  their last element: `("upd", node, pathlist, evt, oldvalue, attrs_diff,
+  reason, fired)` and `("ins", node, pathlist, ind, reason, fired)`.
+- `BagNode.set_value` accepts `_fired` (default `False`). It only sets the
+  flag of the event; the value is not reset.
+
 ## 0.26.0
 
 ### Bag subclasses on the TYTX wire: `__cls`
