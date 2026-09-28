@@ -34,6 +34,8 @@ Triggered when a new node is added to the Bag.
 | `evt` | Always `'ins'` |
 | `ind` | Index position where inserted |
 | `pathlist` | Path from subscription root |
+| `reason` | Optional reason string |
+| `fired` | `True` for the insert of a fired write, `False` otherwise |
 
 ## Update Events (`upd_value`)
 
@@ -73,6 +75,7 @@ Triggered when an existing node's value changes.
 | `oldvalue` | The previous scalar/Bag value |
 | `attrs_diff` | Always `None` for `upd_value` (only set for `upd_attrs` / `upd_value_attr`) |
 | `reason` | Optional reason string |
+| `fired` | `True` for the event of a fired write, `False` otherwise |
 
 ### `upd_value` — Node-level subscribers
 
@@ -138,6 +141,7 @@ bag.get_node('x').set_attr(color='blue', size=42)
 | `oldvalue` | Always `None` for `upd_attrs` (no value change) |
 | `attrs_diff` | The diff dict (see above) |
 | `reason` | Optional reason string |
+| `fired` | `True` for the event of a fired write, `False` otherwise |
 
 ### `upd_attrs` — Node-level subscribers
 
@@ -202,6 +206,7 @@ call appear as **removed** in the diff (`new=None`).
 | `oldvalue` | The previous scalar/Bag value |
 | `attrs_diff` | Attribute diff dict (or `None` if no attribute actually changed) |
 | `reason` | Optional reason string |
+| `fired` | `True` for the event of a fired write, `False` otherwise |
 
 ### `upd_value_attr` — Node-level subscribers
 
@@ -454,8 +459,31 @@ True
 The sequence is:
 
 1. `set_item('click', 'button_ok')` — creates the node, fires `ins` event
-2. Subscribers see `node.value == 'button_ok'`
+2. Subscribers see `node.value == 'button_ok'` and `fired == True`
 3. Value is immediately reset to `None` with `trigger=False` (no second event)
+
+The `ins` or `upd_value` event of a fired write carries `fired=True`; it
+propagates to the parent Bags like the other fields. Every other `ins` and
+`upd_*` event carries `fired=False`, including the autocreated intermediates
+of a fired write on a missing path:
+
+```{doctest}
+>>> from genro_bag import Bag
+
+>>> bag = Bag()
+>>> events = []
+
+>>> bag.subscribe('w', insert=lambda **kw: events.append((kw['node'].label, kw['fired'])))
+
+>>> bag.set_item('a.b.click', 'go', _fired=True)
+
+>>> events
+[('a', False), ('b', False), ('click', True)]
+```
+
+Inside `transaction()` the flag is the last element of the `upd` and `ins`
+mutation tuples: `("upd", node, pathlist, evt, oldvalue, attrs_diff, reason, fired)`
+and `("ins", node, pathlist, ind, reason, fired)`.
 
 This is useful for signaling events through the subscription system without
 leaving stale values in the tree.
