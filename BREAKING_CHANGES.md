@@ -1,6 +1,6 @@
 # Breaking changes
 
-## Unreleased
+## 0.27.0
 
 ### `fired` in change events
 
