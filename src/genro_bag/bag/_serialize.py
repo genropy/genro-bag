@@ -17,9 +17,11 @@ from xml.sax import saxutils
 from genro_tytx import to_tytx as tytx_encode
 
 from genro_bag._resolver_wire import encode_attrs, encode_resolver, has_nested_resolver
+from genro_bag._subtype_wire import CLS_ATTRIBUTE, get_cls_marker, get_inherited_class
 from genro_bag.bag._exceptions import BagSerializationError
 
 if TYPE_CHECKING:
+    from genro_bag.bag._core import Bag
     from genro_bag.bagnode import BagNode
 
 # Regex for sanitizing XML tag names
@@ -321,6 +323,10 @@ class BagSerializer:
         else:
             rows = list(self._node_flattener(sign_key=sign_key, expires_in=expires_in))
             data = {"rows": rows}
+        root_class = type(self)
+        root_cls = get_cls_marker(root_class, get_inherited_class(None, root_class.__tytx_suffix__))
+        if root_cls is not None:
+            data[CLS_ATTRIBUTE] = root_cls
 
         # genro_tytx uses transport=None for JSON
         tytx_transport = None if transport == "json" else transport
@@ -382,12 +388,18 @@ class BagSerializer:
             path_to_code: dict[str, int] = {}
             code_counter = 0
 
+        # Class of each branch by path: a node's parent class decides whether
+        # its branch needs __cls. Read from the walk, since parent_bag is
+        # None when the backref is off.
+        path_to_class: dict[str, type[Bag]] = {"": type(self)}
+
         for path, node in self._iter_nodes_with_paths():
             parent_path = path.rsplit(".", 1)[0] if "." in path else ""
             where = f"node {path!r}"
 
             # Use static=True to avoid triggering resolvers during serialization
             node_value = node.get_value(static=True)
+            branch_cls = None
 
             # Value encoding - use duck typing to check for Bag.
             # The resolver wins: with one in place the static value is None,
@@ -396,6 +408,12 @@ class BagSerializer:
                 value = encode_resolver(node.resolver, sign_key, expires_in, where)
             elif hasattr(node_value, "traverse") and hasattr(node_value, "_nodes"):
                 value = f"::{type(node_value).__tytx_suffix__}"
+                branch_class = type(node_value)
+                path_to_class[path] = branch_class
+                branch_cls = get_cls_marker(
+                    branch_class,
+                    get_inherited_class(path_to_class[parent_path], branch_class.__tytx_suffix__),
+                )
             elif node_value is None:
                 value = "::NN"
             else:
@@ -410,7 +428,13 @@ class BagSerializer:
                     )
                 value = node_value
 
+            if CLS_ATTRIBUTE in node.attr:
+                raise BagSerializationError(
+                    f"{where}: the attribute {CLS_ATTRIBUTE!r} is reserved for the Bag class name"
+                )
             attr = encode_attrs(node.attr, sign_key, expires_in, where)
+            if branch_cls is not None:
+                attr[CLS_ATTRIBUTE] = branch_cls
 
             if compact:
                 parent_ref = path_to_code.get(parent_path) if parent_path else None

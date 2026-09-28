@@ -56,10 +56,6 @@ class OtherBranch(Bag):
     __tytx_suffix__ = "OTHERTESTBRANCH"
 
 
-class LegacyBag(Bag):
-    pass
-
-
 @register_class
 class ScalarWithDecoder:
     __tytx_suffix__ = "TESTSCALAR"
@@ -70,15 +66,6 @@ class ScalarWithDecoder:
     @classmethod
     def from_tytx(cls, value):
         raise RuntimeError("scalar decoder must not run for literal MessagePack text")
-
-
-@pytest.mark.parametrize("transport", ["json", "msgpack"])
-@pytest.mark.parametrize("compact", [False, True])
-def test_legacy(transport, compact):
-    source = LegacyBag({"child": Bag({"leaf": 42})})
-    result = LegacyBag.from_tytx(source.to_tytx(transport, compact=compact), transport)
-    assert type(result["child"]) is LegacyBag
-    assert result["child.leaf"] == 42
 
 
 @pytest.mark.parametrize("transport", ["json", "msgpack"])

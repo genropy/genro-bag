@@ -25,6 +25,7 @@ from genro_tytx import SUFFIX_TO_TYPE
 from genro_tytx import from_tytx as tytx_decode
 
 from genro_bag._resolver_wire import decode_attrs, decode_resolver, has_nested_resolver
+from genro_bag._subtype_wire import CLS_ATTRIBUTE, get_inherited_class, get_subtype_class
 from genro_bag.bag._exceptions import BagSerializationError
 
 if TYPE_CHECKING:
@@ -197,8 +198,12 @@ class BagParser:
         # suffix: a node that is a Bag but has no children yet. TYTX hands it
         # here as "" once Bag is a registered custom type. Only the empty
         # payload means that; anything else (None included) is a caller error.
+        # The payload alone decides the class of the root: without __cls it is
+        # the class registered for the suffix (Bag for "X"), whatever cls is.
+        suffix = cls.__tytx_suffix__
         if data == "" or data == b"":
-            return cls()  # type: ignore[return-value]
+            empty: Bag = get_inherited_class(None, suffix)()
+            return empty
         if not isinstance(data, (str, bytes)):
             raise TypeError(f"from_tytx() requires str or bytes, got {type(data).__name__}")
         parsed = tytx_decode(data, transport=transport if transport != "json" else None)
@@ -208,7 +213,13 @@ class BagParser:
             {int(k): v for k, v in paths_raw.items()} if paths_raw is not None else None
         )
 
-        bag = cls()
+        root_cls = parsed.get(CLS_ATTRIBUTE)
+        root_class = (
+            get_subtype_class(suffix, root_cls)
+            if root_cls is not None
+            else get_inherited_class(None, suffix)
+        )
+        bag: Bag = root_class()
         path_to_bag: dict[str, Any] = {"": bag}
 
         for row in rows:
@@ -236,15 +247,24 @@ class BagParser:
                 entry = SUFFIX_TO_TYPE.get(value[2:])
                 if entry is not None and issubclass(entry[0], BagParser):
                     value = tytx_decode(value)
+            branch_cls = attr.pop(CLS_ATTRIBUTE, None)
             if hasattr(value, "traverse") and hasattr(value, "_nodes"):
                 # Rows carry empty branches; descendants are populated below.
-                # Legacy X subclasses keep the historical root-class factory.
-                child_class = type(value)
-                if child_class.__tytx_suffix__ == "X" and cls.__tytx_suffix__ == "X":
-                    child_class = cls
+                # The class is the __cls name, or the one inherited from the parent.
+                branch_suffix = type(value).__tytx_suffix__
+                child_class = (
+                    get_subtype_class(branch_suffix, branch_cls)
+                    if branch_cls is not None
+                    else get_inherited_class(type(parent_bag), branch_suffix)
+                )
                 child_bag = child_class()
                 parent_bag.set_item(label, child_bag, _attributes=attr)
                 path_to_bag[full_path] = child_bag
+            elif branch_cls is not None:
+                raise BagSerializationError(
+                    f"node {full_path!r}: the attribute {CLS_ATTRIBUTE!r} is reserved "
+                    "for the Bag class name of a branch"
+                )
             elif value == "::NN":
                 parent_bag.set_item(label, None, _attributes=attr)
             else:
