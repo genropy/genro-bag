@@ -102,6 +102,12 @@ class TestBranches:
         assert "__cls" not in result.get_node("body.data").attr
         assert type(result["body"].get_node("data")) is SourceNode
 
+    def test_tree_without_backref(self):
+        tree = Source({"data": Bag({"page": Page()})})
+        tree.clear_backref()
+        result = roundtrip(tree)
+        assert type(result["data"]) is Bag and type(result["data.page"]) is Page
+
     def test_name_written_only_when_class_changes(self):
         tree = Source({"same": Source(), "data": Bag({"page": Page()})})
         rows = {row[1]: row[4] for row in from_tytx(tree.to_tytx())["rows"]}

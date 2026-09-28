@@ -21,6 +21,7 @@ from genro_bag._subtype_wire import CLS_ATTRIBUTE, get_cls_marker, get_inherited
 from genro_bag.bag._exceptions import BagSerializationError
 
 if TYPE_CHECKING:
+    from genro_bag.bag._core import Bag
     from genro_bag.bagnode import BagNode
 
 # Regex for sanitizing XML tag names
@@ -387,6 +388,11 @@ class BagSerializer:
             path_to_code: dict[str, int] = {}
             code_counter = 0
 
+        # Class of each branch by path: a node's parent class decides whether
+        # its branch needs __cls. Read from the walk, since parent_bag is
+        # None when the backref is off.
+        path_to_class: dict[str, type[Bag]] = {"": type(self)}
+
         for path, node in self._iter_nodes_with_paths():
             parent_path = path.rsplit(".", 1)[0] if "." in path else ""
             where = f"node {path!r}"
@@ -403,9 +409,10 @@ class BagSerializer:
             elif hasattr(node_value, "traverse") and hasattr(node_value, "_nodes"):
                 value = f"::{type(node_value).__tytx_suffix__}"
                 branch_class = type(node_value)
+                path_to_class[path] = branch_class
                 branch_cls = get_cls_marker(
                     branch_class,
-                    get_inherited_class(type(node.parent_bag), branch_class.__tytx_suffix__),
+                    get_inherited_class(path_to_class[parent_path], branch_class.__tytx_suffix__),
                 )
             elif node_value is None:
                 value = "::NN"
