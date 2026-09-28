@@ -1,5 +1,29 @@
 # Breaking changes
 
+## Unreleased
+
+### Bag subclasses on the TYTX wire: `__cls`
+
+A Bag subclass without a suffix of its own travels as `"::X"` plus a symbolic
+name, `__cls`, looked up in the TYTX subtype dictionary of `"X"`
+(`genro_tytx.get_subtype_dict`, genro-tytx 0.16.0). A branch carries it in the
+attributes of its row, a root at payload level (`{"rows": [...], "__cls": ...}`).
+It is written only when the class differs from the inherited one: the parent's
+class for a branch, `Bag` for a root. A tree of plain Bags is unchanged.
+
+- Every such class must be in the dictionary: genro-bag adds `"Bag"`, whoever
+  adds a subclass reads the dictionary, adds its entry and sets it again.
+  Writing an unregistered subclass, or one registered under several names,
+  raises `BagSerializationError`. So does an unknown name on decode.
+- The payload alone decides the class of the root: `SubClass.from_tytx(p)`
+  with `p` without `__cls` returns a `Bag`, and so does `SubClass.from_tytx("")`.
+  Previously the caller's class was used, and plain `Bag` children of a root
+  of an unregistered subclass became that subclass.
+- `__cls` is reserved: a user attribute with that name raises on encode, and
+  on a non-branch row on decode. On a branch row it is removed from the
+  attributes.
+- Subclasses registered under a suffix of their own keep working as before.
+
 ## 0.25.0
 
 ### Empty-path assignment

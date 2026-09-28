@@ -17,7 +17,9 @@
 genro-bag: Modernized bag system for the Genropy framework.
 """
 
+from genro_tytx import get_subtype_dict as _get_subtype_dict
 from genro_tytx import register_class as _register_class
+from genro_tytx import set_subtype_dict as _set_subtype_dict
 
 from genro_bag.bag import Bag, BagException, BagSerializationError
 from genro_bag.bagnode import BagNode, BagNodeContainer, BagNodeException
@@ -30,6 +32,9 @@ __version__ = "0.25.1"
 # from_tytx round-trips, and it is what turns the "::X" branch-node marker into
 # a real Bag when Bag.from_tytx reads back its own rows.
 _register_class(Bag)
+# Bag is the base class of the "X" type: its name must be in the subtype
+# dictionary like every subclass that travels as "::X" with a __cls name.
+_set_subtype_dict(Bag.__tytx_suffix__, {**_get_subtype_dict(Bag.__tytx_suffix__), "Bag": Bag})
 
 __all__ = [
     "Bag",
